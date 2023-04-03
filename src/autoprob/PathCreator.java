@@ -15,7 +15,8 @@ import autoprob.katastruct.MoveInfo;
 // creates solution and refutation paths given a problem
 public class PathCreator {
     private static final DecimalFormat df = new DecimalFormat("0.00");
-	
+	private final int maxDepth;
+
 	// generation options
 	public class GenOptions {
 		public boolean altRefutes = false;
@@ -53,6 +54,7 @@ public class PathCreator {
 	public PathCreator(ProblemDetector det, Properties props) {
 		this.det = det;
 		this.props = props;
+		this.maxDepth = Integer.parseInt(props.getProperty("paths.max_depth", "10000"));
 	}
 
 	// RIGHT: we are in a correct variation -- no errors by human
@@ -95,7 +97,11 @@ public class PathCreator {
 						return;
 					}
 				}
-				
+				if (depth >= maxDepth) {
+					System.out.println("(computer response) reached max depth as specified: " + maxDepth);
+					return;
+				}
+
 				if (!gopts.altRefutes && node.babies.size() > 0) return; // already handled this var (we already refuted)
 				
 				// if this is not an intuitive move, don't bother
@@ -151,7 +157,11 @@ public class PathCreator {
 					System.out.println("$$$$$$$$$ human solve bail");
 					return;
 				}
-		        
+				if (depth >= maxDepth) {
+					System.out.println("(human good move) reached max depth as specified: " + maxDepth);
+					return;
+				}
+
 		        // recurse for responses
 		        genPathRecurse(brain, tike, probGoban, depth + 1, true, gopts, ncl);
 			} else {
@@ -328,7 +338,8 @@ public class PathCreator {
 		double baseline = kar.rootInfo.scoreLead;
 		System.out.println();
 		System.out.println("***> Path: <" + node.printPath2Here() + "> (" + onRight + ")" + ", score: " + baseline + ", total: " + totalVarMoves);
-		System.out.println(kar.printMoves());
+		int movePrintMax = Integer.parseInt(props.getProperty("paths.debug_print_moves", "0"));
+		System.out.println(kar.printMoves(movePrintMax));
 
 		// moves from top root analysis
 		for (MoveInfo mi: kar.moveInfos) {
@@ -495,19 +506,19 @@ public class PathCreator {
 	// this can help determine if a given move is pointless and can be ignored
 	private int calcPassDelta(KataBrain brain, Node node, Point p, GenOptions gopts) throws Exception {
 		// we can verify this by trying a pass
-		System.out.println("starting pass value calculation");
+		int baseVisits = Integer.parseInt(props.getProperty("paths.passvisitsbase", "1000"));
+		int passVisits = Integer.parseInt(props.getProperty("paths.passvisitspass", "1000"));
+		System.out.println("starting pass value calculation, base visits: " + baseVisits + ", pass visits: " + passVisits);
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);
 		var na = new NodeAnalyzer(props, Boolean.parseBoolean(props.getProperty("paths.debugpassownership", "false")));
-		int baseVisits = Integer.parseInt(props.getProperty("paths.passvisitsbase", "1000"));
 		KataAnalysisResult karMove = na.analyzeNode(brain, tike, baseVisits, gopts.considerNearDist, gopts.onlyConsiderNear);
 
 		Node passNode = tike.addBasicMove(19, 19);
-		int passVisits = Integer.parseInt(props.getProperty("paths.passvisitspass", "1000"));
 		KataAnalysisResult karPass = na.analyzeNode(brain, passNode, passVisits, gopts.considerNearDist, gopts.onlyConsiderNear);
 		
 		int delta = stoneDelta(karMove, karPass, tike);
-		System.out.println("  Pass delta: " + delta + ", " + tike.printPath2Here());
+		System.out.println("  Pass delta stones: " + delta + ", " + tike.printPath2Here());
 
 		// clean up
 		node.removeChildNode(tike);

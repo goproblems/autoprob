@@ -38,8 +38,8 @@ public class KataAnalysisResult {
 		StringBuilder sb = new StringBuilder();
 		int cnt = 0;
 		for (MoveInfo mi: moveInfos) {
+			if (cnt++ == max) break;
 			sb.append("move: ").append(mi.move).append(", visits: ").append(mi.visits).append(", score: ").append(df.format(mi.scoreLead)).append(", policy: ").append(df.format(mi.prior * 1000.0)).append("\n");
-			if (++cnt == max) break;
 		}
 		return sb.toString();
 	}
@@ -86,6 +86,7 @@ public class KataAnalysisResult {
 					else if (o < 0) {
 						int d = (int) (o * 9.99);
 						// print padded int to 2 digits
+						if (d == 0) System.out.print(' ');
 						System.out.print(d);
 					}
 					else

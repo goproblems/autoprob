@@ -21,7 +21,7 @@ public class MoveAction extends Action {
 
     public MoveAction(String src, int instone, Node node) {
         if (src.length() != 2) {
-            System.out.println("Error in move: not two chars long: '" + src + "'");
+            System.out.println("Error in move: not two chars long, will treat as pass: '" + src + "'");
             return;
         }
         stone = instone;

@@ -121,7 +121,7 @@ public class ProblemDetector {
 			passNode = node.addBasicMove(19, 19);
 			int visits = Integer.parseInt(props.getProperty("search.rootvisits"));
 			boolean dbgOwn = Boolean.parseBoolean(props.getProperty("search.debugpassownership", "false"));
-			var na = new NodeAnalyzer(dbgOwn);
+			var na = new NodeAnalyzer(props, dbgOwn);
 			karPass = na.analyzeNode(brain, passNode, visits);
 			// clean up
 			node.removeChildNode(passNode);
@@ -245,13 +245,15 @@ public class ProblemDetector {
 		ownershipChanges.clear();
 		double maxDelta = 0;
 
+		double threshold = Double.parseDouble(props.getProperty("search.ownership_threshold"));
+
 		for (int x = 0; x < 19; x++)
 			for (int y = 0; y < 19; y++) {
 				double od = kar.ownership.get(x + y * 19) - prev.ownership.get(x + y * 19);
 				int stn = node.board.board[x][y].stone;
 				if (stn == 0) continue;
 				maxDelta = Math.max(maxDelta, Math.abs(od));
-				if (Math.abs(od) > OWNERSHIP_THRESHOLD) {
+				if (Math.abs(od) > threshold) {
 					System.out.println("own delta: " + df.format(od) + ", " + Intersection.toGTPloc(x, y, 19) +
 							" (" + df.format(prev.ownership.get(x + y * 19)) + " -> " + df.format(kar.ownership.get(x + y * 19)) + ")");
 					if (stn == Intersection.BLACK)
@@ -261,7 +263,7 @@ public class ProblemDetector {
 					ownershipChanges.add(new Point(x, y));
 				}
 			}
-		System.out.println("max ownership delta: " + maxDelta);
+		System.out.println("max ownership delta (stones relatively changing sides): " + df.format(maxDelta));
 		totDelta = ownDeltaB + ownDeltaW;
 	}
 

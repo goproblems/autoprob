@@ -23,7 +23,7 @@ public class KataRunner {
 		this.props = prop;
 	}
 
-	
+
 	public void startEngine(VisDetector vis) throws Exception {
 		try {
 			KataBrain brain = new KataBrain(props);
@@ -112,6 +112,8 @@ public class KataRunner {
 	}
 
 	private int testAnalyze(KataBrain brain, String sgfPath, String fileName, VisDetector vis, int onlySearchTurn, int maxVisits) throws Exception {
+		System.out.println("testing game " + fileName + ": " + " at " + onlySearchTurn  + " with " + maxVisits + " visits");
+
 		// get sgf
 		String sgf;
 		try {

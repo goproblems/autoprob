@@ -323,7 +323,7 @@ public class PathCreator {
 
 		int visits = 1000;
 		if (depth == 0) visits = 13000;
-		var na = new NodeAnalyzer();
+		var na = new NodeAnalyzer(props);
 		KataAnalysisResult kar = na.analyzeNode(brain, node, visits, gopts.considerNearDist, gopts.onlyConsiderNear); 
 		double baseline = kar.rootInfo.scoreLead;
 		System.out.println();
@@ -385,7 +385,7 @@ public class PathCreator {
 		}
 		// what do we have?
 		if (moves.size() > 0) {
-			var na = new NodeAnalyzer();
+			var na = new NodeAnalyzer(props);
 			KataAnalysisResult karSol = na.analyzeNode(brain, node, visits, moves); 
 			// override baseline because we're missing the best moves
 			karSol.rootInfo.scoreLead = scoreLead;
@@ -425,7 +425,7 @@ public class PathCreator {
 		// what do we have?
 		if (moves.size() > 0) {
 			// TODO: dups??
-			var na = new NodeAnalyzer();
+			var na = new NodeAnalyzer(props);
 			KataAnalysisResult karSol = na.analyzeNode(brain, node, visits, moves);
 			// override baseline because we're missing the best moves
 			karSol.rootInfo.scoreLead = scoreLead;
@@ -453,14 +453,14 @@ public class PathCreator {
 			var moves = new ArrayList<String>();
 			String mv = Intersection.toGTPloc(op.x, op.y, 19);
 			moves.add(mv);
-			var na = new NodeAnalyzer();
+			var na = new NodeAnalyzer(props);
 			KataAnalysisResult karSol = na.analyzeNode(brain, node, visits, moves);
 			// override baseline because we're missing the best moves
 			karSol.rootInfo.scoreLead = scoreLead;
 //			System.out.println("own start seq: " + karSol.printMoves());
 			for (MoveInfo mi: karSol.moveInfos) {
 				System.out.println();
-				System.out.println("own >>-------> " + mi.move + ", v: " + mi.visits + ", policy: " + df.format(mi.prior * 1000.0));
+				System.out.println("own change start >>-------> " + mi.move + ", v: " + mi.visits + ", policy: " + df.format(mi.prior * 1000.0));
 				handleRightMoveOption(brain, node, probGoban, 0, mi, karSol, gopts, ncl);
 			}
 		}
@@ -471,7 +471,7 @@ public class PathCreator {
 		// we can verify this by trying a pass
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);
-		var na = new NodeAnalyzer();
+		var na = new NodeAnalyzer(props);
 		KataAnalysisResult karMove = na.analyzeNode(brain, tike, MOVE_VISITS_DEF, gopts.considerNearDist, gopts.onlyConsiderNear); 
 //		KataAnalysisResult karMove = gopts.onlyConsiderNear ? brain.analyzeNode(tike, MOVE_VISITS_DEF, gopts.considerNearDist) : brain.analyzeNode(tike, MOVE_VISITS_DEF);
 
@@ -498,7 +498,7 @@ public class PathCreator {
 		System.out.println("starting pass value calculation");
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);
-		var na = new NodeAnalyzer(Boolean.parseBoolean(props.getProperty("paths.debugpassownership", "false")));
+		var na = new NodeAnalyzer(props, Boolean.parseBoolean(props.getProperty("paths.debugpassownership", "false")));
 		int baseVisits = Integer.parseInt(props.getProperty("paths.passvisitsbase", "1000"));
 		KataAnalysisResult karMove = na.analyzeNode(brain, tike, baseVisits, gopts.considerNearDist, gopts.onlyConsiderNear);
 

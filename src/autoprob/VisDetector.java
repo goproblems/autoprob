@@ -66,10 +66,11 @@ public class VisDetector {
 //			p = Intersection.gtp2point(prevPrev.);
 		}
 
+		// add some details
 		var pf = new PosFrame(brain, det.node, det.mistake, det.prev, fileName, det.problem, det, props);
-		pf.leftPanel.add(new JLabel("ob: " + det.ownDeltaB));
-		pf.leftPanel.add(new JLabel("ow: " + det.ownDeltaW));
-		pf.leftPanel.add(new JLabel("sols: " + det.numSols + ", " + det.solString));
+		pf.leftPanel.add(new JLabel("b chng: " + det.ownDeltaB));
+		pf.leftPanel.add(new JLabel("w chng: " + det.ownDeltaW));
+		pf.leftPanel.add(new JLabel("#sols: " + det.numSols + ", " + det.solString));
 		
 		return true;
 	}

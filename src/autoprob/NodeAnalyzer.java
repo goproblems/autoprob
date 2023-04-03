@@ -1,7 +1,9 @@
 package autoprob;
 
 import java.awt.Point;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Properties;
 
 import com.google.gson.Gson;
 
@@ -15,12 +17,16 @@ import autoprob.katastruct.KataQuery;
 public class NodeAnalyzer {
 	
 	private boolean debugOwnership = false;
-	
-	public NodeAnalyzer() {
+	private final Properties props;
+	private static final DecimalFormat df = new DecimalFormat("0.00");
+
+	public NodeAnalyzer(Properties props) {
+		this.props = props;
 	}
 
-	public NodeAnalyzer(boolean debugOwnership) {
+	public NodeAnalyzer(Properties props, boolean debugOwnership) {
 		this.debugOwnership  = debugOwnership;
+		this.props = props;
 	}
 
 	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, ArrayList<String> moves) throws Exception {
@@ -58,12 +64,15 @@ public class NodeAnalyzer {
 			Point loc = moveAction.loc;
 			lm = Intersection.toGTPloc(loc.x, loc.y, 19);
 		}
-		System.out.println("NAL query (" + lm + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
+		boolean dbgNal = Boolean.parseBoolean(props.getProperty("kata.printanalyzerquery", "false"));
+		if (dbgNal)
+			System.out.println("NAL query (" + lm + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
 		
 		brain.doQuery(query);
 		KataAnalysisResult kres = brain.getResult(query.id, query.analyzeTurns.get(0));
 
-		System.out.println("> NAL parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + kres.rootInfo.scoreLead);
+		if (dbgNal)
+			System.out.println("> NAL parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead));
 				
 		if (debugOwnership) {
 			kres.drawOwnership(node);

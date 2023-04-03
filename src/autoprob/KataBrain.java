@@ -18,12 +18,14 @@ import autoprob.katastruct.KataQuery;
 // runs katago in a thread, can handle multiple simul queries, aggregates and returns them
 public class KataBrain {
 	private final Process process;
+	private final Properties props;
 	private boolean debugPrintKatago = false;
 	private BufferedReader reader;
 	private Map<String, KataAnalysisResult> results = new Hashtable<>();
 	private static final DecimalFormat df = new DecimalFormat("0.00");
 
 	public KataBrain(Properties props) throws Exception {
+		this.props = props;
 		String kataPath = props.getProperty("katago").trim();
 		String configPath = props.getProperty("kata.config").trim();
 		String modelPath = props.getProperty("kata.model").trim();
@@ -64,6 +66,7 @@ public class KataBrain {
 	}
 
 	protected void processKataResponses() throws JsonSyntaxException, IOException {
+		boolean printSummary = Boolean.parseBoolean(props.getProperty("kata.printsummaryresult", "false"));
 		Gson gson = new Gson();
 		String line;
 		long startTime = 0;
@@ -86,10 +89,8 @@ public class KataBrain {
 				KataAnalysisResult kres = gson.fromJson(line, KataAnalysisResult.class);
 				total++;
 				double avgTime = (System.currentTimeMillis() - startTime) / (double)total;
-				System.out.println("> KBRAIN parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", avg ms: " + df.format(avgTime));
-				
-				//// enable to debug ownership
-//				kres.drawOwnership(node);
+				if (printSummary)
+					System.out.println("> KBRAIN parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", avg ms: " + df.format(avgTime));
 
 				synchronized (this) {
 					// record result

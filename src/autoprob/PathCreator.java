@@ -196,6 +196,10 @@ public class PathCreator {
 				}
 				if (countEmptyShots(p, node) >= 3)
 					return; // looks on outside
+				if (depth >= maxDepth) {
+					System.out.println("(human mistake) reached max depth as specified: " + maxDepth);
+					return;
+				}
 
 				// it's only interesting if it threatens to change life status
 				int delta = calcPassDelta(brain, node, p, gopts);
@@ -275,6 +279,10 @@ public class PathCreator {
 					System.out.println("$$$$$$$$$$$$$$ bail wrong");
 					return;
 				}
+				if (depth >= maxDepth) {
+					System.out.println("(human mistake in wrong) reached max depth as specified: " + maxDepth);
+					return;
+				}
 
 				// it's only interesting if it threatens to change life status
 				int delta = calcPassDelta(brain, node, p, gopts);
@@ -341,12 +349,17 @@ public class PathCreator {
 		int movePrintMax = Integer.parseInt(props.getProperty("paths.debug_print_moves", "0"));
 		System.out.println(kar.printMoves(movePrintMax));
 
-		// moves from top root analysis
+		// moves from top root analysis (root of this branch, not necessarily root of tree)
 		for (MoveInfo mi: kar.moveInfos) {
 //			double score = mi.scoreLead;
 //			Point p = Intersection.gtp2point(mi.move);
 //			double nearest = findNearest(node.board, p);
-			
+			// skip moves if in forbidden list
+			if (depth == 0 && !isAllowedRootMove(mi.move)) {
+				System.out.println("  skip not allowed: " + mi.move);
+				continue;
+			}
+
 			if (onRight) {
 				handleRightMoveOption(brain, node, probGoban, depth, mi, kar, gopts, ncl);
 			} else {
@@ -373,6 +386,18 @@ public class PathCreator {
 			
 			//TODO consider game mistake if nearby
 		}
+	}
+
+	// user can specify allowed and forbidden moves from the command line
+	private boolean isAllowedRootMove(String move) {
+		String onlyTry = props.getProperty("paths.only_try_moves", "");
+		if (onlyTry.length() > 0) {
+			if (onlyTry.contains(move)) {
+				return true;
+			}
+			return false;
+		}
+		return true;
 	}
 
 	// look for good starting moves by looking at moves along the primary solution path

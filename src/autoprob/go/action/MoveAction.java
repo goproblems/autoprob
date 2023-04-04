@@ -42,7 +42,7 @@ public class MoveAction extends Action {
     	if (loc.x == 19 || loc.y == 19)
     		return; // pass
         if (!board.inBoard(loc.x, loc.y)) {
-            System.out.println("Error in move: off board: " + loc.x + " " + loc.y);
+            // it's a pass
             return;
         }
         board.makeMove(loc.x, loc.y, stone);

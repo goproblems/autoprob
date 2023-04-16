@@ -1,5 +1,5 @@
 # autoprob
-automatically find and extract go problems from games
+automatically find and extract go problems from games. the resulting problems are formatted for adding to www.goproblems.com
 
 more documentation coming soon!
 

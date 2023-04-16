@@ -119,7 +119,8 @@ public class ProblemDetector {
 		Node passNode;
 		try {
 			passNode = node.addBasicMove(19, 19);
-			int visits = Integer.parseInt(props.getProperty("search.rootvisits"));
+			int visits = Integer.parseInt(props.getProperty("search.root_visits"));
+			System.out.println("doing more exhaustive check, visits=" + visits);
 			boolean dbgOwn = Boolean.parseBoolean(props.getProperty("search.debugpassownership", "false"));
 			var na = new NodeAnalyzer(props, dbgOwn);
 			karPass = na.analyzeNode(brain, passNode, visits);

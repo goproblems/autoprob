@@ -218,24 +218,6 @@ public class BasicGoban2D extends BasicGoban {
                 break;
             case Intersection.EMPTY:
                 // draw stones captured last move
-                for (Enumeration e = board.deathList.elements(); e.hasMoreElements();) {
-                    Point p = (Point) e.nextElement();
-                    if (p.x == x && p.y == y) {
-//                        long diff = System.currentTimeMillis() - glob.lastMoveTime;
-//                        float frac = 1.0f - (diff / (float) FADE_OUT_MILLIS);
-//                        float alpha = frac * 0.8f;
-//                        if (alpha <= 0.0f)
-//                            break;
-//                        AlphaComposite ac = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha);
-//                        Composite origComposite = offscreen.getComposite();
-//                        offscreen.setComposite(ac);
-//                        Image im = (node.getToMove() == Globals.WHITE) ? Pix.imgWhite : Pix.imgBlack;
-//                        int ss = (int) (sz * frac);
-//                        int hf = (sz - ss) / 2;
-//                        offscreen.drawImage(im, hf, hf, ss, ss, this);
-//                        offscreen.setComposite(origComposite);
-                    }
-                }
                 break;
         }
 

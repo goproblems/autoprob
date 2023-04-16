@@ -1,8 +1,6 @@
 package autoprob.vis;
 
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Point;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
@@ -64,13 +62,20 @@ public class PosFrame extends JFrame implements NodeChangeListener {
 		
 		setSize(2000, 1050);
 		
-		// position not to overlap too much
+		// position window not to overlap too much other popup windows
 		int loop = totalProblemCount / 30;
 		setLocation(20 * (totalProblemCount % 30), 10 * totalProblemCount + loop * 12);
 		totalProblemCount++;
 
-		BoxLayout layout = new BoxLayout(getContentPane(), BoxLayout.LINE_AXIS);
+		GridBagLayout layout = new GridBagLayout();
 		getContentPane().setLayout(layout);
+
+		GridBagConstraints c = new GridBagConstraints();
+		c.weightx = 1;
+		c.weighty = 1;
+
+//		BoxLayout layout = new BoxLayout(getContentPane(), BoxLayout.LINE_AXIS);
+//		getContentPane().setLayout(layout);
 		
 		Pix.LoadAll();
 		
@@ -99,55 +104,14 @@ public class PosFrame extends JFrame implements NodeChangeListener {
 		}
         
 		// left info
-		leftPanel = new JPanel();
-		BoxLayout leftLayout = new BoxLayout(leftPanel, BoxLayout.PAGE_AXIS);
-		leftPanel.setLayout(leftLayout);
-		leftPanel.add(new JLabel("score: " + df.format(mistake.rootInfo.scoreLead)));
-		leftPanel.add(new JLabel("delta: " + df.format((mistake.rootInfo.scoreLead - prev.rootInfo.scoreLead))));
-		leftPanel.add(new JLabel(new String("to move: ") + (gameSource.getToMove() == Intersection.BLACK ? "black" : "white")));
-		
-		add(leftPanel);
+		leftPanel = new SourceInfoPanel(mistake, gameSource, prev);
+
+//		add(leftPanel);
 
 		// source game goban
-		JPanel sourcePanel = new JPanel();
-		BoxLayout sourceLayout = new BoxLayout(sourcePanel, BoxLayout.PAGE_AXIS);
-		sourcePanel.setLayout(sourceLayout);
-		
-		JLabel sourceHover = new JLabel("...");
+		JPanel sourcePanel = new SourcePanel(gameSource, brain, prev, problem, props);
 
-		BasicGoban srcgoban = new BasicGoban2D(gameSource, prev.ownership) {
-			@Override
-			public void clickSquare(Point p, MouseEvent e) {
-//				System.out.println("src: " + p);
-				StoneConnect sc = new StoneConnect();
-				if (sc.isOnboard(p.x, p.y) && node.board.board[p.x][p.y].stone != 0) {
-					// copy flood from source
-					var fld = sc.floodFromStone(p, node.board);
-					for (Point f: fld) {
-						problem.board.board[f.x][f.y].stone = node.board.board[p.x][p.y].stone;
-					}
-					PosFrame.this.repaint();
-				}
-			}
-
-			@Override
-			protected void mouseEnterSquare(int x, int y) {
-				if (x >= 0 && y >= 0 && x < 19 && y < 19) {
-					// on board
-					StringBuilder sb = new StringBuilder();
-					sb.append("pos: " + Intersection.toGTPloc(x, y, 19));
-					sb.append(", ownership: " + (int)(prev.ownership.get(x + y * 19) * 100));
-					if (problem.board.board[x][y].stone == 0)
-						sb.append(", policy: " + (int)(prev.policy.get(x + y * 19) * 1000));
-//					System.out.println();
-					sourceHover.setText(sb.toString());
-				}
-			}
-		};
-		srcgoban.setBounds(0, 0, 600, 600);
-		sourcePanel.add(srcgoban);
-		sourcePanel.add(sourceHover);
-		add(sourcePanel);
+//		add(sourcePanel);
 //		add(srcgoban, BorderLayout.CENTER);
 
 		// problem
@@ -182,18 +146,24 @@ public class PosFrame extends JFrame implements NodeChangeListener {
 		};
 		probGoban.setBounds(0, 0, 400, 400);
 		probPanel.add(probGoban);
+
+		JPanel probDetailPanel = new JPanel();
+		GridBagConstraints probc = new GridBagConstraints();
+		probc.fill = GridBagConstraints.BOTH;
+		probc.weightx = 1;
+		probc.weighty = 1;
 		
 		// bail num
-		probPanel.add(new JLabel("bail after moves:"));
+		probDetailPanel.add(new JLabel("bail after moves:"), probc);
 		JTextField bailNum = new JTextField(7);
 		bailNum.setText(props.getProperty("paths.bailnumber"));
 		bailNum.setPreferredSize(new Dimension(150, 20));
-		probPanel.add(bailNum);
+		probDetailPanel.add(bailNum, probc);
 		
 		// bail depth
-		probPanel.add(new JLabel("bail depth:"));
+		probDetailPanel.add(new JLabel("bail depth:"), probc);
 		JTextField bailDepth = new JTextField("3", 7);
-		probPanel.add(bailDepth);
+		probDetailPanel.add(bailDepth, probc);
 		
 		makePathsButton = new JButton("Make Paths");
 //		final KataEngine keng = engine;
@@ -208,7 +178,7 @@ public class PosFrame extends JFrame implements NodeChangeListener {
 	        	 createPaths(problem, det, probGoban, brain, pc, gopts);
 	         }
 		});
-		probPanel.add(makePathsButton);
+		probDetailPanel.add(makePathsButton, probc);
 		
 		JButton removeFillButton = new JButton("remove fill");
 		removeFillButton.addActionListener(new ActionListener() {
@@ -216,14 +186,14 @@ public class PosFrame extends JFrame implements NodeChangeListener {
 	        	 removeFill();
 	         }
 		});
-		probPanel.add(removeFillButton);
+		probDetailPanel.add(removeFillButton, probc);
 		JButton fillEmptyButton = new JButton("fill empty board");
 		fillEmptyButton.addActionListener(new ActionListener() {
 	         public void actionPerformed(ActionEvent e) {
 	        	 fillEmpty();
 	         }
 		});
-		probPanel.add(fillEmptyButton);
+		probDetailPanel.add(fillEmptyButton, probc);
 		
 		JButton sgfButton = new JButton("sgf");
 		sgfButton.addActionListener(new ActionListener() {
@@ -231,7 +201,7 @@ public class PosFrame extends JFrame implements NodeChangeListener {
 				System.out.println("(" + problem.outputSGF(true) + ")");
 			}
 		});
-		probPanel.add(sgfButton);
+		probDetailPanel.add(sgfButton, probc);
 		
 		JButton showFileButton = new JButton("print source");
 		showFileButton.addActionListener(new ActionListener() {
@@ -242,9 +212,11 @@ public class PosFrame extends JFrame implements NodeChangeListener {
 	        	 System.out.println("singles.add(new SingleTarget(\"" + name + "\", " + prev.turnNumber + ", true));");
 	         }
 		});
-		probPanel.add(showFileButton);
+		probDetailPanel.add(showFileButton, probc);
+
+		probPanel.add(probDetailPanel);
 		
-		add(probPanel);
+//		add(probPanel);
 //		add(probPanel, BorderLayout.EAST);
 		
         atlas = new Atlas2D(problem);
@@ -252,11 +224,29 @@ public class PosFrame extends JFrame implements NodeChangeListener {
 //        atlasPane.getViewport().setBackground(Pix.colBack);
         atlasPane.getVerticalScrollBar().setUnitIncrement(10);
         atlasPane.getHorizontalScrollBar().setUnitIncrement(10);
-        add(atlasPane);
+//        add(atlasPane);
+
+		// Adding components to the main layout using GridBagLayout
+		c.gridx = 0;
+		c.gridy = 0;
+		c.fill = GridBagConstraints.NONE;
+		add(leftPanel, c);
+
+		c.gridx = 1;
+		c.gridy = 0;
+		add(sourcePanel, c);
+
+		c.gridx = 2;
+		c.gridy = 0;
+		add(probPanel, c);
+
+		c.gridx = 3;
+		c.gridy = 0;
+		c.fill = GridBagConstraints.BOTH;
+		add(atlasPane, c);
 
 		setVisible(true);// making the frame visible
 
-		srcgoban.goLarge();
 		probGoban.goLarge();
 	}
 	

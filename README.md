@@ -17,6 +17,9 @@ you will have to pass in the gson jar. this should pop up a Java window with a d
 
 if you are having problems, try passing `kata.debugprint=true` on the command line also
 
+6) Edit the board on the right, which is the problem board, to fix any extraction mistakes. Left click for black, right click for white.
+7) Hit the Make Paths button to generate solution and refutation paths with katago.
+
 # Configuration
 
 The general approach is to take configuration parameters from the properties file, optionally overridden by using the same names on the command line (with the format `name=value`). The first command line parameter must be a path to the properties file, and this is the only unnamed parameter. A default file is provided. There are a lot of options!

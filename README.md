@@ -24,3 +24,4 @@ The general approach is to take configuration parameters from the properties fil
 # Developer IDE
 
 This has been loaded in both IntelliJ and Eclipse. Some project files may exist and work.
+<img width="1650" alt="autoprob" src="https://user-images.githubusercontent.com/52733/232354589-db9876d8-a221-44e7-99d5-b8637c7bd2db.png">

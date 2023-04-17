@@ -36,6 +36,7 @@ public class SourcePanel extends JPanel {
                         problem.board.board[f.x][f.y].stone = node.board.board[p.x][p.y].stone;
                     }
                     SourcePanel.this.repaint();
+                    SourcePanel.this.getParent().repaint();
                 }
             }
 

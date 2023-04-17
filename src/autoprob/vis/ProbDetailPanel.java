@@ -21,6 +21,7 @@ public class ProbDetailPanel extends JPanel {
     private final ProblemDetector det;
     private final ProblemPanel probPanel;
     private final Node problem;
+    private final Properties props;
     //    private final BasicGoban goban;
 //    private final KataAnalysisResult prev;
 //    private final KataAnalysisResult mistake;
@@ -34,6 +35,7 @@ public class ProbDetailPanel extends JPanel {
         this.det = det;
         this.probPanel = probPanel;
         this.problem = problem;
+        this.props = props;
         
         GridBagConstraints probc = new GridBagConstraints();
         probc.fill = GridBagConstraints.BOTH;
@@ -117,12 +119,16 @@ public class ProbDetailPanel extends JPanel {
 
                         String sgf = ("(" + problem.outputSGF(true) + ")");
 
-                        String home = System.getProperty("user.home");
-                        System.out.println("wrote problem at home: " + home);
-                        Path path = Paths.get(home + "\\" + "autoprob.sgf");
-                        byte[] strToBytes = sgf.getBytes();
+                        boolean writeFile = Boolean.parseBoolean(props.getProperty("output.write_file", "false"));
 
-                        Files.write(path, strToBytes);
+                        if (writeFile) {
+                            String pathString = props.getProperty("output.path");
+                            Path path = Paths.get(pathString);
+                            byte[] strToBytes = sgf.getBytes();
+
+                            Files.write(path, strToBytes);
+                            System.out.println("wrote problem at: " + pathString);
+                        }
                     } catch (Exception e) {
                         e.printStackTrace();
                     }

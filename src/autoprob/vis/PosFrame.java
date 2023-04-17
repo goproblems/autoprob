@@ -74,9 +74,6 @@ public class PosFrame extends JFrame {
 		c.weightx = 1;
 		c.weighty = 1;
 
-//		BoxLayout layout = new BoxLayout(getContentPane(), BoxLayout.LINE_AXIS);
-//		getContentPane().setLayout(layout);
-		
 		Pix.LoadAll();
 		
 		// decorate game source
@@ -114,8 +111,10 @@ public class PosFrame extends JFrame {
 //		add(sourcePanel);
 //		add(srcgoban, BorderLayout.CENTER);
 
+		atlas = new Atlas2D(problem);
+
 		// problem
-		ProblemPanel probPanel = new ProblemPanel(problem);
+		ProblemPanel probPanel = new ProblemPanel(problem, atlas);
 
 		JPanel probDetailPanel = new ProbDetailPanel(gameSource, brain, prev, problem, props, det, probPanel, name);
 
@@ -124,7 +123,6 @@ public class PosFrame extends JFrame {
 //		add(probPanel);
 //		add(probPanel, BorderLayout.EAST);
 		
-        atlas = new Atlas2D(problem);
         JScrollPane atlasPane = new JScrollPane(atlas);
 //        atlasPane.getViewport().setBackground(Pix.colBack);
         atlasPane.getVerticalScrollBar().setUnitIncrement(10);

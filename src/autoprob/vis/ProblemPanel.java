@@ -6,6 +6,7 @@ import autoprob.go.NodeChangeListener;
 import autoprob.go.StoneConnect;
 import autoprob.go.vis.BasicGoban;
 import autoprob.go.vis.BasicGoban2D;
+import autoprob.go.vis.atlas.Atlas;
 
 import javax.swing.*;
 import java.awt.*;
@@ -13,11 +14,13 @@ import java.awt.event.MouseEvent;
 
 public class ProblemPanel extends JPanel implements NodeChangeListener {
     private final Node problem;
+    private final Atlas atlas;
     public BasicGoban probGoban;
-    public ProblemPanel(Node problem) {
+    public ProblemPanel(Node problem, Atlas atlas) {
         super();
         
         this.problem = problem;
+        this.atlas = atlas;
 
         BoxLayout probLayout = new BoxLayout(this, BoxLayout.PAGE_AXIS);
         setLayout(probLayout);
@@ -63,7 +66,7 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
 
     @Override
     public void nodeChanged(Node node) {
-//        atlas.calculatePositions(node.getRoot());
+        atlas.calculatePositions(node.getRoot());
         problem.markCrayons();
 
         // track what we're searching visually
@@ -76,5 +79,4 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
         revalidate();
         repaint();
     }
-
 }

@@ -45,10 +45,10 @@ public class SourcePanel extends JPanel {
                 if (x >= 0 && y >= 0 && x < 19 && y < 19) {
                     // on board
                     StringBuilder sb = new StringBuilder();
-                    sb.append("pos: " + Intersection.toGTPloc(x, y, 19));
-                    sb.append(", ownership: " + (int) (prev.ownership.get(x + y * 19) * 100));
+                    sb.append("pos: ").append(Intersection.toGTPloc(x, y, 19));
+                    sb.append(", ownership: ").append((int) (prev.ownership.get(x + y * 19) * 100));
                     if (problem.board.board[x][y].stone == 0)
-                        sb.append(", policy: " + (int) (prev.policy.get(x + y * 19) * 1000));
+                        sb.append(", policy: ").append((int) (prev.policy.get(x + y * 19) * 1000));
 //					System.out.println();
                     sourceHover.setText(sb.toString());
                 }

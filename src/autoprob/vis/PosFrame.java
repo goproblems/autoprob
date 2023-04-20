@@ -20,7 +20,7 @@ public class PosFrame extends JFrame {
 	private static final DecimalFormat df = new DecimalFormat("0.00");
 	private static final int MIN_WIDTH_FOR_LARGE_IMAGES = 2251;
 	static int totalProblemCount = 0;
-	public JPanel leftPanel;
+	private SourceInfoPanel sourceInfoPanel;
 	private ProblemDetector det;
 	private Atlas atlas;
 	private Node problem;
@@ -86,7 +86,7 @@ public class PosFrame extends JFrame {
 		}
 
 		// left info
-		leftPanel = new SourceInfoPanel(mistake, gameSource, prev);
+		sourceInfoPanel = new SourceInfoPanel(mistake, gameSource, prev);
 
 //		add(leftPanel);
 
@@ -139,7 +139,8 @@ public class PosFrame extends JFrame {
 		boardsPanel.add(sourcePanel);
 		boardsPanel.add(probPanel);
 
-		add(leftPanel, BorderLayout.WEST);
+		sourcePanel.setBackground(Color.RED);
+		add(sourceInfoPanel, BorderLayout.WEST);
 
 		JPanel centerPanel = new JPanel();
 		centerPanel.setLayout(new BorderLayout());
@@ -156,14 +157,16 @@ public class PosFrame extends JFrame {
 					probPanel.resizeImages(sizeMode);
 				}
 				if (sizeMode == SizeMode.SMALL)
-					boardsPanel.setPreferredSize(new Dimension(340 * 2 + 10, 340 * 2));
+					boardsPanel.setPreferredSize(new Dimension(340 * 2 + 10, 340 * 2 + 100));
 				else
-					boardsPanel.setPreferredSize(new Dimension(676 * 2 + 10, 676 * 2));
+					boardsPanel.setPreferredSize(new Dimension(676 * 2 + 10, 676 * 2 + 100));
 			}
 		});
 		pack();
 		setVisible(true);// making the frame visible
 	}
 
-
+	public void addSourceInfoPanelEntry(String key, String value) {
+		sourceInfoPanel.addEntry(key, value);
+	}
 }

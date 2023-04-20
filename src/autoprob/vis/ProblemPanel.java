@@ -18,12 +18,13 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
     public BasicGoban probGoban;
     public ProblemPanel(Node problem, Atlas atlas) {
         super();
-        
+
         this.problem = problem;
         this.atlas = atlas;
 
-        BoxLayout probLayout = new BoxLayout(this, BoxLayout.PAGE_AXIS);
-        setLayout(probLayout);
+//        BoxLayout probLayout = new BoxLayout(this, BoxLayout.PAGE_AXIS);
+//        setLayout(probLayout);
+        setLayout(new BorderLayout());
         probGoban = new BasicGoban2D(problem, null) {
             @Override
             public void clickSquare(Point p, MouseEvent e) {
@@ -51,7 +52,7 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
             }
         };
         probGoban.setBounds(0, 0, 400, 400);
-        add(probGoban);
+        add(probGoban, BorderLayout.CENTER);
     }
 
     @Override
@@ -78,5 +79,12 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
 
         revalidate();
         repaint();
+    }
+
+    public void resizeImages(SizeMode mode) {
+        switch (mode) {
+            case LARGE -> probGoban.goLarge();
+            case SMALL -> probGoban.goSmall();
+        }
     }
 }

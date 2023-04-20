@@ -19,9 +19,9 @@ public class SourcePanel extends JPanel {
     public SourcePanel(Node gameSource, KataBrain brain, KataAnalysisResult prev, Node problem, Properties props) {
         super();
 
-        BoxLayout sourceLayout = new BoxLayout(this, BoxLayout.PAGE_AXIS);
-        setLayout(sourceLayout);
-
+//        BoxLayout sourceLayout = new BoxLayout(this, BoxLayout.PAGE_AXIS);
+//        setLayout(sourceLayout);
+        setLayout(new BorderLayout());
         JLabel sourceHover = new JLabel("...");
 
         goban = new BasicGoban2D(gameSource, prev.ownership) {
@@ -32,7 +32,7 @@ public class SourcePanel extends JPanel {
                 if (sc.isOnboard(p.x, p.y) && node.board.board[p.x][p.y].stone != 0) {
                     // copy flood from source
                     var fld = sc.floodFromStone(p, node.board);
-                    for (Point f: fld) {
+                    for (Point f : fld) {
                         problem.board.board[f.x][f.y].stone = node.board.board[p.x][p.y].stone;
                     }
                     SourcePanel.this.repaint();
@@ -46,18 +46,19 @@ public class SourcePanel extends JPanel {
                     // on board
                     StringBuilder sb = new StringBuilder();
                     sb.append("pos: " + Intersection.toGTPloc(x, y, 19));
-                    sb.append(", ownership: " + (int)(prev.ownership.get(x + y * 19) * 100));
+                    sb.append(", ownership: " + (int) (prev.ownership.get(x + y * 19) * 100));
                     if (problem.board.board[x][y].stone == 0)
-                        sb.append(", policy: " + (int)(prev.policy.get(x + y * 19) * 1000));
+                        sb.append(", policy: " + (int) (prev.policy.get(x + y * 19) * 1000));
 //					System.out.println();
                     sourceHover.setText(sb.toString());
                 }
             }
         };
-        goban.setBounds(0, 0, 600, 600);
+//        goban.setBounds(0, 0, 600, 600);
 //        srcgoban.goLarge();
-        add(goban);
-        add(sourceHover);
+        add(goban, BorderLayout.CENTER);
+//        maxSize = goban.getSize();
+//        add(sourceHover);
     }
 
     @Override
@@ -66,4 +67,10 @@ public class SourcePanel extends JPanel {
         goban.goLarge();
     }
 
+    public void resizeImages(SizeMode mode) {
+        switch (mode) {
+            case LARGE -> goban.goLarge();
+            case SMALL -> goban.goSmall();
+        }
+    }
 }

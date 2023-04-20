@@ -67,9 +67,8 @@ public class Pix {
         smileyImg = loadImage("smile.gif");
         
         sBoard = srcBoard;
-        // temporarily set to large
-        sWhite = srcWhite;
-        sBlack = srcBlack;
+        sWhite = loadImage("swhite.gif");
+        sBlack = loadImage("sblack.gif");
         
         ebiCut = loadImage(EDIT_PATH + "cross.gif");
         ebiSetup = loadImage(EDIT_PATH + "harmony.gif");

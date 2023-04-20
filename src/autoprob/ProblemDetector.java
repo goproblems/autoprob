@@ -142,6 +142,16 @@ public class ProblemDetector {
 		makeProblem();
 	}
 
+	// for testing
+	public ProblemDetector(KataAnalysisResult prev, KataAnalysisResult mistake, Node n, Properties props, boolean b) {
+		this.mistake = mistake;
+		this.prev = prev;
+		this.node = n;
+		this.props = props;
+
+		makeProblem();
+	}
+
 	// create initial position and paths
 	private void makeProblem() {
 		problem = new Node(null);

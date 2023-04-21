@@ -17,6 +17,8 @@ public class SourcePanel extends JPanel {
     private final BasicGoban goban;
     private final JLabel sourceHover;
 
+    private static final int MARGIN = 5;
+
     public SourcePanel(Node gameSource, KataBrain brain, KataAnalysisResult prev, Node problem, Properties props) {
         super();
 
@@ -67,10 +69,10 @@ public class SourcePanel extends JPanel {
 //        goban.setBounds(0, 0, 600, 600);
 //        srcgoban.goLarge();
 //        add(goban, BorderLayout.CENTER);
-        goban.setBounds(0, 0, 600, 600);
+        goban.setBounds(0, 0, (int) goban.getPreferredSize().getWidth(), (int) goban.getPreferredSize().getHeight());
         add(goban);
-        sourceHover.setBackground(Color.GREEN);
-        sourceHover.setOpaque(true);
+//        sourceHover.setBackground(Color.GREEN);
+//        sourceHover.setOpaque(true);
         sourceHover.setBounds(0, 610, 600, 50);
         add(sourceHover);
 //        maxSize = goban.getSize();
@@ -84,15 +86,23 @@ public class SourcePanel extends JPanel {
     }
 
     public void resizeImages(SizeMode mode) {
+        int gw, gh;
         switch (mode) {
             case LARGE -> {
                 goban.goLarge();
-                goban.setBounds(0, 0, 600, 600);
+                gw = (int)goban.getPreferredSize().getWidth();
+                gh = (int) goban.getPreferredSize().getHeight();
+                goban.setBounds(MARGIN, MARGIN,gw, gh);
+                sourceHover.setBounds(MARGIN, MARGIN + gh + 1, 600, 20);
+                setPreferredSize(new Dimension(gw + 2 * MARGIN, gh + 2 * MARGIN));
             }
             case SMALL -> {
                 goban.goSmall();
-                goban.setBounds(0, 0, (int) goban.getMinumumSize().getWidth(), (int) goban.getMinumumSize().getHeight());
-                sourceHover.setBounds(0, (int) goban.getMinumumSize().getHeight() + 1, 600, 20);
+                gw = (int)goban.getMinumumSize().getWidth();
+                gh = (int) goban.getMinumumSize().getHeight();
+                goban.setBounds(MARGIN, MARGIN,gw, gh);
+                sourceHover.setBounds(MARGIN, MARGIN + gh + 1, 600, 20);
+                setPreferredSize(new Dimension(gw + 2 * MARGIN, gh + 2 * MARGIN));
             }
         }
     }

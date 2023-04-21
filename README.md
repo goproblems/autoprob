@@ -27,4 +27,15 @@ The general approach is to take configuration parameters from the properties fil
 # Developer IDE
 
 This has been loaded in both IntelliJ and Eclipse. Some project files may exist and work.
+
+# Scanning SGF directories
+
+This is a key mode of using autoprob. Given a directory full of SGF files, this will iterate through them, looking in all games to find potential problems. For each suggested problem, autoprob will pop up a window showing what it has found and giving the user the option to modify the problem and generate paths from it.
+
+To run in this mode, set `path` on the command line or config file to point to the directory to scan. (Note: it's easy to find large collections of amateur games played on go servers.)
+
+By default, autoprob will save its progress in the directory in a file called `zpos`, so you can run it again later on new files.
+
+The program will continue finding potential problems until `search.directory.max_finds` is reached.
+
 <img width="1650" alt="autoprob" src="https://user-images.githubusercontent.com/52733/232354589-db9876d8-a221-44e7-99d5-b8637c7bd2db.png">

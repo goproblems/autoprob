@@ -16,19 +16,13 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
     private static final int MARGIN = 5;
     private final Node problem;
     private final Atlas atlas;
-    public BasicGoban probGoban;
-
+    private BasicGoban probGoban;
     private ProbDetailPanel probDetailPanel;
 
     public ProblemPanel(Node problem, Atlas atlas) {
         super();
-
         this.problem = problem;
         this.atlas = atlas;
-
-//        BoxLayout probLayout = new BoxLayout(this, BoxLayout.PAGE_AXIS);
-//        setLayout(probLayout);
-//        setLayout(new BorderLayout());
         setLayout(null);
         probGoban = new BasicGoban2D(problem, null) {
             @Override
@@ -58,6 +52,10 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
         };
         probGoban.setBounds(0, 0, (int) probGoban.getPreferredSize().getWidth(), (int) probGoban.getPreferredSize().getHeight());
         add(probGoban, BorderLayout.CENTER);
+    }
+
+    public BasicGoban getProbGoban() {
+        return probGoban;
     }
 
     @Override

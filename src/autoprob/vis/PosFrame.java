@@ -47,19 +47,12 @@ public class PosFrame extends JFrame {
         this.det = det;
         this.problem = problem;
 
+        setLayout(new BorderLayout());
         setSize(2000, 1050);
         // position window not to overlap too much other popup windows
         int loop = totalProblemCount / 30;
         setLocation(20 * (totalProblemCount % 30), 10 * totalProblemCount + loop * 12);
         totalProblemCount++;
-
-//        GridBagLayout layout = new GridBagLayout();
-//        getContentPane().setLayout(layout);
-        setLayout(new BorderLayout());
-//        GridBagConstraints c = new GridBagConstraints();
-//        c.fill = GridBagConstraints.BOTH;
-//        c.weightx = 1;
-//        c.weighty = 1;
 
         Pix.LoadAll();
 
@@ -90,12 +83,8 @@ public class PosFrame extends JFrame {
         // left info
         sourceInfoPanel = new SourceInfoPanel(mistake, gameSource, prev);
 
-//		add(leftPanel);
-
         // source game goban
         sourcePanel = new SourcePanel(gameSource, brain, prev, problem, props);
-//		add(sourcePanel);
-//		add(srcgoban, BorderLayout.CENTER);
 
         atlas = new Atlas2D(problem);
 

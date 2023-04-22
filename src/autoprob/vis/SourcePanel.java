@@ -14,18 +14,12 @@ import java.awt.event.MouseEvent;
 import java.util.Properties;
 
 public class SourcePanel extends JPanel {
+    private static final int MARGIN = 5;
     private final BasicGoban goban;
     private final JLabel sourceHover;
 
-    private static final int MARGIN = 5;
-
     public SourcePanel(Node gameSource, KataBrain brain, KataAnalysisResult prev, Node problem, Properties props) {
         super();
-
-//        BoxLayout sourceLayout = new BoxLayout(this, BoxLayout.PAGE_AXIS);
-//        setLayout(sourceLayout);
-//        setLayout(new BorderLayout());
-//        setLayout(new FlowLayout());
         setLayout(null);
         sourceHover = new JLabel("...");
         sourceHover.setVisible(false);
@@ -55,7 +49,6 @@ public class SourcePanel extends JPanel {
                     sb.append(", ownership: ").append((int) (prev.ownership.get(x + y * 19) * 100));
                     if (problem.board.board[x][y].stone == 0)
                         sb.append(", policy: ").append((int) (prev.policy.get(x + y * 19) * 1000));
-//					System.out.println();
                     sourceHover.setVisible(true);
                     sourceHover.setText(sb.toString());
                 }
@@ -66,17 +59,10 @@ public class SourcePanel extends JPanel {
                 sourceHover.setVisible(false);
             }
         };
-//        goban.setBounds(0, 0, 600, 600);
-//        srcgoban.goLarge();
-//        add(goban, BorderLayout.CENTER);
         goban.setBounds(0, 0, (int) goban.getPreferredSize().getWidth(), (int) goban.getPreferredSize().getHeight());
         add(goban);
-//        sourceHover.setBackground(Color.GREEN);
-//        sourceHover.setOpaque(true);
         sourceHover.setBounds(0, 610, 600, 50);
         add(sourceHover);
-//        maxSize = goban.getSize();
-//        add(sourceHover, BorderLayout.SOUTH);
     }
 
     @Override
@@ -90,17 +76,17 @@ public class SourcePanel extends JPanel {
         switch (mode) {
             case LARGE -> {
                 goban.goLarge();
-                gw = (int)goban.getPreferredSize().getWidth();
+                gw = (int) goban.getPreferredSize().getWidth();
                 gh = (int) goban.getPreferredSize().getHeight();
-                goban.setBounds(MARGIN, MARGIN,gw, gh);
+                goban.setBounds(MARGIN, MARGIN, gw, gh);
                 sourceHover.setBounds(MARGIN, MARGIN + gh + 1, 600, 20);
                 setPreferredSize(new Dimension(gw + 2 * MARGIN, gh + 2 * MARGIN));
             }
             case SMALL -> {
                 goban.goSmall();
-                gw = (int)goban.getMinumumSize().getWidth();
+                gw = (int) goban.getMinumumSize().getWidth();
                 gh = (int) goban.getMinumumSize().getHeight();
-                goban.setBounds(MARGIN, MARGIN,gw, gh);
+                goban.setBounds(MARGIN, MARGIN, gw, gh);
                 sourceHover.setBounds(MARGIN, MARGIN + gh + 1, 600, 20);
                 setPreferredSize(new Dimension(gw + 2 * MARGIN, gh + 2 * MARGIN));
             }

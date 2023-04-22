@@ -63,7 +63,7 @@ public class ProbDetailPanel extends JPanel {
                 PathCreator.GenOptions gopts = pc.new GenOptions();
                 gopts.bailNum = Integer.parseInt(bailNum.getText());
                 gopts.bailDepth = Integer.parseInt(bailDepth.getText());
-                createPaths(problem, det, probPanel.probGoban, brain, pc, gopts);
+                createPaths(problem, det, probPanel.getProbGoban(), brain, pc, gopts);
             }
         });
         add(makePathsButton, probc);
@@ -84,21 +84,15 @@ public class ProbDetailPanel extends JPanel {
         add(fillEmptyButton, probc);
 
         JButton sgfButton = new JButton("sgf");
-        sgfButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                System.out.println("(" + problem.outputSGF(true) + ")");
-            }
-        });
+        sgfButton.addActionListener(e -> System.out.println("(" + problem.outputSGF(true) + ")"));
         add(sgfButton, probc);
 
         JButton showFileButton = new JButton("print source");
-        showFileButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                System.out.println("file source:");
-                System.out.println(name);
-                System.out.println(prev.turnNumber);
-                System.out.println("singles.add(new SingleTarget(\"" + name + "\", " + prev.turnNumber + ", true));");
-            }
+        showFileButton.addActionListener(e -> {
+            System.out.println("file source:");
+            System.out.println(name);
+            System.out.println(prev.turnNumber);
+            System.out.println("singles.add(new SingleTarget(\"" + name + "\", " + prev.turnNumber + ", true));");
         });
         add(showFileButton, probc);
     }
@@ -109,31 +103,29 @@ public class ProbDetailPanel extends JPanel {
         System.out.println("=========== make paths ===========");
         System.out.println("opts: " + gopts);
         try {
-            Thread thread = new Thread() {
-                public void run() {
-                    System.out.println("Thread Running");
-                    try {
-                        pc.makePaths(brain, problem, probGoban, gopts, probPanel);
-                        makePathsButton.setEnabled(true);
-                        removeFill(); // clear this before outputting sgf
+            Thread thread = new Thread(() -> {
+                System.out.println("Thread Running");
+                try {
+                    pc.makePaths(brain, problem, probGoban, gopts, probPanel);
+                    makePathsButton.setEnabled(true);
+                    removeFill(); // clear this before outputting sgf
 
-                        String sgf = ("(" + problem.outputSGF(true) + ")");
+                    String sgf = ("(" + problem.outputSGF(true) + ")");
 
-                        boolean writeFile = Boolean.parseBoolean(props.getProperty("output.write_file", "false"));
+                    boolean writeFile = Boolean.parseBoolean(props.getProperty("output.write_file", "false"));
 
-                        if (writeFile) {
-                            String pathString = props.getProperty("output.path");
-                            Path path = Paths.get(pathString);
-                            byte[] strToBytes = sgf.getBytes();
+                    if (writeFile) {
+                        String pathString = props.getProperty("output.path");
+                        Path path = Paths.get(pathString);
+                        byte[] strToBytes = sgf.getBytes();
 
-                            Files.write(path, strToBytes);
-                            System.out.println("wrote problem at: " + pathString);
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                        Files.write(path, strToBytes);
+                        System.out.println("wrote problem at: " + pathString);
                     }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-            };
+            });
 
             thread.start();
         } catch (Exception e1) {

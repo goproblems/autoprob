@@ -58,24 +58,23 @@ public class KataRunner {
 				File dir = new File(path);
 				File[] files = dir.listFiles();
 				int cnt = 0;
-				int targetGames = Integer.parseInt(props.getProperty("search.directory.maxfinds"));;
-				int foundGames = 0;
+				int targetProblems = Integer.parseInt(props.getProperty("search.directory.max_finds"));;
+				int foundProblems = 0;
 				int i = readIterationCount(dir);
 				for (; i < files.length; i++) {
 					writeIterationCounter(i, dir);
 					System.out.println(cnt + " -- examining: " + files[i].getName());
-	//				detector.fileName = files[i].getName();
 					int found = testAnalyze(brain, files[i].getAbsolutePath(), files[i].getName(), vis, 0, searchVisits);
+					foundProblems += found;
 					cnt++;
 					if (found > 0) {
-						System.out.println("searched games: " + cnt);
-						if (++foundGames >= targetGames)
+						System.out.println("searched games: " + cnt + ", total problems found: " + foundProblems);
+						if (foundProblems >= targetProblems)
 							return;
 					}
 					
 				}
 			}
-//			Process process = versionCheck(processBuilder, kataPath);
 
 //			int exitCode = process.waitFor();
 //			System.out.println("\nExited with error code : " + exitCode);

@@ -31,42 +31,50 @@ public class ProbDetailPanel extends JPanel {
 
     public ProbDetailPanel(Node gameSource, KataBrain brain, KataAnalysisResult prev, Node problem, Properties props, ProblemDetector det, ProblemPanel probPanel, String name) {
         super();
-        
+
         this.det = det;
         this.probPanel = probPanel;
         this.problem = problem;
         this.props = props;
-        
-        GridBagConstraints probc = new GridBagConstraints();
-        probc.fill = GridBagConstraints.BOTH;
-        probc.weightx = 1;
-        probc.weighty = 1;
+        setLayout(new GridLayout(3, 1));
+//        GridBagConstraints probc = new GridBagConstraints();
+//        probc.fill = GridBagConstraints.BOTH;
+//        probc.weightx = 1;
+//        probc.weighty = 1;
 
+        JPanel p1 = new JPanel();
+        p1.setLayout(new FlowLayout(FlowLayout.LEFT));
         // bail num
-        add(new JLabel("bail after moves:"), probc);
+        p1.add(new JLabel("bail after moves:"));
         JTextField bailNum = new JTextField(7);
         bailNum.setText(props.getProperty("paths.bailnumber"));
         bailNum.setPreferredSize(new Dimension(150, 20));
-        add(bailNum, probc);
+//        add(bailNum, probc);
+        p1.add(bailNum);
 
+        JPanel p2 = new JPanel();
+        p2.setLayout(new FlowLayout(FlowLayout.LEFT));
         // bail depth
-        add(new JLabel("bail depth:"), probc);
+        p2.add(new JLabel("bail depth:"));
         JTextField bailDepth = new JTextField("3", 7);
-        add(bailDepth, probc);
+//        add(bailDepth, probc);
+        p2.add(bailDepth);
+
+        JPanel buttonsPanel = new JPanel();
+        buttonsPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 
         makePathsButton = new JButton("Make Paths");
 //		final KataEngine keng = engine;
-        makePathsButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                makePathsButton.setEnabled(false);
-                PathCreator pc = new PathCreator(det, props);
-                PathCreator.GenOptions gopts = pc.new GenOptions();
-                gopts.bailNum = Integer.parseInt(bailNum.getText());
-                gopts.bailDepth = Integer.parseInt(bailDepth.getText());
-                createPaths(problem, det, probPanel.getProbGoban(), brain, pc, gopts);
-            }
+        makePathsButton.addActionListener(e -> {
+            makePathsButton.setEnabled(false);
+            PathCreator pc = new PathCreator(det, props);
+            PathCreator.GenOptions gopts = pc.new GenOptions();
+            gopts.bailNum = Integer.parseInt(bailNum.getText());
+            gopts.bailDepth = Integer.parseInt(bailDepth.getText());
+            createPaths(problem, det, probPanel.getProbGoban(), brain, pc, gopts);
         });
-        add(makePathsButton, probc);
+//        add(makePathsButton, probc);
+        buttonsPanel.add(makePathsButton);
 
         JButton removeFillButton = new JButton("remove fill");
         removeFillButton.addActionListener(new ActionListener() {
@@ -74,18 +82,22 @@ public class ProbDetailPanel extends JPanel {
                 removeFill();
             }
         });
-        add(removeFillButton, probc);
+//        add(removeFillButton, probc);
+        buttonsPanel.add(removeFillButton);
+
         JButton fillEmptyButton = new JButton("fill empty board");
         fillEmptyButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 fillEmpty();
             }
         });
-        add(fillEmptyButton, probc);
+//        add(fillEmptyButton, probc);
+        buttonsPanel.add(fillEmptyButton);
 
         JButton sgfButton = new JButton("sgf");
         sgfButton.addActionListener(e -> System.out.println("(" + problem.outputSGF(true) + ")"));
-        add(sgfButton, probc);
+//        add(sgfButton, probc);
+        buttonsPanel.add(sgfButton);
 
         JButton showFileButton = new JButton("print source");
         showFileButton.addActionListener(e -> {
@@ -94,7 +106,12 @@ public class ProbDetailPanel extends JPanel {
             System.out.println(prev.turnNumber);
             System.out.println("singles.add(new SingleTarget(\"" + name + "\", " + prev.turnNumber + ", true));");
         });
-        add(showFileButton, probc);
+//        add(showFileButton, probc);
+        buttonsPanel.add(showFileButton);
+
+        add(p1);
+        add(p2);
+        add(buttonsPanel);
     }
 
 

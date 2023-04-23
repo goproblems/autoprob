@@ -136,10 +136,10 @@ public class Pix {
     public static Image loadResourceImage(String path) {
 //        String loc = "img/" + path;
         String loc = path;
-        java.net.URL imgURL = BasicGoban.class.getResource("/" + loc);
+        java.net.URL imgURL = BasicGoban.class.getResource("/img/" + loc);
 //      System.out.println("readin url: " + imgURL);
         if (imgURL == null)
-            imgURL = BasicGoban.class.getResource("/" + loc);
+            imgURL = BasicGoban.class.getResource("/img/" + loc);
         if (imgURL != null)
             return new ImageIcon(imgURL).getImage();
         else
@@ -147,7 +147,7 @@ public class Pix {
     }
     
     protected static Image loadImage(String loc) {
-        URL res = Pix.class.getResource("/" + loc);
+        URL res = Pix.class.getResource("/img/" + loc);
 		Image im = Toolkit.getDefaultToolkit().createImage(res);
 		return im;
     }

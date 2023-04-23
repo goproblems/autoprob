@@ -36,28 +36,21 @@ public class ProbDetailPanel extends JPanel {
         this.probPanel = probPanel;
         this.problem = problem;
         this.props = props;
+
         setLayout(new GridLayout(3, 1));
-//        GridBagConstraints probc = new GridBagConstraints();
-//        probc.fill = GridBagConstraints.BOTH;
-//        probc.weightx = 1;
-//        probc.weighty = 1;
 
         JPanel p1 = new JPanel();
         p1.setLayout(new FlowLayout(FlowLayout.LEFT));
-        // bail num
         p1.add(new JLabel("bail after moves:"));
         JTextField bailNum = new JTextField(7);
         bailNum.setText(props.getProperty("paths.bailnumber"));
         bailNum.setPreferredSize(new Dimension(150, 20));
-//        add(bailNum, probc);
         p1.add(bailNum);
 
         JPanel p2 = new JPanel();
         p2.setLayout(new FlowLayout(FlowLayout.LEFT));
-        // bail depth
         p2.add(new JLabel("bail depth:"));
         JTextField bailDepth = new JTextField("3", 7);
-//        add(bailDepth, probc);
         p2.add(bailDepth);
 
         JPanel buttonsPanel = new JPanel();
@@ -73,30 +66,18 @@ public class ProbDetailPanel extends JPanel {
             gopts.bailDepth = Integer.parseInt(bailDepth.getText());
             createPaths(problem, det, probPanel.getProbGoban(), brain, pc, gopts);
         });
-//        add(makePathsButton, probc);
         buttonsPanel.add(makePathsButton);
 
         JButton removeFillButton = new JButton("remove fill");
-        removeFillButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                removeFill();
-            }
-        });
-//        add(removeFillButton, probc);
+        removeFillButton.addActionListener(e -> removeFill());
         buttonsPanel.add(removeFillButton);
 
         JButton fillEmptyButton = new JButton("fill empty board");
-        fillEmptyButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                fillEmpty();
-            }
-        });
-//        add(fillEmptyButton, probc);
+        fillEmptyButton.addActionListener(e -> fillEmpty());
         buttonsPanel.add(fillEmptyButton);
 
         JButton sgfButton = new JButton("sgf");
         sgfButton.addActionListener(e -> System.out.println("(" + problem.outputSGF(true) + ")"));
-//        add(sgfButton, probc);
         buttonsPanel.add(sgfButton);
 
         JButton showFileButton = new JButton("print source");
@@ -106,7 +87,6 @@ public class ProbDetailPanel extends JPanel {
             System.out.println(prev.turnNumber);
             System.out.println("singles.add(new SingleTarget(\"" + name + "\", " + prev.turnNumber + ", true));");
         });
-//        add(showFileButton, probc);
         buttonsPanel.add(showFileButton);
 
         add(p1);

@@ -31,76 +31,67 @@ public class ProbDetailPanel extends JPanel {
 
     public ProbDetailPanel(Node gameSource, KataBrain brain, KataAnalysisResult prev, Node problem, Properties props, ProblemDetector det, ProblemPanel probPanel, String name) {
         super();
-        
+
         this.det = det;
         this.probPanel = probPanel;
         this.problem = problem;
         this.props = props;
-        
-        GridBagConstraints probc = new GridBagConstraints();
-        probc.fill = GridBagConstraints.BOTH;
-        probc.weightx = 1;
-        probc.weighty = 1;
 
-        // bail num
-        add(new JLabel("bail after moves:"), probc);
+        setLayout(new GridLayout(3, 1));
+
+        JPanel p1 = new JPanel();
+        p1.setLayout(new FlowLayout(FlowLayout.LEFT));
+        p1.add(new JLabel("bail after moves:"));
         JTextField bailNum = new JTextField(7);
         bailNum.setText(props.getProperty("paths.bailnumber"));
         bailNum.setPreferredSize(new Dimension(150, 20));
-        add(bailNum, probc);
+        p1.add(bailNum);
 
-        // bail depth
-        add(new JLabel("bail depth:"), probc);
+        JPanel p2 = new JPanel();
+        p2.setLayout(new FlowLayout(FlowLayout.LEFT));
+        p2.add(new JLabel("bail depth:"));
         JTextField bailDepth = new JTextField("3", 7);
-        add(bailDepth, probc);
+        p2.add(bailDepth);
+
+        JPanel buttonsPanel = new JPanel();
+        buttonsPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 
         makePathsButton = new JButton("Make Paths");
 //		final KataEngine keng = engine;
-        makePathsButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                makePathsButton.setEnabled(false);
-                PathCreator pc = new PathCreator(det, props);
-                PathCreator.GenOptions gopts = pc.new GenOptions();
-                gopts.bailNum = Integer.parseInt(bailNum.getText());
-                gopts.bailDepth = Integer.parseInt(bailDepth.getText());
-                createPaths(problem, det, probPanel.probGoban, brain, pc, gopts);
-            }
+        makePathsButton.addActionListener(e -> {
+            makePathsButton.setEnabled(false);
+            PathCreator pc = new PathCreator(det, props);
+            PathCreator.GenOptions gopts = pc.new GenOptions();
+            gopts.bailNum = Integer.parseInt(bailNum.getText());
+            gopts.bailDepth = Integer.parseInt(bailDepth.getText());
+            createPaths(problem, det, probPanel.getProbGoban(), brain, pc, gopts);
         });
-        add(makePathsButton, probc);
+        buttonsPanel.add(makePathsButton);
 
         JButton removeFillButton = new JButton("remove fill");
-        removeFillButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                removeFill();
-            }
-        });
-        add(removeFillButton, probc);
+        removeFillButton.addActionListener(e -> removeFill());
+        buttonsPanel.add(removeFillButton);
+
         JButton fillEmptyButton = new JButton("fill empty board");
-        fillEmptyButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                fillEmpty();
-            }
-        });
-        add(fillEmptyButton, probc);
+        fillEmptyButton.addActionListener(e -> fillEmpty());
+        buttonsPanel.add(fillEmptyButton);
 
         JButton sgfButton = new JButton("sgf");
-        sgfButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                System.out.println("(" + problem.outputSGF(true) + ")");
-            }
-        });
-        add(sgfButton, probc);
+        sgfButton.addActionListener(e -> System.out.println("(" + problem.outputSGF(true) + ")"));
+        buttonsPanel.add(sgfButton);
 
         JButton showFileButton = new JButton("print source");
-        showFileButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                System.out.println("file source:");
-                System.out.println(name);
-                System.out.println(prev.turnNumber);
-                System.out.println("singles.add(new SingleTarget(\"" + name + "\", " + prev.turnNumber + ", true));");
-            }
+        showFileButton.addActionListener(e -> {
+            System.out.println("file source:");
+            System.out.println(name);
+            System.out.println(prev.turnNumber);
+            System.out.println("singles.add(new SingleTarget(\"" + name + "\", " + prev.turnNumber + ", true));");
         });
-        add(showFileButton, probc);
+        buttonsPanel.add(showFileButton);
+
+        add(p1);
+        add(p2);
+        add(buttonsPanel);
     }
 
 
@@ -109,31 +100,29 @@ public class ProbDetailPanel extends JPanel {
         System.out.println("=========== make paths ===========");
         System.out.println("opts: " + gopts);
         try {
-            Thread thread = new Thread() {
-                public void run() {
-                    System.out.println("Thread Running");
-                    try {
-                        pc.makePaths(brain, problem, probGoban, gopts, probPanel);
-                        makePathsButton.setEnabled(true);
-                        removeFill(); // clear this before outputting sgf
+            Thread thread = new Thread(() -> {
+                System.out.println("Thread Running");
+                try {
+                    pc.makePaths(brain, problem, probGoban, gopts, probPanel);
+                    makePathsButton.setEnabled(true);
+                    removeFill(); // clear this before outputting sgf
 
-                        String sgf = ("(" + problem.outputSGF(true) + ")");
+                    String sgf = ("(" + problem.outputSGF(true) + ")");
 
-                        boolean writeFile = Boolean.parseBoolean(props.getProperty("output.write_file", "false"));
+                    boolean writeFile = Boolean.parseBoolean(props.getProperty("output.write_file", "false"));
 
-                        if (writeFile) {
-                            String pathString = props.getProperty("output.path");
-                            Path path = Paths.get(pathString);
-                            byte[] strToBytes = sgf.getBytes();
+                    if (writeFile) {
+                        String pathString = props.getProperty("output.path");
+                        Path path = Paths.get(pathString);
+                        byte[] strToBytes = sgf.getBytes();
 
-                            Files.write(path, strToBytes);
-                            System.out.println("wrote problem at: " + pathString);
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                        Files.write(path, strToBytes);
+                        System.out.println("wrote problem at: " + pathString);
                     }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-            };
+            });
 
             thread.start();
         } catch (Exception e1) {

@@ -171,7 +171,7 @@ public class BasicGoban2D extends BasicGoban {
             char c = 'A';
             // skip over 'i'
             c = (char) ('A' + x + ((x >= 'I' - 'A') ? 1 : 0));
-            s = new Character(c).toString();
+            s = Character.toString(c);
             centerSquareText(g, s, sx, sy);
             sx += sz; // move along
         }

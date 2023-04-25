@@ -177,9 +177,13 @@ public class KataRunner {
 				}
 				ProblemDetector detector = new ProblemDetector(brain, kprev, kres, n, props, forceDetect);
 				if (detector.validProblem) {
-					// valid problem
-					foundCount++;
-					vis.newDetection(brain, detector, fileName);
+					// valid problem according to detector
+					if (vis.newDetection(brain, detector, fileName)) {
+						foundCount++;
+						System.out.println("found problems: " + foundCount);
+					} else {
+						System.out.println("problem not accepted");
+					}
 				}
 				// move node down to track
 				if (n != null)

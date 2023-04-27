@@ -169,7 +169,7 @@ public class ProbDetailPanel extends JPanel {
         fillCorner(18, 0, -1, 1);
         fillCorner(0, 18, 1, -1);
         fillCorner(18, 18, -1, -1);
-        repaint();
+        getParent().repaint();
     }
 
     protected void removeFill() {
@@ -180,7 +180,6 @@ public class ProbDetailPanel extends JPanel {
                     problem.board.board[x][y].stone = 0;
                 }
             }
-        repaint();
+        getParent().repaint();
     }
-
 }

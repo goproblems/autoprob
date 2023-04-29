@@ -27,7 +27,8 @@ public class ProbDetailPanel extends JPanel {
 //    private final KataAnalysisResult mistake;
 //    private final Node gameSource;
 //    private final Node problem;
-    private JButton makePathsButton;
+    private JButton makePathsButton, stopButton;
+    private PathCreator pc;
 
     public ProbDetailPanel(Node gameSource, KataBrain brain, KataAnalysisResult prev, Node problem, Properties props, ProblemDetector det, ProblemPanel probPanel, String name) {
         super();
@@ -60,13 +61,23 @@ public class ProbDetailPanel extends JPanel {
 //		final KataEngine keng = engine;
         makePathsButton.addActionListener(e -> {
             makePathsButton.setEnabled(false);
-            PathCreator pc = new PathCreator(det, props);
+            stopButton.setEnabled(true);
+            pc = new PathCreator(det, props);
             PathCreator.GenOptions gopts = pc.new GenOptions();
             gopts.bailNum = Integer.parseInt(bailNum.getText());
             gopts.bailDepth = Integer.parseInt(bailDepth.getText());
             createPaths(problem, det, probPanel.getProbGoban(), brain, pc, gopts);
         });
         buttonsPanel.add(makePathsButton);
+
+        stopButton = new JButton("Stop");
+        stopButton.setEnabled(false);
+        stopButton.addActionListener(e -> {
+            System.out.println("aborting path creation...");
+            stopButton.setEnabled(false);
+            pc.abortPathCreation();
+        });
+        buttonsPanel.add(stopButton);
 
         JButton removeFillButton = new JButton("remove fill");
         removeFillButton.addActionListener(e -> removeFill());
@@ -169,7 +180,7 @@ public class ProbDetailPanel extends JPanel {
         fillCorner(18, 0, -1, 1);
         fillCorner(0, 18, 1, -1);
         fillCorner(18, 18, -1, -1);
-        repaint();
+        getParent().repaint();
     }
 
     protected void removeFill() {
@@ -180,7 +191,6 @@ public class ProbDetailPanel extends JPanel {
                     problem.board.board[x][y].stone = 0;
                 }
             }
-        repaint();
+        getParent().repaint();
     }
-
 }

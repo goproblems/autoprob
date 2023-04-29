@@ -18,6 +18,7 @@ public class VisDetector {
         this.props = props;
     }
 
+    // process a detection, including rejecting it if it's a duplicate
     public boolean newDetection(KataBrain brain, ProblemDetector det, String fileName) {
         // check dup from previous
         if (prevDetection != null) {

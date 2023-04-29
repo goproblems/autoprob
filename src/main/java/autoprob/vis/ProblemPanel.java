@@ -100,7 +100,7 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
                 gw = (int) probGoban.getMinumumSize().getWidth();
                 gh = (int) probGoban.getMinumumSize().getHeight();
                 probGoban.setBounds(MARGIN, MARGIN, gw, gh);
-                probDetailPanel.setBounds(MARGIN, MARGIN + gh + 1, gw, 100);
+                probDetailPanel.setBounds(MARGIN, MARGIN + gh + 1, gw, 150);
                 setPreferredSize(new Dimension(gw + 2 * MARGIN, gh + 2 * MARGIN));
             }
         }

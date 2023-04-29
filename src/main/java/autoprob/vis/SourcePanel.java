@@ -46,7 +46,17 @@ public class SourcePanel extends JPanel {
                     // on board
                     StringBuilder sb = new StringBuilder();
                     sb.append("pos: ").append(Intersection.toGTPloc(x, y, 19));
-                    sb.append(", ownership: ").append((int) (prev.ownership.get(x + y * 19) * 100));
+                    int own = (int) (prev.ownership.get(x + y * 19) * 100);
+                    sb.append(", ownership: ").append(own);
+                    // hint about color
+                    if (own > 0) {
+                        sb.append(" (B)");
+                    } else {
+                        sb.append(" (W)");
+                    }
+                    if (prev.ownershipStdev != null) {
+                        sb.append(", stdev: ").append((int) (prev.ownershipStdev.get(x + y * 19) * 100));
+                    }
                     if (problem.board.board[x][y].stone == 0) {
                         if (prev != null && prev.policy != null)
                             sb.append(", policy: ").append((int) (prev.policy.get(x + y * 19) * 1000));

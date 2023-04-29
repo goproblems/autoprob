@@ -32,6 +32,7 @@ public class KataAnalysisResult {
 	public Integer turnNumber;
 
 	public List<Double> ownership = null;
+	public List<Double> ownershipStdev = null;
 	public List<Double> policy = null;
 	
 	public String printMoves(int max) {

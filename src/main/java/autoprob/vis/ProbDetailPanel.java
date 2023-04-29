@@ -38,7 +38,7 @@ public class ProbDetailPanel extends JPanel {
         this.problem = problem;
         this.props = props;
 
-        setLayout(new GridLayout(3, 1));
+        setLayout(new GridLayout(2, 1));
 
         JPanel p1 = new JPanel();
         p1.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -53,6 +53,12 @@ public class ProbDetailPanel extends JPanel {
         p2.add(new JLabel("bail depth:"));
         JTextField bailDepth = new JTextField("3", 7);
         p2.add(bailDepth);
+
+        JPanel p3 = new JPanel();
+        p3.setLayout(new GridLayout(2, 1));
+
+        p3.add(p1);
+        p3.add(p2);
 
         JPanel buttonsPanel = new JPanel();
         buttonsPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -100,8 +106,7 @@ public class ProbDetailPanel extends JPanel {
         });
         buttonsPanel.add(showFileButton);
 
-        add(p1);
-        add(p2);
+        add(p3);
         add(buttonsPanel);
     }
 

@@ -16,8 +16,13 @@ import autoprob.katastruct.MoveInfo;
 public class PathCreator {
     private static final DecimalFormat df = new DecimalFormat("0.00");
 	private final int maxDepth;
+	private boolean abortNow = false;
 
-	// generation options
+    public void abortPathCreation() {
+		abortNow = true;
+    }
+
+    // generation options
 	public class GenOptions {
 		public boolean altRefutes = false;
 		public boolean altChallenges = false; // alternative ways to test human on correct line
@@ -59,6 +64,8 @@ public class PathCreator {
 
 	// RIGHT: we are in a correct variation -- no errors by human
 	private void handleRightMoveOption(KataBrain brain, Node node, BasicGoban probGoban, int depth, MoveInfo mi, KataAnalysisResult kar, GenOptions gopts, NodeChangeListener ncl) throws Exception {
+		if (abortNow) return; // early exit
+
 		boolean isResponse = (depth & 1) == 1; // are we in a computer response move?
 		double score = mi.scoreLead;
 		Point p = Intersection.gtp2point(mi.move);
@@ -220,6 +227,8 @@ public class PathCreator {
 	// WRONG: we are in a wrong variation -- one more more human errors
 	private void handleWrongMoveOption(KataBrain brain, Node node, BasicGoban probGoban, int depth, MoveInfo mi,
 			KataAnalysisResult kar, GenOptions gopts, NodeChangeListener ncl) throws Exception {
+		if (abortNow) return; // early exit
+
 		boolean isResponse = (depth & 1) == 1; // are we in a computer response move?
 		double score = mi.scoreLead;
 		Point p = Intersection.gtp2point(mi.move);
@@ -339,6 +348,8 @@ public class PathCreator {
         ncl.nodeChanged(node);
 		boolean isResponse = (depth & 1) == 1; // are we in a computer response move?
 
+		if (abortNow) return; // early exit
+
 		int visits = 1000;
 		if (depth == 0) visits = 13000;
 		var na = new NodeAnalyzer(props);
@@ -441,6 +452,7 @@ public class PathCreator {
 		StoneConnect scon = new StoneConnect();
 		// first collect all options
         for (Enumeration e = node.babies.elements(); e.hasMoreElements();) {
+			if (abortNow) return; // early exit
             Node n = (Node) e.nextElement();
             if (n.searchForTheTruth() == false)
             	continue;
@@ -478,6 +490,7 @@ public class PathCreator {
 			NodeChangeListener ncl, int visits, double scoreLead) throws Exception {
 
 		for (Point op: det.fullOwnNeighbors) {
+			if (abortNow) return; // early exit
 			// check space is empty
 			if (node.board.board[op.x][op.y].stone != 0) {
 				continue;

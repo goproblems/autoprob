@@ -47,8 +47,10 @@ public class SourcePanel extends JPanel {
                     StringBuilder sb = new StringBuilder();
                     sb.append("pos: ").append(Intersection.toGTPloc(x, y, 19));
                     sb.append(", ownership: ").append((int) (prev.ownership.get(x + y * 19) * 100));
-                    if (problem.board.board[x][y].stone == 0)
-                        sb.append(", policy: ").append((int) (prev.policy.get(x + y * 19) * 1000));
+                    if (problem.board.board[x][y].stone == 0) {
+                        if (prev != null && prev.policy != null)
+                            sb.append(", policy: ").append((int) (prev.policy.get(x + y * 19) * 1000));
+                    }
                     sourceHover.setVisible(true);
                     sourceHover.setText(sb.toString());
                 }

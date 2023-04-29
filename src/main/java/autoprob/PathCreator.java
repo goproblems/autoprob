@@ -16,8 +16,13 @@ import autoprob.katastruct.MoveInfo;
 public class PathCreator {
     private static final DecimalFormat df = new DecimalFormat("0.00");
 	private final int maxDepth;
+	private boolean abortNow = false;
 
-	// generation options
+    public void abortPathCreation() {
+		abortNow = true;
+    }
+
+    // generation options
 	public class GenOptions {
 		public boolean altRefutes = false;
 		public boolean altChallenges = false; // alternative ways to test human on correct line
@@ -338,6 +343,8 @@ public class PathCreator {
 		node.getRoot().markCrayons();
         ncl.nodeChanged(node);
 		boolean isResponse = (depth & 1) == 1; // are we in a computer response move?
+
+		if (abortNow) return; // early exit
 
 		int visits = 1000;
 		if (depth == 0) visits = 13000;

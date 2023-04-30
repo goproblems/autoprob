@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Properties;
 
+// buttons and text fields for creating paths
 public class ProbDetailPanel extends JPanel {
     private final ProblemDetector det;
     private final ProblemPanel probPanel;
@@ -38,7 +39,7 @@ public class ProbDetailPanel extends JPanel {
         this.problem = problem;
         this.props = props;
 
-        setLayout(new GridLayout(2, 1));
+        setLayout(new GridLayout(3, 1));
 
         JPanel p1 = new JPanel();
         p1.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -108,8 +109,10 @@ public class ProbDetailPanel extends JPanel {
 
         add(p3);
         add(buttonsPanel);
-    }
 
+        IntersectionDetailPanel idp = new IntersectionDetailPanel();
+        add(idp);
+    }
 
     // create the solution paths
     private void createPaths(Node problem, ProblemDetector det, BasicGoban probGoban, final KataBrain brain, PathCreator pc, PathCreator.GenOptions gopts) {

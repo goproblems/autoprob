@@ -12,6 +12,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseEvent;
 
+// center of UI showing the extracted problem
 public class ProblemPanel extends JPanel implements NodeChangeListener {
     private static final int MARGIN = 5;
     private final Node problem;
@@ -92,7 +93,7 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
                 gw = (int) probGoban.getPreferredSize().getWidth();
                 gh = (int) probGoban.getPreferredSize().getHeight();
                 probGoban.setBounds(MARGIN, MARGIN, gw, gh);
-                probDetailPanel.setBounds(MARGIN, MARGIN + gh + 1, gw, 100);
+                probDetailPanel.setBounds(MARGIN, MARGIN + gh + 1, gw, 300);
                 setPreferredSize(new Dimension(gw + 2 * MARGIN, gh + 2 * MARGIN));
             }
             case SMALL -> {
@@ -100,7 +101,7 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
                 gw = (int) probGoban.getMinumumSize().getWidth();
                 gh = (int) probGoban.getMinumumSize().getHeight();
                 probGoban.setBounds(MARGIN, MARGIN, gw, gh);
-                probDetailPanel.setBounds(MARGIN, MARGIN + gh + 1, gw, 150);
+                probDetailPanel.setBounds(MARGIN, MARGIN + gh + 1, gw, 350);
                 setPreferredSize(new Dimension(gw + 2 * MARGIN, gh + 2 * MARGIN));
             }
         }
@@ -110,7 +111,7 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
         int gw = (int) probGoban.getMinumumSize().getWidth();
         int gh = (int) probGoban.getMinumumSize().getHeight();
         this.probDetailPanel = probDetailPanel;
-        probDetailPanel.setBounds(MARGIN, MARGIN + gh + 1, gw, 100);
+        probDetailPanel.setBounds(MARGIN, MARGIN + gh + 1, gw, 300);
         add(probDetailPanel);
     }
 }

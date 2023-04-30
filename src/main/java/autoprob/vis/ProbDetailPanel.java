@@ -39,7 +39,7 @@ public class ProbDetailPanel extends JPanel {
         this.problem = problem;
         this.props = props;
 
-        setLayout(new GridLayout(3, 1));
+        setLayout(new GridLayout(2, 1));
 
         JPanel p1 = new JPanel();
         p1.setLayout(new FlowLayout(FlowLayout.LEFT));

@@ -101,4 +101,11 @@ public class KataAnalysisResult {
 		}
 		System.out.println();
 	}
+
+	public MoveInfo getMoveInfo(String loc) {
+		for (MoveInfo mi: moveInfos) {
+			if (mi.move.equals(loc)) return mi;
+		}
+		return null;
+	}
 }

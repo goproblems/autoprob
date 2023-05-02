@@ -21,8 +21,8 @@ public class IntersectionDetailPanel extends JPanel {
 //        setLayout(leftLayout);
         setLayout(new FlowLayout());
         gridPanel = new JPanel();
-        gridPanel.setLayout(new GridLayout(2, 2));
-        gridPanel.setPreferredSize(new Dimension(230, 100));
+        gridPanel.setLayout(new GridLayout(0, 2));
+        gridPanel.setPreferredSize(new Dimension(230, 150));
 
         addEntry("status", "no data");
         addEntry("foo", "bar");
@@ -35,5 +35,20 @@ public class IntersectionDetailPanel extends JPanel {
     public void addEntry(String key, String value) {
         gridPanel.add(new JLabel(key));
         gridPanel.add(new JLabel(value));
+        revalidate();
+        repaint();
+    }
+
+    public void addEntry(String key, int value) {
+        addEntry(key, Integer.toString(value));
+    }
+
+    public void addEntry(String key, double value) {
+        addEntry(key, df.format(value));
+    }
+
+        // clear all entries
+    public void clearEntries() {
+        gridPanel.removeAll();
     }
 }

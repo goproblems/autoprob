@@ -50,6 +50,23 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
                 else
                     problem.board.board[p.x][p.y].stone = stn;
             }
+
+
+            @Override
+            protected void mouseEnterSquare(int x, int y) {
+                if (x >= 0 && y >= 0 && x < 19 && y < 19) {
+                    // on board
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("pos: ").append(Intersection.toGTPloc(x, y, 19));
+//                    int own = (int) (problem.ownership.get(x + y * 19) * 100);
+
+                }
+            }
+
+            @Override
+            public void mouseExited(MouseEvent evt) {
+//                sourceHover.setVisible(false);
+            }
         };
         probGoban.setBounds(0, 0, (int) probGoban.getPreferredSize().getWidth(), (int) probGoban.getPreferredSize().getHeight());
         add(probGoban, BorderLayout.CENTER);

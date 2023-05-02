@@ -27,17 +27,6 @@ public class IntersectionDetailPanel extends JPanel {
         addEntry("status", "no data");
         addEntry("foo", "bar");
 
-//        addEntry("score: ", df.format(mistake.rootInfo.scoreLead));
-//        addEntry("delta: ", df.format((mistake.rootInfo.scoreLead - prev.rootInfo.scoreLead)));
-//        addEntry("to move: ", gameSource.getToMove() == Intersection.BLACK ? "black" : "white");
-
-//        gridPanel.add(new JLabel("score: "));
-//        gridPanel.add(new JLabel(df.format(mistake.rootInfo.scoreLead)));
-//
-//        gridPanel.add(new JLabel("delta: "));
-//        gridPanel.add(new JLabel(df.format((mistake.rootInfo.scoreLead - prev.rootInfo.scoreLead))));
-//        gridPanel.add(new JLabel("to move: "));
-//        gridPanel.add(new JLabel((gameSource.getToMove() == Intersection.BLACK ? "black" : "white")));
         gridPanel.setBorder(new LineBorder(Color.BLUE));
         add(gridPanel);
         setPreferredSize(new Dimension(230, 150));

@@ -350,8 +350,8 @@ public class PathCreator {
 
 		if (abortNow) return; // early exit
 
-		int visits = 1000;
-		if (depth == 0) visits = 13000;
+		int visits = Integer.parseInt(props.getProperty("paths.visits"));
+		if (depth == 0) visits = Integer.parseInt(props.getProperty("paths.visits_root"));
 		var na = new NodeAnalyzer(props);
 		KataAnalysisResult kar = na.analyzeNode(brain, node, visits, gopts.considerNearDist, gopts.onlyConsiderNear); 
 		double baseline = kar.rootInfo.scoreLead;

@@ -128,6 +128,7 @@ public class KataBrain {
 		String nm = id + targetTurn; // lookup
 		while (true) {
 			synchronized (this) {
+				// getting the value removes it from our map
 				if (results.containsKey(nm)) {
 //					System.out.println("brain found: " + id + " : " + targetTurn);
 					return results.remove(nm);

@@ -7,6 +7,7 @@ import autoprob.go.StoneConnect;
 import autoprob.go.vis.BasicGoban;
 import autoprob.go.vis.BasicGoban2D;
 import autoprob.go.vis.atlas.Atlas;
+import autoprob.katastruct.MoveInfo;
 
 import javax.swing.*;
 import java.awt.*;
@@ -49,6 +50,49 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
                     problem.board.board[p.x][p.y].stone = Intersection.EMPTY;
                 else
                     problem.board.board[p.x][p.y].stone = stn;
+            }
+
+
+            @Override
+            protected void mouseEnterSquare(int x, int y) {
+                if (x >= 0 && y >= 0 && x < 19 && y < 19) {
+                    // on board
+                    String loc = Intersection.toGTPloc(x, y, 19);
+//                    System.out.println("loc: " + loc);
+
+                    var idp = probDetailPanel.idp;
+                    idp.clearEntries();
+                    if (problem.kres == null) {
+                        idp.addEntry("status", "no katago data");
+                    } else {
+                        var kres = problem.kres;
+                        idp.addEntry("pos", loc);
+                        int own = (int) (kres.ownership.get(x + y * 19) * 100);
+                        int ownStdDev = (int) (kres.ownershipStdev.get(x + y * 19) * 100);
+                        var sb = new StringBuilder();
+                        sb.append(own);
+                        // hint about color
+                        if (own > 0) {
+                            sb.append(" (B)");
+                        } else {
+                            sb.append(" (W)");
+                        }
+                        idp.addEntry("ownership", sb.toString());
+                        idp.addEntry("own std dev", ownStdDev);
+                        MoveInfo mi = kres.getMoveInfo(loc);
+                        if (mi != null) {
+                            idp.addEntry("visits", mi.visits);
+                            idp.addEntry("prior", (int) (mi.prior * 1000.0)); // easier to read x1000
+                            idp.addEntry("score", mi.scoreLead);
+                        }
+
+                    }
+                }
+            }
+
+            @Override
+            public void mouseExited(MouseEvent evt) {
+//                sourceHover.setVisible(false);
             }
         };
         probGoban.setBounds(0, 0, (int) probGoban.getPreferredSize().getWidth(), (int) probGoban.getPreferredSize().getHeight());

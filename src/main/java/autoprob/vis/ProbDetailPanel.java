@@ -23,6 +23,7 @@ public class ProbDetailPanel extends JPanel {
     private final ProblemPanel probPanel;
     private final Node problem;
     private final Properties props;
+    public final IntersectionDetailPanel idp;
     //    private final BasicGoban goban;
 //    private final KataAnalysisResult prev;
 //    private final KataAnalysisResult mistake;
@@ -110,7 +111,7 @@ public class ProbDetailPanel extends JPanel {
         add(p3);
         add(buttonsPanel);
 
-        IntersectionDetailPanel idp = new IntersectionDetailPanel();
+        idp = new IntersectionDetailPanel();
         add(idp);
     }
 

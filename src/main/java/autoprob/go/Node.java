@@ -22,6 +22,7 @@ import autoprob.go.action.TriangleAction;
 import autoprob.go.parse.ChoiceRecurser;
 import autoprob.go.parse.FindSpecificNodeRecurser;
 import autoprob.go.parse.NodeRecurser;
+import autoprob.katastruct.KataAnalysisResult;
 
 /**
  * a Node is one element in the SGF tree
@@ -37,6 +38,9 @@ public class Node {
     public Vector babies = new Vector();
     /** Vector< Action > : the actions this node contains, like moves or addstones */
     public Vector acts = new Vector();
+
+    public KataAnalysisResult kres;
+
     /** for saving extra read-in info from the SGF */
     Vector<String> xtraTags = new Vector<String>();
     /** for saving extra read-in info from the SGF */

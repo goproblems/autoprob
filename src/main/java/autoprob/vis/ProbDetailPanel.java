@@ -107,11 +107,13 @@ public class ProbDetailPanel extends JPanel {
             System.out.println("singles.add(new SingleTarget(\"" + name + "\", " + prev.turnNumber + ", true));");
         });
         buttonsPanel.add(showFileButton);
-
-        add(p3);
-        add(buttonsPanel);
-
+        JPanel p4 = new JPanel();
+        p4.setLayout(new GridLayout(2, 1));
+        p4.add(p3);
+        p4.add(buttonsPanel);
+        add(p4);
         idp = new IntersectionDetailPanel();
+        setAlignmentX(LEFT_ALIGNMENT);
         add(idp);
     }
 

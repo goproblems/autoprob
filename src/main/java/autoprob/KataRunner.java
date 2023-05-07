@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.DecimalFormat;
 import java.util.Properties;
 
 import autoprob.go.Node;
@@ -16,7 +17,8 @@ import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
 
 public class KataRunner {
-	
+	private static final DecimalFormat df = new DecimalFormat("0.00");
+
 	private Properties props;
 	
 	public KataRunner(Properties prop) {
@@ -158,7 +160,7 @@ public class KataRunner {
         KataAnalysisResult kprev = null;
         for (int resultsProcessed = 0; resultsProcessed < query.analyzeTurns.size(); resultsProcessed++) {
         	KataAnalysisResult kres = brain.getResult(query.id, targetTurn);
-        	System.out.println("parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + kres.rootInfo.scoreLead + ", " + resultsProcessed);
+        	System.out.println("parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", " + resultsProcessed);
         	if (kres.turnNumber > 0)
         		System.out.println(query.moves.get(kres.turnNumber - 1));
 				

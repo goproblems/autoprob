@@ -357,7 +357,7 @@ public class PathCreator {
 		node.kres = kar; // save for debugging
 		double baseline = kar.rootInfo.scoreLead;
 		System.out.println();
-		System.out.println("***> Path: <" + node.printPath2Here() + "> (" + onRight + ")" + ", score: " + baseline + ", total: " + totalVarMoves);
+		System.out.println("***> Path: <" + node.printPath2Here() + "> (" + onRight + ")" + ", score: " + df.format(baseline) + ", total: " + totalVarMoves);
 		int movePrintMax = Integer.parseInt(props.getProperty("paths.debug_print_moves", "0"));
 		System.out.println(kar.printMoves(movePrintMax));
 

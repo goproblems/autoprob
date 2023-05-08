@@ -127,6 +127,7 @@ public class ProbDetailPanel extends JPanel {
                 try {
                     pc.makePaths(brain, problem, probGoban, gopts, probPanel);
                     makePathsButton.setEnabled(true);
+                    stopButton.setEnabled(false);
                     removeFill(); // clear this before outputting sgf
 
                     String sgf = ("(" + problem.outputSGF(true) + ")");

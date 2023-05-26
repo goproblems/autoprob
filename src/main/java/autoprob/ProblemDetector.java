@@ -15,11 +15,11 @@ import autoprob.katastruct.MoveInfo;
 public class ProblemDetector {
     private static final DecimalFormat df = new DecimalFormat("0.00");
 	
-	public static final int DETECT_SCORE = 18;
+//	public static final int DETECT_SCORE = 18;
 	public static final double OWNERSHIP_THRESHOLD = 1.5;
 	public static final double EMPTY_OWNERSHIP_THRESHOLD = 0.7;
 	public static final int DETECT_OWNERSHIP_STONES = 6;
-	public static final double EXTRA_SOLUTION_THRESHOLD = 10; // scores within this range
+//	public static final double EXTRA_SOLUTION_THRESHOLD = 10; // scores within this range
 	public static int DETECT_MAX_SOLUTIONS = 1;
 	public static final double MIN_SOL_VISIT_RATIO = 0.05;
 	public static double MAX_POLICY; // anything over this is just toooo obvious

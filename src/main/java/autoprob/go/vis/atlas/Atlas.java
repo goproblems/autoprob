@@ -20,13 +20,20 @@ public class Atlas extends JComponent implements MouseListener, NodeChangeListen
     protected Vector   dropLengths;
     int                sz = 32;
 	protected Node rootNode;
+    protected Node currentNode;
+    private NodeChangeListener sl;
 
     public Atlas(Node rootNode) {
 //        this.ga = ga;
 //        this.globals = ga.globals;
         this.rootNode = rootNode;
+        this.currentNode = rootNode;
         addMouseListener(this);
 //        addKeyListener(ga.gb);
+    }
+    
+    public void setSelectionListener(NodeChangeListener sl) {
+    	this.sl = sl;
     }
 
     public Dimension getPreferredSize() {
@@ -112,9 +119,12 @@ public class Atlas extends JComponent implements MouseListener, NodeChangeListen
         int y = e.getY();
 
         Node n = getClickedNode(x, y);
+        this.currentNode = n;
+        repaint();
         if (n == null)
             return; // nada
-//        globals.setCurNode(n);
+        if (sl != null)
+            sl.newCurrentNode(n);
     }
 
     public void mousePressed(MouseEvent e) {
@@ -270,7 +280,7 @@ public class Atlas extends JComponent implements MouseListener, NodeChangeListen
         dropLengths = new Vector(); // allocate space for it
         // fill with -1's
         for (int i = 0; i < maxDepthRec.max + 1; i++)
-            dropLengths.addElement(new Integer(-1));
+            dropLengths.addElement(-1);
 
         n.generalPostRecurse(new AtlasPosRecurser(dropLengths));
 

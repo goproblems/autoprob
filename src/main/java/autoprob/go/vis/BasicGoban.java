@@ -438,27 +438,6 @@ public class BasicGoban extends JComponent implements MouseListener, MouseMotion
         if (p.x < 0)
             return; // not a square
         clickSquare(p, e);
-//        if (ga.moveDelay == null) { // don't do it if waiting for move response
-//            if (glob.editMode) {
-//                CheckboxGroup cbg = ga.controlPanel.editControlPanelOpts.editCheckboxGroup;
-//                Checkbox cur = cbg.getSelectedCheckbox();
-//                EditOptionsPanel ep = ga.controlPanel.editControlPanelOpts;
-//                if (cur == ep.ebBlack || cur == ep.ebWhite) {
-//                    // trying to make a move
-//                    makeMove(p.x, p.y, glob.getToMove());
-//                }
-//                else if (cur == ep.ebSetup)
-//                    doSetupClick(p);
-//                else if (cur == ep.ebTriangle)
-//                    doTriangleClick(p);
-//                else if (cur == ep.ebSquare)
-//                    doSquareClick(p);
-//                else if (cur == ep.ebLabel)
-//                    doLabelClick(p);
-//                return;
-//            }
-//            makeMove(p.x, p.y, glob.getToMove());
-//        }
     }
 
     public void mousePressed(MouseEvent e) {
@@ -476,29 +455,9 @@ public class BasicGoban extends JComponent implements MouseListener, MouseMotion
     }
 
     public void keyPressed(KeyEvent ev) {
-//        if (ev.getKeyCode() == KeyEvent.VK_CAPS_LOCK) {
-//            capsDown = true;
-//            repaint();
-//        }
-//
-//        if (ev.getKeyCode() == KeyEvent.VK_SHIFT) {
-//            shiftDown = true;
-//            repaint();
-//        }
     }
 
     public void keyReleased(KeyEvent ev) {
-//        // System.out.println("key rel: " + ev.getKeyChar());
-//        if (ev.getKeyCode() == KeyEvent.VK_CAPS_LOCK) {
-//            capsDown = false;
-//            repaint();
-//        }
-//
-//        if (ev.getKeyCode() == KeyEvent.VK_SHIFT) {
-//            shiftDown = false;
-//            repaint();
-//            // System.out.println("shift up");
-//        }
     }
 
     public void keyTyped(KeyEvent ev) {
@@ -506,6 +465,7 @@ public class BasicGoban extends JComponent implements MouseListener, MouseMotion
     }
 
     public void newCurrentNode(Node node) {
+        this.node = node;
         repaint();
         // animate killing
         if (node.board.isKilled())

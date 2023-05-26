@@ -25,8 +25,5 @@ public class Atlas2D extends Atlas {
         g.setColor(Color.black);
         PaintRecurser2D paintRec = new PaintRecurser2D(this, g2);
         rootNode.generalRecurse(paintRec);
-
-//        IsoPainter iso = new IsoPainter(this, g2, globals);
-//        globals.tree.generalRecurse(iso);
     }
 }

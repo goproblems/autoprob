@@ -35,13 +35,13 @@ public class PaintRecurser2D extends PaintRecurser {
         int y = d.y - atlas.sz / 4;
 
         // current move? if so, indicate this
-//        if (globals.getCurNode() == n) {
-//            g.setColor(Color.yellow);
-//            int r = atlas.sz / 4 + 3;
-//            if (n.result == Globals.RIGHT)
-//                r += 3;
-//            g.fillOval(d.x - r, d.y - r, r * 2, r * 2);
-//        }
+        if (atlas.currentNode == n) {
+            g.setColor(Color.yellow);
+            int r = atlas.sz / 4 + 3;
+            if (n.result == Intersection.RIGHT)
+                r += 3;
+            g.fillOval(d.x - r, d.y - r, r * 2, r * 2);
+        }
 
         Composite origComposite = g2.getComposite();
         boolean chosenPath = false; //n.onChosenPath(atlas.globals.getCurNode());

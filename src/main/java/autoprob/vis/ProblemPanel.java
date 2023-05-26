@@ -20,10 +20,12 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
     private final Atlas atlas;
     private BasicGoban probGoban;
     private ProbDetailPanel probDetailPanel;
+    private Node currentNode;
 
     public ProblemPanel(Node problem, Atlas atlas) {
         super();
         this.problem = problem;
+        currentNode = problem;
         this.atlas = atlas;
         setLayout(null);
         probGoban = new BasicGoban2D(problem, null) {
@@ -62,10 +64,10 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
 
                     var idp = probDetailPanel.idp;
                     idp.clearEntries();
-                    if (problem.kres == null) {
+                    if (currentNode.kres == null) {
                         idp.addEntry("status", "no katago data");
                     } else {
-                        var kres = problem.kres;
+                        var kres = currentNode.kres;
                         idp.addEntry("pos", loc);
                         int own = (int) (kres.ownership.get(x + y * 19) * 100);
                         int ownStdDev = (int) (kres.ownershipStdev.get(x + y * 19) * 100);
@@ -97,6 +99,20 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
         };
         probGoban.setBounds(0, 0, (int) probGoban.getPreferredSize().getWidth(), (int) probGoban.getPreferredSize().getHeight());
         add(probGoban, BorderLayout.CENTER);
+
+        // respond to clicks in tree
+        atlas.setSelectionListener(new NodeChangeListener() {
+            @Override
+            public void newCurrentNode(Node node) {
+                probGoban.newCurrentNode(node);
+                currentNode = node;
+            }
+
+            @Override
+            public void nodeChanged(Node node) {
+
+            }
+        });
     }
 
     public BasicGoban getProbGoban() {
@@ -115,6 +131,8 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
 
     @Override
     public void nodeChanged(Node node) {
+        // any node in the tree has changed
+
         atlas.calculatePositions(node.getRoot());
         problem.markCrayons();
 
@@ -127,6 +145,8 @@ public class ProblemPanel extends JPanel implements NodeChangeListener {
 
         revalidate();
         repaint();
+        atlas.revalidate();
+        atlas.repaint();
     }
 
     public void resizeImages(SizeMode mode) {

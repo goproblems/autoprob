@@ -44,7 +44,12 @@ public class KataAnalysisResult {
 		}
 		return sb.toString();
 	}
-	
+
+	@Override
+	public String toString() {
+		return printMoves(3);
+	}
+
 	public String printMoves() {
 		return printMoves(10000);
 	}

@@ -25,7 +25,6 @@ public class KataRunner {
 		this.props = prop;
 	}
 
-
 	public void startEngine(VisDetector vis) throws Exception {
 		try {
 			KataBrain brain = new KataBrain(props);

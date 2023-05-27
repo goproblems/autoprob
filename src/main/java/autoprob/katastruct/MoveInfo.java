@@ -46,4 +46,8 @@ public class MoveInfo {
 	@Expose
 	public Double winrate;
 
+	@Override
+	public String toString() {
+		return move;
+	}
 }

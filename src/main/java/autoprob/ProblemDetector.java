@@ -19,7 +19,7 @@ public class ProblemDetector {
 	public static final double OWNERSHIP_THRESHOLD = 1.5;
 	public static final double EMPTY_OWNERSHIP_THRESHOLD = 0.7;
 	public static final int DETECT_OWNERSHIP_STONES = 6;
-//	public static final double EXTRA_SOLUTION_THRESHOLD = 10; // scores within this range
+	public static final double EXTRA_SOLUTION_THRESHOLD = 10; // scores within this range
 	public static int DETECT_MAX_SOLUTIONS = 1;
 	public static final double MIN_SOL_VISIT_RATIO = 0.05;
 	public static double MAX_POLICY; // anything over this is just toooo obvious
@@ -39,7 +39,7 @@ public class ProblemDetector {
 	public int ownDeltaB;
 	public int ownDeltaW;
 	public ArrayList<Point> ownershipChanges = new ArrayList<>();
-	public ArrayList<Point> fullOwnershipChanges = new ArrayList<>();
+	public ArrayList<Point> fullOwnershipChanges = new ArrayList<>(); // includes empty intersections
 	public ArrayList<Point> fullOwnNeighbors;
 	
 	public Board filledStones = new Board(); // what we have placed down to fill
@@ -66,11 +66,11 @@ public class ProblemDetector {
         Point nextMove = child.findMove();
         if (nextMove.x == 19) return;
 
-        // big score differential?
-		scoreDelta = mistake.rootInfo.scoreLead - prev.rootInfo.scoreLead;
-		if (Math.abs(scoreDelta) < DETECT_SCORE) {
-			if (!forceDetect) return;
-		}
+//        // big score differential?
+//		scoreDelta = mistake.rootInfo.scoreLead - prev.rootInfo.scoreLead;
+//		if (Math.abs(scoreDelta) < DETECT_SCORE) {
+//			if (!forceDetect) return;
+//		}
 		
 		// ownership delta: what dies in this mistake?
 		stoneDelta(mistake, node, prev);
@@ -250,6 +250,7 @@ public class ProblemDetector {
 	}
 
 	// what stone ownership changes significantly between these moves
+	// store delta in ownershipChanges
 	public void stoneDelta(KataAnalysisResult kar, Node node, KataAnalysisResult prev) {
 		// reset any existing data
 		ownDeltaB = ownDeltaW = 0;

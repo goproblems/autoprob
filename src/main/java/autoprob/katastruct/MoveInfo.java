@@ -1,10 +1,12 @@
 package autoprob.katastruct;
 
+import java.text.DecimalFormat;
 import java.util.List;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
 public class MoveInfo {
+	private static final DecimalFormat df = new DecimalFormat("0.00");
 
 	@SerializedName("lcb")
 	@Expose
@@ -49,5 +51,9 @@ public class MoveInfo {
 	@Override
 	public String toString() {
 		return move;
+	}
+
+	public String extString() {
+		return move + ", visits: " + visits + ", policy: " + df.format(prior * 1000.0);
 	}
 }

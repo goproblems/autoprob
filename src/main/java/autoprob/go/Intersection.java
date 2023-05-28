@@ -101,7 +101,11 @@ public class Intersection {
         String sy = "" + (boardY - y); // upside down
         return sx + sy;
     }
-    
+
+    public static String toGTPloc(int x, int y) {
+        return toGTPloc(x, y, 19);
+    }
+
     public static String toSGFcoord(int x, int y) {
     	String sx = Character.toString('a' + x);
     	String sy = Character.toString('a' + y);

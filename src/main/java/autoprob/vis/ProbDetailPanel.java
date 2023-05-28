@@ -70,7 +70,7 @@ public class ProbDetailPanel extends JPanel {
         makePathsButton.addActionListener(e -> {
             makePathsButton.setEnabled(false);
             stopButton.setEnabled(true);
-            pc = new PathCreator(det, props);
+            pc = new PathCreator(det, props, brain);
             PathCreator.GenOptions gopts = pc.new GenOptions();
             gopts.bailNum = Integer.parseInt(bailNum.getText());
             gopts.bailDepth = Integer.parseInt(bailDepth.getText());
@@ -125,7 +125,7 @@ public class ProbDetailPanel extends JPanel {
             Thread thread = new Thread(() -> {
                 System.out.println("Thread Running");
                 try {
-                    pc.makePaths(brain, problem, probGoban, gopts, probPanel);
+                    pc.makePaths(problem, probGoban, gopts, probPanel);
                     makePathsButton.setEnabled(true);
                     stopButton.setEnabled(false);
                     removeFill(); // clear this before outputting sgf

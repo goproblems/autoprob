@@ -366,9 +366,11 @@ public class PathCreator {
 	// approximation for empty space
 	private int countEmptyShots(Point p, Node node) {
 		int cnt = 0;
-		// count edges specially -- add one if on edge
-		if (p.x == 0 || p.y == 0 || p.x == 18 || p.y == 18)
-			cnt = 1;
+
+		// counting edges specially caused problems
+//		// count edges specially -- add one if on edge
+//		if (p.x == 0 || p.y == 0 || p.x == 18 || p.y == 18)
+//			cnt = 1;
 		
 		for (int dx = -1; dx <= 1; dx += 1)
 			for (int dy = -1; dy <= 1; dy += 1) {

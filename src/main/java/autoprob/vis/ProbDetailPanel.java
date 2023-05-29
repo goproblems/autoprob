@@ -213,16 +213,35 @@ public class ProbDetailPanel extends JPanel {
     private void expandFill() {
         // create set of new points
         Map<Point, Integer> newPoints = new HashMap<>();
+        Intersection[][] b = problem.board.board;
+
         // look through all filled points
         for (int x = 0; x < 19; x++)
             for (int y = 0; y < 19; y++) {
                 if (det.filledStones.board[x][y].stone != 0) {
+
+
                     // check all neighbours
                     for (int dx = -1; dx <= 1; dx += 2)
                         for (int dy = -1; dy <= 1; dy += 2) {
                             int nx = x + dx;
                             int ny = y + dy;
                             if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19) {
+                                // find nearest stone that isn't filled but is on the board
+                                int minDist = 100;
+                                for (int bx = 0; bx < 19; bx++)
+                                    for (int by = 0; by < 19; by++) {
+                                        if (b[bx][by].stone != 0 && det.filledStones.board[bx][by].stone == 0) {
+                                            int dist = Math.abs(bx - x) + Math.abs(by - y);
+                                            if (dist < minDist)
+                                                minDist = dist;
+                                        }
+                                    }
+
+                                // if too close, skip
+                                if (minDist < 5)
+                                    continue;
+
                                 if (det.filledStones.board[nx][ny].stone == 0) {
                                     // add to new points
                                     newPoints.put(new Point(nx, ny), det.filledStones.board[x][y].stone);

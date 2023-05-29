@@ -245,7 +245,7 @@ public class PathCreator {
 					return;
 				}
 
-				if (countEmptyShots(p, nodeParent) >= 3)
+				if (countEmptyShots(p, nodeParent) >= 3 && !det.fullOwnershipChanges.contains(p))
 					return; // looks on outside
 				if (depth >= maxDepth) {
 					System.out.println("(human mistake) reached max depth as specified: " + maxDepth);
@@ -328,7 +328,7 @@ public class PathCreator {
 					System.out.println("  tenuki: " + nearest);
 					return;
 				}
-				if (countEmptyShots(p, node) >= 3)
+				if (countEmptyShots(p, node) >= 3 && !det.fullOwnershipChanges.contains(p))
 					return; // looks on outside
 
 				if (!interestingLookingMove(mi, depth)) {
@@ -367,10 +367,9 @@ public class PathCreator {
 	private int countEmptyShots(Point p, Node node) {
 		int cnt = 0;
 
-		// counting edges specially caused problems
-//		// count edges specially -- add one if on edge
-//		if (p.x == 0 || p.y == 0 || p.x == 18 || p.y == 18)
-//			cnt = 1;
+		// count edges specially -- add one if on edge
+		if (p.x == 0 || p.y == 0 || p.x == 18 || p.y == 18)
+			cnt = 1;
 		
 		for (int dx = -1; dx <= 1; dx += 1)
 			for (int dy = -1; dy <= 1; dy += 1) {
@@ -378,11 +377,12 @@ public class PathCreator {
 				if (dx == 0 && dy == 0) continue;
 				
 				int x = p.x, y = p.y;
+				// add one if we find a stone
 				while (node.board.inBoard(x, y)) {
 					if (node.board.board[x][y].stone != 0) {
 						if (det.filledStones.board[x][y].stone == 0) {
 							cnt++;
-	//						System.out.println("hit " + x + "," + y);
+//							System.out.println("empty shots hit " + x + "," + y);
 							break; // found something
 						}
 					}

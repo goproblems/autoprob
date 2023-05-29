@@ -15,7 +15,7 @@ import java.awt.event.ActionListener;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Properties;
+import java.util.*;
 
 // buttons and text fields for creating paths
 public class ProbDetailPanel extends JPanel {
@@ -153,6 +153,15 @@ public class ProbDetailPanel extends JPanel {
         }
     }
 
+    protected boolean hasFill() {
+        // check if there is any filled stones
+        for (int x = 0; x < problem.board.board.length; x++)
+            for (int y = 0; y < problem.board.board.length; y++)
+                if (det.filledStones.board[x][y].stone != 0)
+                    return true;
+        return false;
+    }
+
     protected void addFill(int x, int y, int stone) {
         Intersection[][] b = problem.board.board;
         b[x][y].stone = stone;
@@ -188,11 +197,44 @@ public class ProbDetailPanel extends JPanel {
 
     // put down some solid stones so kata isn't searching empty here
     protected void fillEmpty() {
-        fillCorner(0, 0, 1, 1);
-        fillCorner(18, 0, -1, 1);
-        fillCorner(0, 18, 1, -1);
-        fillCorner(18, 18, -1, -1);
+        if (hasFill()) {
+            expandFill();
+        }
+        else {
+            fillCorner(0, 0, 1, 1);
+            fillCorner(18, 0, -1, 1);
+            fillCorner(0, 18, 1, -1);
+            fillCorner(18, 18, -1, -1);
+        }
         getParent().repaint();
+    }
+
+    // expand the fill outwards
+    private void expandFill() {
+        // create set of new points
+        Map<Point, Integer> newPoints = new HashMap<>();
+        // look through all filled points
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                if (det.filledStones.board[x][y].stone != 0) {
+                    // check all neighbours
+                    for (int dx = -1; dx <= 1; dx += 2)
+                        for (int dy = -1; dy <= 1; dy += 2) {
+                            int nx = x + dx;
+                            int ny = y + dy;
+                            if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19) {
+                                if (det.filledStones.board[nx][ny].stone == 0) {
+                                    // add to new points
+                                    newPoints.put(new Point(nx, ny), det.filledStones.board[x][y].stone);
+                                }
+                            }
+                        }
+                }
+            }
+        // add new points
+        for (Point p : newPoints.keySet()) {
+            addFill(p.x, p.y, newPoints.get(p));
+        }
     }
 
     protected void removeFill() {

@@ -60,6 +60,7 @@ public class PathCreator {
 	private Node firstSol = null; // first solution we find
 	private final ProblemDetector det;
 	private final Properties props;
+	private int[] minPolicies;
 
 	public PathCreator(ProblemDetector det, Properties props, KataBrain brain) {
 		this.det = det;
@@ -68,6 +69,34 @@ public class PathCreator {
 		this.maxDepth = Integer.parseInt(props.getProperty("paths.max_depth", "10000"));
 
 		this.debugOwnership = Boolean.parseBoolean(props.getProperty("paths.debug_ownership", "false"));
+		parseMinPolicyPrefs();
+	}
+
+	private void parseMinPolicyPrefs() {
+		String s = props.getProperty("paths.min_policy");
+		String[] split = s.split(",");
+		minPolicies = new int[split.length];
+		// convert to integers
+		for (int i = 0; i < split.length; i++) {
+			split[i] = split[i].trim();
+			minPolicies[i] = Integer.parseInt(split[i]);
+		}
+	}
+
+	// get min policy for a given depth
+	private int getMinPolicy(int depth) {
+		if (depth >= minPolicies.length) return minPolicies[minPolicies.length - 1];
+		return minPolicies[depth];
+	}
+
+	// checks policy and sometimes visits
+	private boolean interestingLookingMove(MoveInfo mi, int depth) {
+		int visits = Integer.parseInt(props.getProperty("paths.visits"));
+
+		int minPolicy = getMinPolicy(depth);
+		if (mi.prior < ((double)minPolicy / 1000.0) &&
+				mi.visits < visits * 0.5) return false;
+		return true;
 	}
 
 	// RIGHT: we are in a correct variation -- no errors by human
@@ -77,7 +106,6 @@ public class PathCreator {
 		boolean isResponse = (depth & 1) == 1; // are we in a computer response move?
 		Point p = Intersection.gtp2point(mi.move);
 		double nearest = findNearest(nodeParent.board, p);
-
 
 		// for right sequences, we END with a human move
 		// we always respond to a good human move
@@ -119,8 +147,8 @@ public class PathCreator {
 				if (!gopts.altRefutes && nodeParent.babies.size() > 0) return; // already handled this var (we already refuted)
 				
 				// if this is not an intuitive move, don't bother
-				if (mi.prior < gopts.minPrior) {
-					System.out.println("  low prior " + mi.prior + " for " + mi.move);
+				if (!interestingLookingMove(mi, depth)) {
+					System.out.println("  low prior " + mi.extString() + " depth " + depth);
 					return;
 				}
 				
@@ -154,8 +182,16 @@ public class PathCreator {
 					return;
 				}
 
-		        Node tike = nodeParent.addBasicMove(p.x, p.y);
+				if (!interestingLookingMove(mi, depth)) {
+					System.out.println("  low prior " + mi.extString() + " depth " + depth);
+					return;
+				}
+
+				// add to tree
+				Node tike = nodeParent.addBasicMove(p.x, p.y);
 		        tike.result = Intersection.RIGHT;
+
+				// track first solution we find
 		        if (firstSol == null)
 		        	firstSol = tike;
 		        if (depth > 1) {
@@ -203,10 +239,12 @@ public class PathCreator {
 //			        	System.out.println("  too low policy on root: " + mi.move + ", visits: " + mi.visits);
 //						return; // too obscure
 //					}
-				if (depth > 3 && mi.prior < 0.02) {
-					System.out.println("  too weird deep");
-					return; // too weird this deep
+
+				if (!interestingLookingMove(mi, depth)) {
+					System.out.println("  low prior " + mi.extString() + " depth " + depth);
+					return;
 				}
+
 				if (countEmptyShots(p, nodeParent) >= 3)
 					return; // looks on outside
 				if (depth >= maxDepth) {
@@ -241,11 +279,6 @@ public class PathCreator {
 
 		// for wrong sequences, we END with a computer move, which is the refutation
 
-		// only consider if enough visits were found, or the policy looked interesting
-		double minPolicy = 0.03;
-		if (mi.visits < MIN_VISITS_WRONG && mi.prior < minPolicy)
-			return; // too obscure
-
 		// get more visits on this move
 		var karMove = calcMoveAnalysis(node, p, gopts);
 		int ownershipDelta = stoneDelta(karParent, karMove, node);
@@ -265,6 +298,11 @@ public class PathCreator {
 					System.out.println("WARNING: oddly distant refutation move " + mi.move);
 				}
 
+				if (!interestingLookingMove(mi, depth)) {
+					System.out.println("  low prior " + mi.extString() + " depth " + depth);
+					return;
+				}
+
 				// okay we have decided it's interesting, let's add the response and challenge the human
 				System.out.println("  refutation: " + mi.move + ", visits: " + mi.visits + ", " + node.printPath2Here());
 		        Node tike = node.addBasicMove(p.x, p.y);
@@ -279,10 +317,9 @@ public class PathCreator {
 				// good response relative to the situation
 				
 				// check if it's relevant
-				
+				System.out.println("  _considering_ human wrong path attempt: " + node.printPath2Here() + ", " + mi.extString());
+
 				double dist = distance2vulnerable(p);
-				if (mi.visits > 5 || mi.prior > 0.01) // cut down spam
-					System.out.println("  _considering_ human wrong path attempt: " + node.printPath2Here() + ", " + mi.extString());
 				if (dist > MAX_VULN_INTEREST) {
 //					System.out.println("  too dist to vuln: " + dist);
 					return;
@@ -293,7 +330,12 @@ public class PathCreator {
 				}
 				if (countEmptyShots(p, node) >= 3)
 					return; // looks on outside
-				
+
+				if (!interestingLookingMove(mi, depth)) {
+					System.out.println("  low prior " + mi.extString() + " depth " + depth);
+					return;
+				}
+
 				if (totalVarMoves++ > gopts.bailNum && depth > gopts.bailDepth) {
 					System.out.println("$$$$$$$$$$$$$$ bail wrong");
 					return;

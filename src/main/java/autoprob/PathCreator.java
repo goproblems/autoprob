@@ -182,11 +182,6 @@ public class PathCreator {
 					return;
 				}
 
-				if (!interestingLookingMove(mi, depth)) {
-					System.out.println("  low prior " + mi.extString() + " depth " + depth);
-					return;
-				}
-
 				// add to tree
 				Node tike = nodeParent.addBasicMove(p.x, p.y);
 		        tike.result = Intersection.RIGHT;
@@ -296,11 +291,6 @@ public class PathCreator {
 				if (!gopts.altRefutes && node.babies.size() > 0) return; // already handled this var
 				if (nearest > TENUKI_DIST) {
 					System.out.println("WARNING: oddly distant refutation move " + mi.move);
-				}
-
-				if (!interestingLookingMove(mi, depth)) {
-					System.out.println("  low prior " + mi.extString() + " depth " + depth);
-					return;
 				}
 
 				// okay we have decided it's interesting, let's add the response and challenge the human

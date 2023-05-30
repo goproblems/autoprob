@@ -63,7 +63,7 @@ public class NodeAnalyzer {
 			Point loc = moveAction.loc;
 			lm = Intersection.toGTPloc(loc.x, loc.y, 19);
 		}
-		boolean dbgNal = Boolean.parseBoolean(props.getProperty("kata.printanalyzerquery", "false"));
+		boolean dbgNal = Boolean.parseBoolean(props.getProperty("kata.print_analyzer_query", "false"));
 		if (dbgNal)
 			System.out.println("NAL query (" + lm + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
 		

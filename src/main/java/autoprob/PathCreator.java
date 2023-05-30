@@ -33,7 +33,6 @@ public class PathCreator {
 		public boolean altChallenges = false; // alternative ways to test human on correct line
 		public int bailNum = 40; // max moves in tree
 		public int bailDepth = 2; // only bail if at least this deep
-		public double minPrior = 0.04; // for determining interesting variations, require this
 		public boolean onlyConsiderNear = true; // tell kata to only look at possible moves near existing stones
 		public double considerNearDist = 2.1; // how close for near moves
 		
@@ -44,13 +43,12 @@ public class PathCreator {
 	}
 
 	public static final int MOVE_VISITS_DEF = 1000;
-//	public static final double EXTRA_SOLUTION_THRESHOLD = 10; // scores within this range
 	public static final int MIN_VISITS_WRONG = 10; // consider wrong moves with this many visits
 	public static final double TENUKI_DIST = 2.7; // a move this far away from any other is a tenuki
 	public static final double TENUKI_DIST_ERR = 2.5; // a move this far away from any other is a tenuki
 	public static final double OWNERSHIP_THRESHOLD = 1.1;
-	public static final double MOVE_DELTA_OWNERSHIP_THRESHOLD = 0.8; // how moves affect ownership
-	public static final int MIN_OWNERSHIP_CHANGE_INTEREST = 4; // max deviation from detector ownership
+	public static double MOVE_DELTA_OWNERSHIP_THRESHOLD = 0.8; // how moves affect ownership
+	public static int MIN_OWNERSHIP_CHANGE_INTEREST = 4; // max deviation from detector ownership
 	public static final int MIN_GOOD_RESPONSE_VISITS = 5;
 	public static final double MIN_GOOD_RESPONSE_POLICY = 0.05;
 	public static final double MIN_GOOD_DEEP_RESPONSE_VISIT_RATIO = 0.5;
@@ -67,11 +65,14 @@ public class PathCreator {
 		this.props = props;
 		this.brain = brain;
 		this.maxDepth = Integer.parseInt(props.getProperty("paths.max_depth", "10000"));
+		MIN_OWNERSHIP_CHANGE_INTEREST = Integer.parseInt(props.getProperty("paths.life_mistake_stones", "4"));
+		MOVE_DELTA_OWNERSHIP_THRESHOLD = Double.parseDouble(props.getProperty("paths.life_mistake_threshold", "0.8"));
 
 		this.debugOwnership = Boolean.parseBoolean(props.getProperty("paths.debug_ownership", "false"));
 		parseMinPolicyPrefs();
 	}
 
+	// we specify minimum policy with a comma separated list
 	private void parseMinPolicyPrefs() {
 		String s = props.getProperty("paths.min_policy");
 		String[] split = s.split(",");
@@ -274,21 +275,22 @@ public class PathCreator {
 
 		// for wrong sequences, we END with a computer move, which is the refutation
 
-		// get more visits on this move
-		var karMove = calcMoveAnalysis(node, p, gopts);
-		int ownershipDelta = stoneDelta(karParent, karMove, node);
-		// note, a move can only make ownership worse, since it was already assumed to have perfect responses
 
 		// human or computer move?
 		if (isResponse) {
 			// computer
+			if (!gopts.altRefutes && node.babies.size() > 0) return; // already handled this var
+			// get more visits on this move
+			var karMove = calcMoveAnalysis(node, p, gopts);
+			int ownershipDelta = stoneDelta(karParent, karMove, node);
+			// note, a move can only make ownership worse, since it was already assumed to have perfect responses
+
 			if (ownershipDelta < MIN_OWNERSHIP_CHANGE_INTEREST) {
 				// good response relative to the situation
 				// necessary to add so we refute
 				//TODO maybe only add if not already a good refutation. eventually, figure out best refutation. or possibly make them choices
 				
 				// if too far from other moves, not interesting
-				if (!gopts.altRefutes && node.babies.size() > 0) return; // already handled this var
 				if (nearest > TENUKI_DIST) {
 					System.out.println("WARNING: oddly distant refutation move " + mi.move);
 				}
@@ -303,37 +305,43 @@ public class PathCreator {
 			}
 		} else {
 			// human is trying this
+
+			// check if it's relevant
+			System.out.println("  _considering_ human wrong path attempt: " + node.printPath2Here() + ", " + mi.extString());
+
+			double dist = distance2vulnerable(p);
+			if (dist > MAX_VULN_INTEREST) {
+//					System.out.println("  too dist to vuln: " + dist);
+				return;
+			}
+			if (nearest > TENUKI_DIST_ERR) {
+				System.out.println("  tenuki: " + nearest);
+				return;
+			}
+			if (countEmptyShots(p, node) >= 3 && !det.fullOwnershipChanges.contains(p))
+				return; // looks on outside
+
+			if (!interestingLookingMove(mi, depth)) {
+				System.out.println("  low prior " + mi.extString() + " depth " + depth);
+				return;
+			}
+
+			if (totalVarMoves++ > gopts.bailNum && depth > gopts.bailDepth) {
+				System.out.println("$$$$$$$$$$$$$$ bail wrong");
+				return;
+			}
+			if (depth >= maxDepth) {
+				System.out.println("(human mistake in wrong) reached max depth as specified: " + maxDepth);
+				return;
+			}
+
+			// get more visits on this move
+			var karMove = calcMoveAnalysis(node, p, gopts);
+			int ownershipDelta = stoneDelta(karParent, karMove, node);
+
+			// note, a move can only make ownership worse, since it was already assumed to have perfect responses
 			if (ownershipDelta < MIN_OWNERSHIP_CHANGE_INTEREST) {
 				// good response relative to the situation
-				
-				// check if it's relevant
-				System.out.println("  _considering_ human wrong path attempt: " + node.printPath2Here() + ", " + mi.extString());
-
-				double dist = distance2vulnerable(p);
-				if (dist > MAX_VULN_INTEREST) {
-//					System.out.println("  too dist to vuln: " + dist);
-					return;
-				}
-				if (nearest > TENUKI_DIST_ERR) {
-					System.out.println("  tenuki: " + nearest);
-					return;
-				}
-				if (countEmptyShots(p, node) >= 3 && !det.fullOwnershipChanges.contains(p))
-					return; // looks on outside
-
-				if (!interestingLookingMove(mi, depth)) {
-					System.out.println("  low prior " + mi.extString() + " depth " + depth);
-					return;
-				}
-
-				if (totalVarMoves++ > gopts.bailNum && depth > gopts.bailDepth) {
-					System.out.println("$$$$$$$$$$$$$$ bail wrong");
-					return;
-				}
-				if (depth >= maxDepth) {
-					System.out.println("(human mistake in wrong) reached max depth as specified: " + maxDepth);
-					return;
-				}
 
 				// it's only interesting if it threatens to change life status
 				int delta = calcPassDelta(node, p, gopts);
@@ -565,8 +573,8 @@ public class PathCreator {
 	// this can help determine if a given move is pointless and can be ignored
 	private int calcPassDelta(Node node, Point p, GenOptions gopts) throws Exception {
 		// we can verify this by trying a pass
-		int baseVisits = Integer.parseInt(props.getProperty("paths.passvisitsbase", "1000"));
-		int passVisits = Integer.parseInt(props.getProperty("paths.passvisitspass", "1000"));
+		int baseVisits = Integer.parseInt(props.getProperty("paths.pass_visits_base", "1000"));
+		int passVisits = Integer.parseInt(props.getProperty("paths.pass_visits_pass", "1000"));
 		System.out.println("starting pass value calculation, base visits: " + baseVisits + ", pass visits: " + passVisits);
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);

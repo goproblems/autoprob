@@ -15,7 +15,7 @@ more documentation coming soon!
 
 you will have to pass in the gson jar. this should pop up a Java window with a detected problem from this game. replace the paths with paths to your katago executable, config file, and weights.
 
-if you are having problems, try passing `kata.debugprint=true` on the command line also
+if you are having problems, try passing `kata.debug_print=true` on the command line also
 
 6) Edit the board on the right, which is the problem board, to fix any extraction mistakes. Left click for black, right click for white.
 7) Hit the Make Paths button to generate solution and refutation paths with katago.

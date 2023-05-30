@@ -46,7 +46,7 @@ public class ProbDetailPanel extends JPanel {
         p1.setLayout(new FlowLayout(FlowLayout.LEFT));
         p1.add(new JLabel("bail after moves:"));
         JTextField bailNum = new JTextField(7);
-        bailNum.setText(props.getProperty("paths.bailnumber"));
+        bailNum.setText(props.getProperty("paths.bail_number"));
         bailNum.setPreferredSize(new Dimension(150, 20));
         p1.add(bailNum);
 

@@ -57,8 +57,8 @@ public class ProblemDetector {
 		this.props = props;
 		
 		// set from properties
-		MAX_POLICY = Double.parseDouble(props.getProperty("search.maxpolicy"));
-		DETECT_MAX_SOLUTIONS = Integer.parseInt(props.getProperty("search.maxsolutions"));
+		MAX_POLICY = Double.parseDouble(props.getProperty("search.max_policy"));
+		DETECT_MAX_SOLUTIONS = Integer.parseInt(props.getProperty("search.max_solutions"));
 		
 		validProblem = false;
 
@@ -89,7 +89,7 @@ public class ProblemDetector {
 		Point lastMove = node.findMove();
 		if (lastMove.x != 19 && node.mom.board.isKoShape(lastMove)) {
 			System.out.println("last move was ko");
-			if (Boolean.parseBoolean(props.getProperty("search.nolastkomove"))) {
+			if (Boolean.parseBoolean(props.getProperty("search.no_last_ko_move"))) {
 				if (!forceDetect) return;
 			}
 		}
@@ -121,7 +121,7 @@ public class ProblemDetector {
 			passNode = node.addBasicMove(19, 19);
 			int visits = Integer.parseInt(props.getProperty("search.root_visits"));
 			System.out.println("doing more exhaustive check, visits=" + visits);
-			boolean dbgOwn = Boolean.parseBoolean(props.getProperty("search.debugpassownership", "false"));
+			boolean dbgOwn = Boolean.parseBoolean(props.getProperty("search.debug_pass_ownership", "false"));
 			var na = new NodeAnalyzer(props, dbgOwn);
 			karPass = na.analyzeNode(brain, passNode, visits);
 			// clean up
@@ -281,7 +281,7 @@ public class ProblemDetector {
 
 	// what stone ownership changes significantly between these moves
 	private void calcFullDelta(KataAnalysisResult kar, Node node, KataAnalysisResult prev) {
-		boolean dbg = Boolean.parseBoolean(props.getProperty("extract.debugprintownership", "false"));
+		boolean dbg = Boolean.parseBoolean(props.getProperty("extract.debug_print_ownership", "false"));
 		if (dbg) {
 			System.out.println("prev ownership:");
 			prev.drawNumericalOwnership(node);

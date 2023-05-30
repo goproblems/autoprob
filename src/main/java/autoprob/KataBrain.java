@@ -29,7 +29,7 @@ public class KataBrain {
 		String kataPath = props.getProperty("katago").trim();
 		String configPath = props.getProperty("kata.config").trim();
 		String modelPath = props.getProperty("kata.model").trim();
-		debugPrintKatago = Boolean.parseBoolean(props.getProperty("kata.debugprint", "false"));
+		debugPrintKatago = Boolean.parseBoolean(props.getProperty("kata.debug_print", "false"));
 
 		// create a native katago process
 		ProcessBuilder processBuilder = new ProcessBuilder();
@@ -66,7 +66,7 @@ public class KataBrain {
 	}
 
 	protected void processKataResponses() throws JsonSyntaxException, IOException {
-		boolean printSummary = Boolean.parseBoolean(props.getProperty("kata.printsummaryresult", "false"));
+		boolean printSummary = Boolean.parseBoolean(props.getProperty("kata.print_summary_result", "false"));
 		Gson gson = new Gson();
 		String line;
 		long startTime = 0;

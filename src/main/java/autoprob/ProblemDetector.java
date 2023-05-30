@@ -18,7 +18,7 @@ public class ProblemDetector {
 //	public static final int DETECT_SCORE = 18;
 	public static final double OWNERSHIP_THRESHOLD = 1.5;
 	public static final double EMPTY_OWNERSHIP_THRESHOLD = 0.7;
-	public static final int DETECT_OWNERSHIP_STONES = 6;
+	public static int DETECT_OWNERSHIP_STONES = 7;
 	public static final double EXTRA_SOLUTION_THRESHOLD = 10; // scores within this range
 	public static int DETECT_MAX_SOLUTIONS = 1;
 	public static final double MIN_SOL_VISIT_RATIO = 0.05;
@@ -59,7 +59,8 @@ public class ProblemDetector {
 		// set from properties
 		MAX_POLICY = Double.parseDouble(props.getProperty("search.max_policy"));
 		DETECT_MAX_SOLUTIONS = Integer.parseInt(props.getProperty("search.max_solutions"));
-		
+		DETECT_OWNERSHIP_STONES = Integer.parseInt(props.getProperty("search.life_mistake_stones"));
+
 		validProblem = false;
 
         Node child = node.favoriteSon();
@@ -75,7 +76,7 @@ public class ProblemDetector {
 		// ownership delta: what dies in this mistake?
 		stoneDelta(mistake, node, prev);
 		if (totDelta < DETECT_OWNERSHIP_STONES) {
-			System.out.println("low ownership change: " + (totDelta));
+//			System.out.println("low ownership change: " + (totDelta));
 			if (!forceDetect) return;
 		}
 
@@ -126,7 +127,6 @@ public class ProblemDetector {
 			karPass = na.analyzeNode(brain, passNode, visits);
 			// clean up
 			node.removeChildNode(passNode);
-
 		} catch (Exception e) {
 			e.printStackTrace();
 			return;
@@ -275,7 +275,10 @@ public class ProblemDetector {
 					ownershipChanges.add(new Point(x, y));
 				}
 			}
-		System.out.println("max ownership delta (stones relatively changing sides): " + df.format(maxDelta));
+		boolean dbg = Boolean.parseBoolean(props.getProperty("extract.debug_print_ownership", "false"));
+		if (dbg) {
+			System.out.println("max ownership delta (stones relatively changing sides): " + df.format(maxDelta));
+		}
 		totDelta = ownDeltaB + ownDeltaW;
 	}
 

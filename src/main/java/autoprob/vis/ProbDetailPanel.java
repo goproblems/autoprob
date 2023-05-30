@@ -103,8 +103,7 @@ public class ProbDetailPanel extends JPanel {
         showFileButton.addActionListener(e -> {
             System.out.println("file source:");
             System.out.println(name);
-            System.out.println(prev.turnNumber);
-            System.out.println("singles.add(new SingleTarget(\"" + name + "\", " + prev.turnNumber + ", true));");
+            System.out.println("at move: " + prev.turnNumber);
         });
         buttonsPanel.add(showFileButton);
         JPanel p4 = new JPanel();
@@ -121,6 +120,11 @@ public class ProbDetailPanel extends JPanel {
     private void createPaths(Node problem, ProblemDetector det, BasicGoban probGoban, final KataBrain brain, PathCreator pc, PathCreator.GenOptions gopts) {
         System.out.println("=========== make paths ===========");
         System.out.println("opts: " + gopts);
+
+        // remove anything existing, if this is a rerun
+        problem.removeAllChildren();
+        getParent().repaint();
+
         try {
             Thread thread = new Thread(() -> {
                 System.out.println("Thread Running");

@@ -742,11 +742,16 @@ public class Node {
     public String toString() {
         Point p = findMove();
         if (p == null) return "root";
-        return p.toString();
+        return Intersection.toGTPloc(p.x, p.y, board.boardY);
     }
 
     public void removeChildNode(Node del) {
         babies.remove(del);
+        markCrayons();
+    }
+
+    public void removeAllChildren() {
+        babies.removeAllElements();
         markCrayons();
     }
 

@@ -74,7 +74,7 @@ public class NodeAnalyzer {
 			System.out.println("> NAL parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead));
 				
 		if (debugOwnership) {
-			System.out.println("Ownership after move " + lm + ":");
+			System.out.println("Ownership after move " + lm + " depth: " + node.depth + ":");
 			kres.drawOwnership(node);
 			kres.drawNumericalOwnership(node);
 		}

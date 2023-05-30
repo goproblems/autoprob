@@ -176,7 +176,7 @@ public class PathCreator {
 
 			if (!significantOwnershipChange) {
 				// they are making a correct move
-				System.out.println("  d:" + depth + " >> human sol: " + mi.extString() + ", nearest: " + nearest + ", " + nodeParent.printPath2Here());
+				System.out.println("  d:" + depth + " >> human sol: " + mi.extString() + ", nearest: " + df.format(nearest) + ", path: " + nodeParent.printPath2Here());
 
 				// check move isn't a tenuki
 				if (nearest > TENUKI_DIST) {
@@ -529,7 +529,7 @@ public class PathCreator {
 		}
 	}
 
-	// calculate KAR for a move
+	// calculate KAR for a move with katago
 	private KataAnalysisResult calcMoveAnalysis(Node node, Point p, GenOptions gopts) throws Exception {
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);
@@ -551,8 +551,10 @@ public class PathCreator {
 		int delta = 0;
 		for (Point op: det.ownershipChanges) {
 			double od = kar.ownership.get(op.x + op.y * 19) - karMove.ownership.get(op.x + op.y * 19);
-			String mv = Intersection.toGTPloc(op.x, op.y, 19);
-			System.out.println("    mv " + op + " : " + od);
+			if (debugOwnership) {
+				String mv = Intersection.toGTPloc(op.x, op.y);
+				System.out.println("    stone " + mv + " : " + df.format(od));
+			}
 			if (Math.abs(od) > MOVE_DELTA_OWNERSHIP_THRESHOLD) {
 				delta++;
 			}

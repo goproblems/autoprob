@@ -23,6 +23,7 @@ public class PathCreator {
 	private GenOptions gopts;
 	private NodeChangeListener ncl;
 
+	// signal to stop exploring new things, exit gracefully
 	public void abortPathCreation() {
 		abortNow = true;
     }
@@ -42,7 +43,6 @@ public class PathCreator {
 		}
 	}
 
-	public static final int MOVE_VISITS_DEF = 1000;
 	public static final int MIN_VISITS_WRONG = 10; // consider wrong moves with this many visits
 	public static final double TENUKI_DIST = 2.7; // a move this far away from any other is a tenuki
 	public static final double TENUKI_DIST_ERR = 2.5; // a move this far away from any other is a tenuki
@@ -231,11 +231,6 @@ public class PathCreator {
 					}
 				}
 				
-//					if (mi.prior < 0.015) {
-//			        	System.out.println("  too low policy on root: " + mi.move + ", visits: " + mi.visits);
-//						return; // too obscure
-//					}
-
 				if (!interestingLookingMove(mi, depth)) {
 					System.out.println("  low prior " + mi.extString() + " depth " + depth);
 					return;
@@ -274,8 +269,6 @@ public class PathCreator {
 		double nearest = findNearest(node.board, p);
 
 		// for wrong sequences, we END with a computer move, which is the refutation
-
-
 		// human or computer move?
 		if (isResponse) {
 			// computer
@@ -408,7 +401,6 @@ public class PathCreator {
 		var na = new NodeAnalyzer(props, debugOwnership);
 		KataAnalysisResult kar = na.analyzeNode(brain, node, visits, gopts.considerNearDist, gopts.onlyConsiderNear);
 		node.kres = kar; // save for debugging
-//		double baseline = kar.rootInfo.scoreLead;
 		System.out.println();
 		System.out.println("***> Path: <" + node.printPath2Here() + "> (" + onRight + ")" + ", total: " + totalVarMoves);
 		int movePrintMax = Integer.parseInt(props.getProperty("paths.debug_print_moves", "0"));
@@ -542,7 +534,8 @@ public class PathCreator {
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);
 		var na = new NodeAnalyzer(props, debugOwnership);
-		KataAnalysisResult karMove = na.analyzeNode(brain, tike, MOVE_VISITS_DEF, gopts.considerNearDist, gopts.onlyConsiderNear);
+		int visits = Integer.parseInt(props.getProperty("paths.visits"));
+		KataAnalysisResult karMove = na.analyzeNode(brain, tike, visits, gopts.considerNearDist, gopts.onlyConsiderNear);
 
 		// clean up
 		node.removeChildNode(tike);

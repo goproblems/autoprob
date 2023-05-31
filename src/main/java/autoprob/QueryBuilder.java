@@ -37,11 +37,8 @@ public class QueryBuilder {
 		kq.includeMovesOwnership = false;
 		kq.includeOwnershipStdev = true;
 		int toMove = node.getToMove();
-		if (toMove == Intersection.BLACK)
-			kq.initialPlayer = "B";
-		else
-			kq.initialPlayer = "W";
-		
+		kq.initialPlayer = Intersection.color2katagoname(toMove);
+
 		// initial stones
 		kq.initialStones = new ArrayList<>();
 		Board b = node.board;
@@ -90,11 +87,8 @@ public class QueryBuilder {
 		kq.includeOwnershipStdev = true;
 		Node mom = node.mom;
 		int toMove = mom.getToMove();
-		if (toMove == Intersection.BLACK)
-			kq.initialPlayer = "B";
-		else
-			kq.initialPlayer = "W";
-		
+		kq.initialPlayer = Intersection.color2katagoname(toMove);
+
 		// initial stones
 		kq.initialStones = new ArrayList<>();
 		Board b = mom.board;

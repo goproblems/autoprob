@@ -60,7 +60,6 @@ public class KataQuery {
     public Node generateNode() {
 		Node n = new Node(null);
 		// set board from initialStones
-		// loop through initialStones
 		for (List<String> stone : initialStones) {
 			String color = stone.get(0);
 			String loc = stone.get(1);
@@ -72,7 +71,30 @@ public class KataQuery {
 				n.board.board[p.x][p.y].stone = Intersection.WHITE;
 			}
 		}
+		// add any moves
+		if (moves != null) {
+			for (List<String> move : moves) {
+				String color = move.get(0);
+				String loc = move.get(1);
+				Point p = Intersection.gtp2point(loc);
+				if (color.equals("B")) {
+					n.board.board[p.x][p.y].stone = Intersection.BLACK;
+				} else {
+					n.board.board[p.x][p.y].stone = Intersection.WHITE;
+				}
+			}
+		}
 
 		return n;
     }
+
+	public String printMoves() {
+		String s = "";
+		if (moves != null) {
+			for (List<String> move : moves) {
+				s += move.get(0) + " " + move.get(1) + "\n";
+			}
+		}
+		return s;
+	}
 }

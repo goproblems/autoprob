@@ -72,6 +72,7 @@ public class ManualKatago {
                 // first convert to a Node so we can capture the board
                 KataQuery query = gson.fromJson(line, KataQuery.class);
                 node = query.generateNode();
+                System.out.println("moves:" + query.printMoves());
                 // send to katago
                 pw.println(line);
                 pw.flush();
@@ -104,9 +105,16 @@ public class ManualKatago {
                 double avgTime = (System.currentTimeMillis() - startTime) / (double)total;
                 System.out.println("> KBRAIN parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", avg ms: " + df.format(avgTime));
 
+                System.out.println();
+                System.out.println();
+
+                System.out.println(kres.rootInfo);
+
                 System.out.println("Ownership after move depth: " + node.depth + ":");
                 kres.drawOwnership(node);
                 kres.drawNumericalOwnership(node);
+
+                System.out.println(kres.printMoves(1000));
             }
             else if (line.contains("ready to begin handling requests")) {
                 System.out.println(line);

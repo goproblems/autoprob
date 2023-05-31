@@ -122,4 +122,12 @@ public class Intersection {
     	int y = 19 - Integer.parseInt(gpt.substring(1));
     	return new Point(x, y);
     }
+
+    public static String color2katagoname(int color) {
+    	if (color == BLACK)
+    		return "B";
+    	if (color == WHITE)
+    		return "W";
+        throw new RuntimeException("invalid color " + color);
+    }
 } // Intersection

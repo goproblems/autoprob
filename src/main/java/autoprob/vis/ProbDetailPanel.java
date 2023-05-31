@@ -24,6 +24,7 @@ public class ProbDetailPanel extends JPanel {
     private final Node problem;
     private final Properties props;
     public final IntersectionDetailPanel idp;
+    private final JTextField pathsVisits;
     //    private final BasicGoban goban;
 //    private final KataAnalysisResult prev;
 //    private final KataAnalysisResult mistake;
@@ -52,9 +53,9 @@ public class ProbDetailPanel extends JPanel {
 
         JPanel p2 = new JPanel();
         p2.setLayout(new FlowLayout(FlowLayout.LEFT));
-        p2.add(new JLabel("bail depth:"));
-        JTextField bailDepth = new JTextField("3", 7);
-        p2.add(bailDepth);
+        p2.add(new JLabel("paths.visits:"));
+        pathsVisits = new JTextField(props.getProperty("paths.visits"), 7);
+        p2.add(pathsVisits);
 
         JPanel p3 = new JPanel();
         p3.setLayout(new GridLayout(2, 1));
@@ -73,7 +74,7 @@ public class ProbDetailPanel extends JPanel {
             pc = new PathCreator(det, props, brain);
             PathCreator.GenOptions gopts = pc.new GenOptions();
             gopts.bailNum = Integer.parseInt(bailNum.getText());
-            gopts.bailDepth = Integer.parseInt(bailDepth.getText());
+            gopts.bailDepth = Integer.parseInt(pathsVisits.getText());
             createPaths(problem, det, probPanel.getProbGoban(), brain, pc, gopts);
         });
         buttonsPanel.add(makePathsButton);

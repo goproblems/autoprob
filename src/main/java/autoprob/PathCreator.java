@@ -36,7 +36,8 @@ public class PathCreator {
 		public int bailDepth = 2; // only bail if at least this deep
 		public boolean onlyConsiderNear = true; // tell kata to only look at possible moves near existing stones
 		public double considerNearDist = 2.1; // how close for near moves
-		
+		public int pathsVisits = 1000;
+
 		@Override
 		public String toString() {
 			return "bail num: " + bailNum + ", bail depth: " + bailDepth;
@@ -92,7 +93,7 @@ public class PathCreator {
 
 	// checks policy and sometimes visits
 	private boolean interestingLookingMove(MoveInfo mi, int depth) {
-		int visits = Integer.parseInt(props.getProperty("paths.visits"));
+		int visits = gopts.pathsVisits;
 
 		int minPolicy = getMinPolicy(depth);
 		if (mi.prior < ((double)minPolicy / 1000.0) &&
@@ -396,10 +397,10 @@ public class PathCreator {
 
 		if (abortNow) return; // early exit
 
-		int visits = Integer.parseInt(props.getProperty("paths.visits"));
+		int visits = gopts.pathsVisits;
 		if (depth == 0) visits = Integer.parseInt(props.getProperty("paths.visits_root"));
 		var na = new NodeAnalyzer(props, debugOwnership);
-		KataAnalysisResult kar = na.analyzeNode(brain, node, visits, gopts.considerNearDist, gopts.onlyConsiderNear);
+		KataAnalysisResult kar = na.analyzeNode(brain, node, visits, gopts.considerNearDist, gopts.onlyConsiderNear, det.filledStones);
 		node.kres = kar; // save for debugging
 		System.out.println();
 		System.out.println("***> Path: <" + node.printPath2Here() + "> (" + onRight + ")" + ", total: " + totalVarMoves);
@@ -534,8 +535,8 @@ public class PathCreator {
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);
 		var na = new NodeAnalyzer(props, debugOwnership);
-		int visits = Integer.parseInt(props.getProperty("paths.visits"));
-		KataAnalysisResult karMove = na.analyzeNode(brain, tike, visits, gopts.considerNearDist, gopts.onlyConsiderNear);
+		int visits = gopts.pathsVisits;
+		KataAnalysisResult karMove = na.analyzeNode(brain, tike, visits, gopts.considerNearDist, gopts.onlyConsiderNear, det.filledStones);
 
 		// clean up
 		node.removeChildNode(tike);
@@ -574,10 +575,10 @@ public class PathCreator {
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);
 		var na = new NodeAnalyzer(props, debugOwnership);
-		KataAnalysisResult karMove = na.analyzeNode(brain, tike, baseVisits, gopts.considerNearDist, gopts.onlyConsiderNear);
+		KataAnalysisResult karMove = na.analyzeNode(brain, tike, baseVisits, gopts.considerNearDist, gopts.onlyConsiderNear, det.filledStones);
 
 		Node passNode = tike.addBasicMove(19, 19);
-		KataAnalysisResult karPass = na.analyzeNode(brain, passNode, passVisits, gopts.considerNearDist, gopts.onlyConsiderNear);
+		KataAnalysisResult karPass = na.analyzeNode(brain, passNode, passVisits, gopts.considerNearDist, gopts.onlyConsiderNear, det.filledStones);
 		
 		int delta = stoneDelta(karMove, karPass, tike);
 		System.out.println("  Pass delta stones: " + delta + ", " + tike.printPath2Here());

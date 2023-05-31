@@ -109,9 +109,11 @@ public class NodeAnalyzer {
 						if (node.board.inBoard(dx, dy))
 							if (node.board.board[dx][dy].stone != 0) {
 								if (ignoreStones != null && ignoreStones.board[dx][dy].stone != 0) {
-									double d = Math.max(Math.abs(dx - x), Math.abs(dy - y));
-									min = Math.min(min, d);
+									continue; // false hit, this was a filled stone
 								}
+
+								double d = Math.max(Math.abs(dx - x), Math.abs(dy - y));
+								min = Math.min(min, d);
 							}
 					}
 				if (min <= dist) {

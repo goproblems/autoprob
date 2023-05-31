@@ -74,7 +74,7 @@ public class ProbDetailPanel extends JPanel {
             pc = new PathCreator(det, props, brain);
             PathCreator.GenOptions gopts = pc.new GenOptions();
             gopts.bailNum = Integer.parseInt(bailNum.getText());
-            gopts.bailDepth = Integer.parseInt(pathsVisits.getText());
+            gopts.pathsVisits = Integer.parseInt(pathsVisits.getText());
             createPaths(problem, det, probPanel.getProbGoban(), brain, pc, gopts);
         });
         buttonsPanel.add(makePathsButton);

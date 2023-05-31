@@ -477,6 +477,9 @@ public class PathCreator {
 			
 			if (ma == null) continue;
 			Point p = ma.loc;
+			if (!node.legalMove(p))
+				continue;
+
 			// check if in tree already
 			if (!node.hasMove(p)) {
 				String mv = Intersection.toGTPloc(p.x, p.y);
@@ -503,6 +506,8 @@ public class PathCreator {
     			if (node.hasMove(pn)) {
     				continue;
     			}
+				if (!node.legalMove(pn))
+					continue;
     			String mv = Intersection.toGTPloc(pn.x, pn.y, 19);
     			System.out.println("sol neighbor: " + mv);
 				if (!isAllowedRootMove(mv)) continue;
@@ -523,6 +528,8 @@ public class PathCreator {
 			if (node.hasMove(op)) {
 				continue;
 			}
+			if (!node.legalMove(op))
+				continue;
 			var moves = new ArrayList<String>();
 			String mv = Intersection.toGTPloc(op.x, op.y);
 			System.out.println("own change start >>-------> " + mv);

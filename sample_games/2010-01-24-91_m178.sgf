@@ -1,18 +1,2 @@
-(;GM[1]
-FF[4]
-SZ[19]
-PW[gribben74]
-WR[4d]
-PB[houbou]
-BR[3d]
-DT[2010-01-24]
-PC[The KGS Go Server at http://www.gokgs.com/]
-KM[0.50]
-RE[B+29.50]
-RU[Japanese]
-CA[UTF-8]
-ST[2]
-AP[CGoban:3]
-TM[0]
-OT[11x10 byo-yomi]
-;B[pd];W[dc];B[oq];W[dp];B[de];W[dg];B[fe];W[fc];B[cc];W[cb];B[cd];W[eb];B[cg];W[ch];B[dh];W[di];B[eh];W[bg];B[cf];W[ci];B[bf];W[fi];B[ei];W[ej];B[fj];W[ek];B[gj];W[fg];B[eg];W[ef];B[df];W[fh];B[dg];W[hh];B[ff];W[hj];B[hk];W[gi];B[ij];W[hi];B[fl];W[el];B[fm];W[em];B[fn];W[en];B[fo];W[dq];B[ik];W[jh];B[fq];W[kp];B[mp];W[kn];B[mn];W[hq];B[er];W[lq];B[mq];W[dr];B[kj];W[qp];B[qn];W[rn];B[ro];W[qo];B[rp];W[rm];B[qq];W[no];B[mo];W[pq];B[po];W[pn];B[pp];W[qm];B[qj];W[pj];B[pi];W[qi];B[qk];W[pk];B[qh];W[ri];B[rh];W[oi];B[ph];W[ql];B[rj];W[rk];B[si];W[nj];B[mi];W[nm];B[on];W[pm];B[jq];W[ip];B[lr];W[hn];B[gp];W[kr];B[kq];W[jr];B[lp];W[jp];B[gr];W[hr];B[ho];W[kl];B[mm];W[io];B[jm];W[hp];B[go];W[jn];B[ko];W[ln];B[lo];W[ll];B[ml];W[lj];B[mj];W[mk];B[li];W[lk];B[nl];W[nk];B[ki];W[ji];B[kk];W[ol];B[jf];W[if];B[ie];W[he];B[hf];W[ig];B[id];W[hd];B[hc];W[gf];B[gd];W[hg];B[ge];W[hf];B[gc];W[kg];B[mg];W[je];B[kf];W[lf];B[ke];W[jd];B[ic];W[lg];B[kd];W[mf];B[ng];W[nf];B[ni];W[oh];B[og];W[nc];B[nd];W[md];B[oc];W[ne];B[od];W[mb];B[lc];W[mc];B[jg];W[kh];B[ii];W[ih];B[ob];W[le];B[ds];W[cs];B[es];W[cr];B[bb];W[ba];B[ab];W[ed];B[bh];W[bi];B[ag];W[qd];B[qc];W[rc];B[qe];W[rd];B[qb];W[ld];B[kc];W[nn];B[ai];W[bj];B[aj];W[ak];B[ah];W[bk];B[eo];W[do];B[gb];W[fb];B[oo];W[om];B[sk];W[gs];B[im];W[in];B[hm];W[fk];B[gk];W[eq];B[fr];W[sl];B[rl];W[qf];B[pe];W[rk];B[nh];W[oj];B[rl];W[jj];B[jk];W[rk];B[dd];W[fd];B[rl];W[ee];B[sm];W[jb];B[jc];W[la];B[ib];W[ka];B[ia];W[sn];B[qo];W[np];B[nq];W[sl];B[rk];W[iq];B[lq];W[so];B[sp];W[of];B[pf];W[gn];B[gm];W[jl];B[na];W[il];B[hl];W[ls];B[ms];W[ks];B[fa];W[ea];B[ga];W[nb];B[lh];W[op];B[pr];W[sm];B[gq];W[ep];B[bc];W[ma];B[oa];W[];B[aa];W[ca];B[fs];W[hs];B[];W[])
+(;GM[1]FF[4]SZ[19]PW[gribben74]WR[4d]PB[houbou]BR[3d]DT[2010-01-24]PC[The KGS Go Server at http://www.gokgs.com/]KM[0.50]RE[B+29.50]RU[Japanese]CA[UTF-8]ST[2]AP[Sabaki:0.52.2]TM[0]OT[11x10 byo-yomi]C[added as problem https://www.goproblems.com/23838
+autoprob finds this and extracts it pretty well, but can get confused finding the right moves at low playouts];B[pd];W[dc];B[oq];W[dp];B[de];W[dg];B[fe];W[fc];B[cc];W[cb];B[cd];W[eb];B[cg];W[ch];B[dh];W[di];B[eh];W[bg];B[cf];W[ci];B[bf];W[fi];B[ei];W[ej];B[fj];W[ek];B[gj];W[fg];B[eg];W[ef];B[df];W[fh];B[dg];W[hh];B[ff];W[hj];B[hk];W[gi];B[ij];W[hi];B[fl];W[el];B[fm];W[em];B[fn];W[en];B[fo];W[dq];B[ik];W[jh];B[fq];W[kp];B[mp];W[kn];B[mn];W[hq];B[er];W[lq];B[mq];W[dr];B[kj];W[qp];B[qn];W[rn];B[ro];W[qo];B[rp];W[rm];B[qq];W[no];B[mo];W[pq];B[po];W[pn];B[pp];W[qm];B[qj];W[pj];B[pi];W[qi];B[qk];W[pk];B[qh];W[ri];B[rh];W[oi];B[ph];W[ql];B[rj];W[rk];B[si];W[nj];B[mi];W[nm];B[on];W[pm];B[jq];W[ip];B[lr];W[hn];B[gp];W[kr];B[kq];W[jr];B[lp];W[jp];B[gr];W[hr];B[ho];W[kl];B[mm];W[io];B[jm];W[hp];B[go];W[jn];B[ko];W[ln];B[lo];W[ll];B[ml];W[lj];B[mj];W[mk];B[li];W[lk];B[nl];W[nk];B[ki];W[ji];B[kk];W[ol];B[jf];W[if];B[ie];W[he];B[hf];W[ig];B[id];W[hd];B[hc];W[gf];B[gd];W[hg];B[ge];W[hf];B[gc];W[kg];B[mg];W[je];B[kf];W[lf];B[ke];W[jd];B[ic];W[lg];B[kd];W[mf];B[ng];W[nf];B[ni];W[oh];B[og];W[nc];B[nd];W[md];B[oc];W[ne];B[od];W[mb];B[lc];W[mc];B[jg];W[kh];B[ii];W[ih];B[ob];W[le];B[ds];W[cs];B[es];W[cr];B[bb];W[ba];B[ab];W[ed];B[bh];W[bi];B[ag];W[qd];B[qc];W[rc];B[qe];W[rd];B[qb];W[ld];B[kc];W[nn];B[ai];W[bj];B[aj];W[ak];B[ah];W[bk];B[eo];W[do];B[gb];W[fb];B[oo];W[om];B[sk];W[gs];B[im];W[in];B[hm];W[fk];B[gk];W[eq];B[fr];W[sl];B[rl];W[qf];B[pe];W[rk];B[nh];W[oj];B[rl];W[jj];B[jk];W[rk];B[dd];W[fd];B[rl];W[ee];B[sm];W[jb];B[jc];W[la];B[ib];W[ka];B[ia];W[sn];B[qo];W[np];B[nq];W[sl];B[rk];W[iq];B[lq];W[so];B[sp];W[of];B[pf];W[gn];B[gm];W[jl];B[na];W[il];B[hl];W[ls];B[ms];W[ks];B[fa];W[ea];B[ga];W[nb];B[lh];W[op];B[pr];W[sm];B[gq];W[ep];B[bc];W[ma];B[oa];W[];B[aa];W[ca];B[fs];W[hs];B[];W[])

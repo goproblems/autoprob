@@ -1,6 +1,10 @@
 package autoprob.katastruct;
 
+import java.awt.*;
 import java.util.List;
+
+import autoprob.go.Intersection;
+import autoprob.go.Node;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
@@ -52,4 +56,23 @@ public class KataQuery {
 	@SerializedName("allowMoves")
 	@Expose
 	public List<AllowMove> allowMoves = null;
+
+    public Node generateNode() {
+		Node n = new Node(null);
+		// set board from initialStones
+		// loop through initialStones
+		for (List<String> stone : initialStones) {
+			String color = stone.get(0);
+			String loc = stone.get(1);
+			Point p = Intersection.gtp2point(loc);
+			if (color.equals("B")) {
+				n.board.board[p.x][p.y].stone = Intersection.BLACK;
+			}
+			else {
+				n.board.board[p.x][p.y].stone = Intersection.WHITE;
+			}
+		}
+
+		return n;
+    }
 }

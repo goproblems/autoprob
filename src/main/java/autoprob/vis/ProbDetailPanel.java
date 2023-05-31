@@ -25,6 +25,7 @@ public class ProbDetailPanel extends JPanel {
     private final Properties props;
     public final IntersectionDetailPanel idp;
     private final JTextField pathsVisits;
+    private final JTextField maxDepthField;
     //    private final BasicGoban goban;
 //    private final KataAnalysisResult prev;
 //    private final KataAnalysisResult mistake;
@@ -45,11 +46,11 @@ public class ProbDetailPanel extends JPanel {
 
         JPanel p1 = new JPanel();
         p1.setLayout(new FlowLayout(FlowLayout.LEFT));
-        p1.add(new JLabel("bail after moves:"));
-        JTextField bailNum = new JTextField(7);
-        bailNum.setText(props.getProperty("paths.bail_number"));
-        bailNum.setPreferredSize(new Dimension(150, 20));
-        p1.add(bailNum);
+        p1.add(new JLabel("max depth:"));
+        maxDepthField = new JTextField(7);
+        maxDepthField.setText(props.getProperty("paths.max_depth", "32"));
+        maxDepthField.setPreferredSize(new Dimension(150, 20));
+        p1.add(maxDepthField);
 
         JPanel p2 = new JPanel();
         p2.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -73,7 +74,7 @@ public class ProbDetailPanel extends JPanel {
             stopButton.setEnabled(true);
             pc = new PathCreator(det, props, brain);
             PathCreator.GenOptions gopts = pc.new GenOptions();
-            gopts.bailNum = Integer.parseInt(bailNum.getText());
+            gopts.maxDepth = Integer.parseInt(maxDepthField.getText());
             gopts.pathsVisits = Integer.parseInt(pathsVisits.getText());
             createPaths(problem, det, probPanel.getProbGoban(), brain, pc, gopts);
         });

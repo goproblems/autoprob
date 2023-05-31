@@ -15,9 +15,9 @@ import autoprob.katastruct.MoveInfo;
 // creates solution and refutation paths given a problem
 public class PathCreator {
     private static final DecimalFormat df = new DecimalFormat("0.00");
-	private final int maxDepth;
 	private final boolean debugOwnership;
 	private final KataBrain brain;
+	private final int ignoreResponseVisitsDepth; // normally we do responses if they get enough visits, even if the policy is low but setting this will cap it out -- otherwise variations go almost forever
 	private boolean abortNow = false;
 	private BasicGoban probGoban;
 	private GenOptions gopts;
@@ -32,15 +32,16 @@ public class PathCreator {
 	public class GenOptions {
 		public boolean altRefutes = false;
 		public boolean altChallenges = false; // alternative ways to test human on correct line
-		public int bailNum = 40; // max moves in tree
-		public int bailDepth = 2; // only bail if at least this deep
 		public boolean onlyConsiderNear = true; // tell kata to only look at possible moves near existing stones
 		public double considerNearDist = 2.1; // how close for near moves
 		public int pathsVisits = 1000;
+		public int maxDepth = 10000;
 
 		@Override
 		public String toString() {
-			return "bail num: " + bailNum + ", bail depth: " + bailDepth;
+			return "GenOptions [altRefutes=" + altRefutes + ", altChallenges=" + altChallenges + ", onlyConsiderNear="
+					+ onlyConsiderNear + ", considerNearDist=" + considerNearDist + ", pathsVisits=" + pathsVisits
+					+ ", maxDepth=" + maxDepth + "]";
 		}
 	}
 
@@ -54,7 +55,9 @@ public class PathCreator {
 	public static final double MIN_GOOD_RESPONSE_POLICY = 0.05;
 	public static final double MIN_GOOD_DEEP_RESPONSE_VISIT_RATIO = 0.5;
 	public static final double MAX_VULN_INTEREST = 2.1; // 
-	
+	public int bailNum = 40; // max moves in tree
+	public int bailDepth = 2; // only bail if at least this deep
+
 	private int totalVarMoves = 0; // how many have been added to tree
 	private Node firstSol = null; // first solution we find
 	private final ProblemDetector det;
@@ -65,12 +68,15 @@ public class PathCreator {
 		this.det = det;
 		this.props = props;
 		this.brain = brain;
-		this.maxDepth = Integer.parseInt(props.getProperty("paths.max_depth", "10000"));
+//		this.maxDepth = Integer.parseInt(props.getProperty("paths.max_depth", "10000"));
 		MIN_OWNERSHIP_CHANGE_INTEREST = Integer.parseInt(props.getProperty("paths.life_mistake_stones", "4"));
 		MOVE_DELTA_OWNERSHIP_THRESHOLD = Double.parseDouble(props.getProperty("paths.life_mistake_threshold", "0.8"));
 
 		this.debugOwnership = Boolean.parseBoolean(props.getProperty("paths.debug_ownership", "false"));
+		bailDepth = Integer.parseInt(props.getProperty("paths.bail_depth", "4"));
+		bailNum = Integer.parseInt(props.getProperty("paths.bail_num", "40000"));
 		parseMinPolicyPrefs();
+		this.ignoreResponseVisitsDepth = Integer.parseInt(props.getProperty("paths.ignore_response_visits_depth", "8"));
 	}
 
 	// we specify minimum policy with a comma separated list
@@ -92,16 +98,29 @@ public class PathCreator {
 	}
 
 	// checks policy and sometimes visits
-	private boolean interestingLookingMove(MoveInfo mi, int depth) {
+	private boolean interestingLookingMove(MoveInfo mi, int depth, boolean considerResponseDepth) {
 		int visits = gopts.pathsVisits;
 
 		int minPolicy = getMinPolicy(depth);
-		if (mi.prior < ((double)minPolicy / 1000.0) &&
-				mi.visits < visits * 0.5) return false;
-		return true;
+		boolean interesting = false;
+
+		if (mi.prior > ((double)minPolicy / 1000.0))
+			interesting = true;
+		if (mi.visits > visits * 0.5) {
+			if (considerResponseDepth && depth >= ignoreResponseVisitsDepth) {
+				// ignore it
+			} else {
+				interesting = true;
+			}
+		}
+		return interesting;
 	}
 
-	// RIGHT: we are in a correct variation -- no errors by human
+	private boolean interestingLookingMove(MoveInfo mi, int depth) {
+		return interestingLookingMove(mi, depth, false);
+	}
+
+		// RIGHT: we are in a correct variation -- no errors by human
 	private void handleRightMoveOption(Node nodeParent, int depth, MoveInfo mi, KataAnalysisResult kar) throws Exception {
 		if (abortNow) return; // early exit
 
@@ -141,15 +160,15 @@ public class PathCreator {
 						return;
 					}
 				}
-				if (depth >= maxDepth) {
-					System.out.println("(computer response) reached max depth as specified: " + maxDepth);
+				if (depth >= gopts.maxDepth) {
+					System.out.println("(computer response) reached max depth as specified: " + gopts.maxDepth);
 					return;
 				}
 
 				if (!gopts.altRefutes && nodeParent.babies.size() > 0) return; // already handled this var (we already refuted)
 				
 				// if this is not an intuitive move, don't bother
-				if (!interestingLookingMove(mi, depth)) {
+				if (!interestingLookingMove(mi, depth, true)) {
 					System.out.println("  low prior " + mi.extString() + " depth " + depth);
 					return;
 				}
@@ -197,12 +216,12 @@ public class PathCreator {
 		        		firstSol = tike; // update to deeper in tree
 		        }
 
-		        if (totalVarMoves++ > gopts.bailNum && depth > gopts.bailDepth) {
+		        if (totalVarMoves++ > bailNum && depth > bailDepth) {
 					System.out.println("$$$$$$$$$ human solve bail");
 					return;
 				}
-				if (depth >= maxDepth) {
-					System.out.println("(human good move) reached max depth as specified: " + maxDepth);
+				if (depth >= gopts.maxDepth) {
+					System.out.println("(human good move) reached max depth as specified: " + gopts.maxDepth);
 					return;
 				}
 
@@ -239,8 +258,8 @@ public class PathCreator {
 
 				if (countEmptyShots(p, nodeParent) >= 3 && !det.fullOwnershipChanges.contains(p))
 					return; // looks on outside
-				if (depth >= maxDepth) {
-					System.out.println("(human mistake) reached max depth as specified: " + maxDepth);
+				if (depth >= gopts.maxDepth) {
+					System.out.println("(human mistake) reached max depth as specified: " + gopts.maxDepth);
 					return;
 				}
 
@@ -320,12 +339,12 @@ public class PathCreator {
 				return;
 			}
 
-			if (totalVarMoves++ > gopts.bailNum && depth > gopts.bailDepth) {
+			if (totalVarMoves++ > bailNum && depth > bailDepth) {
 				System.out.println("$$$$$$$$$$$$$$ bail wrong");
 				return;
 			}
-			if (depth >= maxDepth) {
-				System.out.println("(human mistake in wrong) reached max depth as specified: " + maxDepth);
+			if (depth >= gopts.maxDepth) {
+				System.out.println("(human mistake in wrong) reached max depth as specified: " + gopts.maxDepth);
 				return;
 			}
 

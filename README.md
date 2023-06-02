@@ -10,13 +10,14 @@ https://www.goproblems.com/group/usergroup.php?id=237
 
 # Quickstart
 
+0) Install java and download release or compile autoprob.jar
 1) Download katago: https://github.com/lightvector/KataGo
 2) Download some weights. i recommend the b15 network for speed: https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b15c192-s1672170752-d466197061.txt.gz
 3) Make sure you have Java installed. compile the autoprob source or run existing jars (when available)
 4) Download a gson jar: https://github.com/google/gson
 5) Validate it works with a sample test file. Run the VisRunner main class. A simple command line might be:
 
-`path_to\config.properties katago=path_to\katago.exe kata.config=path_to\analysis_example.cfg kata.model=path_to\weights.txt.gz path=sample_games\2019-04-01-123_m198.sgf turn=198 forceproblem=true`
+`java -jar autoprob.jar path_to\config.properties katago=path_to\katago.exe kata.config=path_to\analysis_example.cfg kata.model=path_to\weights.txt.gz path=sample_games\2019-04-01-123_m198.sgf forceproblem=true`
 
 You will have to pass in the gson jar. This should pop up a Java window with a detected problem from this game. Replace the paths with paths to your katago executable, config file, and weights.
 

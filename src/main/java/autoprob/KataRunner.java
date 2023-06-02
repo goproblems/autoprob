@@ -43,10 +43,23 @@ public class KataRunner {
 			int searchVisits = Integer.parseInt(props.getProperty("search.visits"));
 			// may point to file, or to directory
 			if (f.isFile()) {
+				int targetTurn = 0;
 				if (props.containsKey("turn")) {
-					int turn = Integer.parseInt(props.getProperty("turn"));
-					System.out.println("testing game " + path + ": " + " at " + turn);
-					int found = testAnalyze(brain, path, f.getName(), vis, turn, searchVisits);
+					targetTurn = Integer.parseInt(props.getProperty("turn"));
+				}
+				// also parse out of the file name convention if ends in _mNUMBER.sgf
+				if (targetTurn == 0) {
+					String name = f.getName();
+					int idx = name.lastIndexOf("_m");
+					if (idx > 0) {
+						String num = name.substring(idx + 2, name.length() - 4);
+						targetTurn = Integer.parseInt(num);
+						System.out.println("parsing target turn from file name: " + targetTurn);
+					}
+				}
+				if (targetTurn > 0) {
+					System.out.println("testing game " + path + ": " + " at " + targetTurn);
+					int found = testAnalyze(brain, path, f.getName(), vis, targetTurn, searchVisits);
 					System.out.println("target found: " + found);
 				} else {
 					// search whole game

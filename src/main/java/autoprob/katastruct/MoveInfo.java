@@ -54,6 +54,6 @@ public class MoveInfo {
 	}
 
 	public String extString() {
-		return move + ", visits: " + visits + ", policy: " + df.format(prior * 1000.0);
+		return move + ", visits: " + visits + ", policy: " + (int)(prior * 1000.0);
 	}
 }

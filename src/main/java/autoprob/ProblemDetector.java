@@ -49,8 +49,9 @@ public class ProblemDetector {
 	public KataAnalysisResult karPass;
 
 	// prev is the problem position. kar is the mistake position. node represents prev.
+	// the constructor tries to detect a problem. if it does, validProblem is set to true.
 	// @forcedetect: if true, ignore score and ownership thresholds etc
-	public ProblemDetector(KataBrain brain, KataAnalysisResult prev, KataAnalysisResult mistake, Node node, Properties props, boolean forceDetect) {
+	public ProblemDetector(KataBrain brain, KataAnalysisResult prev, KataAnalysisResult mistake, Node node, Properties props, boolean forceDetect) throws Exception {
 		this.mistake = mistake;
 		this.prev = prev;
 		this.node = node;
@@ -67,6 +68,7 @@ public class ProblemDetector {
         Point nextMove = child.findMove();
         if (nextMove.x == 19) return;
 
+		// no longer using score, for now...
 //        // big score differential?
 //		scoreDelta = mistake.rootInfo.scoreLead - prev.rootInfo.scoreLead;
 //		if (Math.abs(scoreDelta) < DETECT_SCORE) {
@@ -74,7 +76,7 @@ public class ProblemDetector {
 //		}
 		
 		// ownership delta: what dies in this mistake?
-		stoneDelta(mistake, node, prev);
+		stoneDelta(mistake, node, prev); // also saves in ownershipChanges
 		if (totDelta < DETECT_OWNERSHIP_STONES) {
 //			System.out.println("low ownership change: " + (totDelta));
 			if (!forceDetect) return;
@@ -115,31 +117,57 @@ public class ProblemDetector {
 		}
 		
 		// let's do a more exhaustive analysis here
+		int visits = Integer.parseInt(props.getProperty("search.root_visits"));
+		System.out.println("running deeper problem search analysis with #visits: " + visits);
+		boolean dbgOwn = Boolean.parseBoolean(props.getProperty("search.debug_pass_ownership", "false"));
+		var na = new NodeAnalyzer(props, dbgOwn);
+		// first the root node, the position before the mistake
+		var karDeep = na.analyzeNode(brain, node, visits);
+
 		// compare what happens if we pass
 
-		Node passNode;
-		try {
-			passNode = node.addBasicMove(19, 19);
-			int visits = Integer.parseInt(props.getProperty("search.root_visits"));
-			System.out.println("doing more exhaustive check, visits=" + visits);
-			boolean dbgOwn = Boolean.parseBoolean(props.getProperty("search.debug_pass_ownership", "false"));
-			var na = new NodeAnalyzer(props, dbgOwn);
-			karPass = na.analyzeNode(brain, passNode, visits);
-			// clean up
-			node.removeChildNode(passNode);
-		} catch (Exception e) {
-			e.printStackTrace();
-			return;
-		}
-		
+		Node passNode = node.addBasicMove(19, 19);
+		System.out.println("doing more exhaustive check, visits=" + visits);
+		karPass = na.analyzeNode(brain, passNode, visits);
+		// clean up
+		node.removeChildNode(passNode);
+
 		//TODO count sols again etc
 
-		calcFullDelta(karPass, node, prev);
+		// redo delta with more accurate analysis
+		stoneDelta(karPass, node, karDeep); // also saves in ownershipChanges
+		// calc delta including empties
+		calcFullDelta(karPass, node, karDeep);
+
+		// check if some stones are not as clearly live/dead as we would like
+		int ownershipChangesUnderThreshold = countOwnershipChangesUnderThreshold(karDeep);
+		System.out.println("ownership change stones under life threshold: " + ownershipChangesUnderThreshold);
+		if (ownershipChangesUnderThreshold >= Integer.parseInt(props.getProperty("search.min_alive_threshold_stones"))) {
+			if (!forceDetect) return;
+		}
+
 		System.out.println("Detected prob at move: " + prev.turnNumber);
 		validProblem = true;
 		
 		// construct a new board position with relevant stones
 		makeProblem();
+	}
+
+	// from the ownership changes, check how many stones are in a not super clear state
+	private int countOwnershipChangesUnderThreshold(KataAnalysisResult kar) {
+		int count = 0;
+		double minAliveThreshold = Double.parseDouble(props.getProperty("search.min_alive_threshold"));
+
+		// loop over just stones
+		for (Point p: ownershipChanges) {
+			double aliveness = kar.ownership.get(p.x + p.y * 19);
+			// debug print
+			System.out.println("  aliveness: " + aliveness + " at " + Intersection.toGTPloc(p.x, p.y));
+			if (Math.abs(aliveness) < minAliveThreshold) {
+				count++;
+			}
+		}
+		return count;
 	}
 
 	// for testing

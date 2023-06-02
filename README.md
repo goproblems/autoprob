@@ -6,6 +6,9 @@ This tool heavily uses katago for multiple stages of analysis.
 See a collection of problems created with this tool:
 https://www.goproblems.com/group/usergroup.php?id=237
 
+See a tutorial video on how to use this:
+https://www.youtube.com/watch?v=oXz5EIXP8sQ
+
 <img width="1343" alt="image" src="https://github.com/adum/autoprob/assets/52733/ba11b01f-218c-4c55-9860-ac99dec72c0a">
 
 # Quickstart

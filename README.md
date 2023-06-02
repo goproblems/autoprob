@@ -3,21 +3,24 @@ Automatically find and extract go problems from games. The resulting problems ar
 
 This tool heavily uses katago for multiple stages of analysis.
 
+See a collection of problems created with this tool:
+https://www.goproblems.com/group/usergroup.php?id=237
+
 <img width="1343" alt="image" src="https://github.com/adum/autoprob/assets/52733/ba11b01f-218c-4c55-9860-ac99dec72c0a">
 
-# quickstart
+# Quickstart
 
-1) download katago: https://github.com/lightvector/KataGo
-2) download some weights. i recommend the b15 network for speed: https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b15c192-s1672170752-d466197061.txt.gz
-3) make sure you have Java installed. compile the autoprob source or run existing jars (when available)
-4) download a gson jar: https://github.com/google/gson
+1) Download katago: https://github.com/lightvector/KataGo
+2) Download some weights. i recommend the b15 network for speed: https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b15c192-s1672170752-d466197061.txt.gz
+3) Make sure you have Java installed. compile the autoprob source or run existing jars (when available)
+4) Download a gson jar: https://github.com/google/gson
 5) Validate it works with a sample test file. Run the VisRunner main class. A simple command line might be:
 
 `path_to\config.properties katago=path_to\katago.exe kata.config=path_to\analysis_example.cfg kata.model=path_to\weights.txt.gz path=sample_games\2019-04-01-123_m198.sgf turn=198 forceproblem=true`
 
-you will have to pass in the gson jar. this should pop up a Java window with a detected problem from this game. replace the paths with paths to your katago executable, config file, and weights.
+You will have to pass in the gson jar. This should pop up a Java window with a detected problem from this game. Replace the paths with paths to your katago executable, config file, and weights.
 
-if you are having problems, try passing `kata.debug_print=true` on the command line also
+If you are having problems, try passing `kata.debug_print=true` on the command line also
 
 6) Edit the board on the right, which is the problem board, to fix any extraction mistakes. Left click for black, right click for white.
 7) Hit the Make Paths button to generate solution and refutation paths with katago.

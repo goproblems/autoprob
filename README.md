@@ -3,6 +3,8 @@ Automatically find and extract go problems from games. The resulting problems ar
 
 This tool heavily uses katago for multiple stages of analysis.
 
+<img width="1343" alt="image" src="https://github.com/adum/autoprob/assets/52733/ba11b01f-218c-4c55-9860-ac99dec72c0a">
+
 # quickstart
 
 1) download katago: https://github.com/lightvector/KataGo
@@ -54,8 +56,17 @@ control-left click to remove a group
 Game board:
 left click to move a connected group to problem board
 
+# Path creation
+
+The next step is to click the "Make Paths" button to generate a tree of good and bad moves for the go problem.
+
+There are many configuration parameters around this, which is the most complicated part of autoprob by far. A couple of parameters are right on the UI, but most should be examined in the config file.
+
+Before starting, you may wish to hit the "fill empty board" button. This will put some solid groups into empty corners. This can help katago concentrate on the problem instead of wanting to tenuki. Hitting this button repeatedly will expand the groups. Hitting remove fill will clear it. (The groups get cleared from the end problem automatically of course.) The smaller the problem, the more likely this is necessary.
+
+Path creation is quite computation intensive. Katago is asked to calculate life status for every position it explores and considers. Hit the "stop" button to abandon the search. Setting max_depth can put a hard limit on how deep it goes in the tree, but the general strategy is looking at the policy at each point to guess at how much it makes sense to keep going. In many problem positions, katago would naturally want to tenuki, knowing that a position is lost, so it requires some cajoling to keep going.
 
 
 
-<img width="1343" alt="image" src="https://github.com/adum/autoprob/assets/52733/ba11b01f-218c-4c55-9860-ac99dec72c0a">
+
 

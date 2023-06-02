@@ -1,7 +1,7 @@
 # autoprob
-automatically find and extract go problems from games. the resulting problems are formatted for adding to www.goproblems.com
+Automatically find and extract go problems from games. The resulting problems are formatted for adding to www.goproblems.com or potentially other resources.
 
-more documentation coming soon!
+This tool heavily uses katago for multiple stages of analysis.
 
 # quickstart
 
@@ -34,8 +34,28 @@ This is a key mode of using autoprob. Given a directory full of SGF files, this 
 
 To run in this mode, set `path` on the command line or config file to point to the directory to scan. (Note: it's easy to find large collections of amateur games played on go servers.)
 
-By default, autoprob will save its progress in the directory in a file called `zpos`, so you can run it again later on new files.
+By default, autoprob will save its progress in the directory in a file called `zpos`, so you can run it again later on the same directory for new files.
 
 The program will continue finding potential problems until `search.directory.max_finds` is reached.
 
-<img width="1650" alt="autoprob" src="https://user-images.githubusercontent.com/52733/232354589-db9876d8-a221-44e7-99d5-b8637c7bd2db.png">
+Lots of configuration options can control the search -- look in the config.properties file for a complete list. There's a general tradeoff between accuracy and speed, represented by the number of visits used for each position in the tree. There's another high level tradeoff between finding more problems, and trying to find better problems. For example, the configuration parameter `search.max_policy=0.6` is a way of estimating how obvious a solution in. This corresponds to katago's policy function (how likely it believes a given move is without search.) Setting this value higher allows more potential go problems to be found, but they may be less interesting.
+
+As directory scanning is running, autoprob will keep going through SGF files looking for potential go problems. Each one will pop up into a new window, ready for next steps. As of this writing, only about 10% of these are actually good problem candidates. It takes some practice to quickly judge this. Hopefully this percentage will increase in the future.
+
+# Problem extraction
+
+This is the step where a game position looks like a good candidate go problem, and autoprob tries to extract just the relevant parts into the board on the right. This almost never goes perfectly, and thus requires a little manual editing. This is generally super quick. Fixing outside holes is often a good idea so you don't get problem "leaks". Another common issue is extra stones in random places on the board.
+
+Editing commands:
+Problem board:
+left click add/remove black stone
+right click add/remove white stone
+control-left click to remove a group
+Game board:
+left click to move a connected group to problem board
+
+
+
+
+<img width="1343" alt="image" src="https://github.com/adum/autoprob/assets/52733/ba11b01f-218c-4c55-9860-ac99dec72c0a">
+

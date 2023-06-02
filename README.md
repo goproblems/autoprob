@@ -19,9 +19,9 @@ https://www.goproblems.com/group/usergroup.php?id=237
 
 `java -jar autoprob.jar path_to\config.properties katago=path_to\katago.exe kata.config=path_to\analysis_example.cfg kata.model=path_to\weights.txt.gz path=sample_games\2019-04-01-123_m198.sgf forceproblem=true`
 
-You will have to pass in the gson jar. This should pop up a Java window with a detected problem from this game. Replace the paths with paths to your katago executable, config file, and weights.
+This should pop up a Java window with a detected problem from this game. Replace the paths with paths to your katago executable, config file, and weights.
 
-If you are having problems, try passing `kata.debug_print=true` on the command line also
+If you are having problems, and things aren't working for some reason, try passing `kata.debug_print=true` on the command line. This will debug print raw katago output.
 
 6) Edit the board on the right, which is the problem board, to fix any extraction mistakes. Left click for black, right click for white.
 7) Hit the Make Paths button to generate solution and refutation paths with katago.

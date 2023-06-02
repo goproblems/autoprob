@@ -74,7 +74,10 @@ Before starting, you may wish to hit the "fill empty board" button. This will pu
 
 Path creation is quite computation intensive. Katago is asked to calculate life status for every position it explores and considers. Hit the "stop" button to abandon the search. Setting max_depth can put a hard limit on how deep it goes in the tree, but the general strategy is looking at the policy at each point to guess at how much it makes sense to keep going. In many problem positions, katago would naturally want to tenuki, knowing that a position is lost, so it requires some cajoling to keep going.
 
-There is a tree of paths displayed to the right of the problem board. These nodes can be clicked on during path creation. Mousing over positions on the problem board gives some info about different intersections, which can be helpful to understand what is happening. There is generally a lot of debugging info that can be turned on with the config file.
+There is a tree of paths displayed to the right of the problem board. These nodes can be clicked on during path creation.
+
+Mousing over positions on the problem board gives some info about different intersections, which can be helpful to understand what is happening. There is generally a lot of debugging info that can be turned on with the config file.
+<img width="178" alt="image" src="https://github.com/adum/autoprob/assets/52733/213a107a-5a07-4794-826b-5e60d4a71f94">
 
 Sometimes you will start path creation and then realize the problem is a disaster for one of a variety of reasons, and have to stop it.
 

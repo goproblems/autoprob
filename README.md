@@ -44,6 +44,10 @@ Lots of configuration options can control the search -- look in the config.prope
 
 As directory scanning is running, autoprob will keep going through SGF files looking for potential go problems. Each one will pop up into a new window, ready for next steps. As of this writing, only about 10% of these are actually good problem candidates. It takes some practice to quickly judge this. Hopefully this percentage will increase in the future.
 
+There are a variety of heuristics used to find good go problem targets. The primary condition is finding an actual mistake from a real go game, where the mistake caused a significant change in life and death status of a group. By limiting the search to actual mistakes, we get to start from knowing this is a learning opportunity for at least some players.
+
+It is very easy to find large numbers of amateur games online to download, a practically infinite source of interesting go problems. I have found that 4d+ games work best. Even just mistakes from these produce a lot of relatively easy problems (10-20k range) as well as harder ones.
+
 # Problem extraction
 
 This is the step where a game position looks like a good candidate go problem, and autoprob tries to extract just the relevant parts into the board on the right. This almost never goes perfectly, and thus requires a little manual editing. This is generally super quick. Fixing outside holes is often a good idea so you don't get problem "leaks". Another common issue is extra stones in random places on the board.
@@ -66,7 +70,15 @@ Before starting, you may wish to hit the "fill empty board" button. This will pu
 
 Path creation is quite computation intensive. Katago is asked to calculate life status for every position it explores and considers. Hit the "stop" button to abandon the search. Setting max_depth can put a hard limit on how deep it goes in the tree, but the general strategy is looking at the policy at each point to guess at how much it makes sense to keep going. In many problem positions, katago would naturally want to tenuki, knowing that a position is lost, so it requires some cajoling to keep going.
 
+There is a tree of paths displayed to the right of the problem board. These nodes can be clicked on during path creation. Mousing over positions on the problem board gives some info about different intersections, which can be helpful to understand what is happening. There is generally a lot of debugging info that can be turned on with the config file.
 
+Sometimes you will start path creation and then realize the problem is a disaster for one of a variety of reasons, and have to stop it.
+
+# Exporting the problem
+
+By default, the finished SGF is saved in a file named in `output.path`. You can also hit the SGF button to print the problem to standard out.
+
+Many problems need a little touching up in an SGF editor after this stage before uploading to goproblems.com. The most common issue is paths that are so dumb they really shouldn't exist. Also paths that go on way too long and should be shortened.
 
 
 

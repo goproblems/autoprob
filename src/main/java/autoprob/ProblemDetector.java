@@ -18,8 +18,8 @@ public class ProblemDetector {
 //	public static final int DETECT_SCORE = 18;
 	public static final double OWNERSHIP_THRESHOLD = 1.5;
 	public static final double EMPTY_OWNERSHIP_THRESHOLD = 0.7;
-	public static final int DETECT_OWNERSHIP_STONES = 6;
-//	public static final double EXTRA_SOLUTION_THRESHOLD = 10; // scores within this range
+	public static int DETECT_OWNERSHIP_STONES = 7;
+	public static final double EXTRA_SOLUTION_THRESHOLD = 10; // scores within this range
 	public static int DETECT_MAX_SOLUTIONS = 1;
 	public static final double MIN_SOL_VISIT_RATIO = 0.05;
 	public static double MAX_POLICY; // anything over this is just toooo obvious
@@ -39,7 +39,7 @@ public class ProblemDetector {
 	public int ownDeltaB;
 	public int ownDeltaW;
 	public ArrayList<Point> ownershipChanges = new ArrayList<>();
-	public ArrayList<Point> fullOwnershipChanges = new ArrayList<>();
+	public ArrayList<Point> fullOwnershipChanges = new ArrayList<>(); // includes empty intersections
 	public ArrayList<Point> fullOwnNeighbors;
 	
 	public Board filledStones = new Board(); // what we have placed down to fill
@@ -49,33 +49,36 @@ public class ProblemDetector {
 	public KataAnalysisResult karPass;
 
 	// prev is the problem position. kar is the mistake position. node represents prev.
+	// the constructor tries to detect a problem. if it does, validProblem is set to true.
 	// @forcedetect: if true, ignore score and ownership thresholds etc
-	public ProblemDetector(KataBrain brain, KataAnalysisResult prev, KataAnalysisResult mistake, Node node, Properties props, boolean forceDetect) {
+	public ProblemDetector(KataBrain brain, KataAnalysisResult prev, KataAnalysisResult mistake, Node node, Properties props, boolean forceDetect) throws Exception {
 		this.mistake = mistake;
 		this.prev = prev;
 		this.node = node;
 		this.props = props;
 		
 		// set from properties
-		MAX_POLICY = Double.parseDouble(props.getProperty("search.maxpolicy"));
-		DETECT_MAX_SOLUTIONS = Integer.parseInt(props.getProperty("search.maxsolutions"));
-		
+		MAX_POLICY = Double.parseDouble(props.getProperty("search.max_policy"));
+		DETECT_MAX_SOLUTIONS = Integer.parseInt(props.getProperty("search.max_solutions"));
+		DETECT_OWNERSHIP_STONES = Integer.parseInt(props.getProperty("search.life_mistake_stones"));
+
 		validProblem = false;
 
         Node child = node.favoriteSon();
         Point nextMove = child.findMove();
         if (nextMove.x == 19) return;
 
-        // big score differential?
-		scoreDelta = mistake.rootInfo.scoreLead - prev.rootInfo.scoreLead;
-		if (Math.abs(scoreDelta) < DETECT_SCORE) {
-			if (!forceDetect) return;
-		}
+		// no longer using score, for now...
+//        // big score differential?
+//		scoreDelta = mistake.rootInfo.scoreLead - prev.rootInfo.scoreLead;
+//		if (Math.abs(scoreDelta) < DETECT_SCORE) {
+//			if (!forceDetect) return;
+//		}
 		
 		// ownership delta: what dies in this mistake?
-		stoneDelta(mistake, node, prev);
+		stoneDelta(mistake, node, prev); // also saves in ownershipChanges
 		if (totDelta < DETECT_OWNERSHIP_STONES) {
-			System.out.println("low ownership change: " + (totDelta));
+//			System.out.println("low ownership change: " + (totDelta));
 			if (!forceDetect) return;
 		}
 
@@ -89,7 +92,7 @@ public class ProblemDetector {
 		Point lastMove = node.findMove();
 		if (lastMove.x != 19 && node.mom.board.isKoShape(lastMove)) {
 			System.out.println("last move was ko");
-			if (Boolean.parseBoolean(props.getProperty("search.nolastkomove"))) {
+			if (Boolean.parseBoolean(props.getProperty("search.no_last_ko_move"))) {
 				if (!forceDetect) return;
 			}
 		}
@@ -114,32 +117,57 @@ public class ProblemDetector {
 		}
 		
 		// let's do a more exhaustive analysis here
+		int visits = Integer.parseInt(props.getProperty("search.root_visits"));
+		System.out.println("running deeper problem search analysis with #visits: " + visits);
+		boolean dbgOwn = Boolean.parseBoolean(props.getProperty("search.debug_pass_ownership", "false"));
+		var na = new NodeAnalyzer(props, dbgOwn);
+		// first the root node, the position before the mistake
+		var karDeep = na.analyzeNode(brain, node, visits);
+
 		// compare what happens if we pass
 
-		Node passNode;
-		try {
-			passNode = node.addBasicMove(19, 19);
-			int visits = Integer.parseInt(props.getProperty("search.root_visits"));
-			System.out.println("doing more exhaustive check, visits=" + visits);
-			boolean dbgOwn = Boolean.parseBoolean(props.getProperty("search.debugpassownership", "false"));
-			var na = new NodeAnalyzer(props, dbgOwn);
-			karPass = na.analyzeNode(brain, passNode, visits);
-			// clean up
-			node.removeChildNode(passNode);
+		Node passNode = node.addBasicMove(19, 19);
+		System.out.println("doing more exhaustive check, visits=" + visits);
+		karPass = na.analyzeNode(brain, passNode, visits);
+		// clean up
+		node.removeChildNode(passNode);
 
-		} catch (Exception e) {
-			e.printStackTrace();
-			return;
-		}
-		
 		//TODO count sols again etc
 
-		calcFullDelta(karPass, node, prev);
+		// redo delta with more accurate analysis
+		stoneDelta(karPass, node, karDeep); // also saves in ownershipChanges
+		// calc delta including empties
+		calcFullDelta(karPass, node, karDeep);
+
+		// check if some stones are not as clearly live/dead as we would like
+		int ownershipChangesUnderThreshold = countOwnershipChangesUnderThreshold(karDeep);
+		System.out.println("ownership change stones under life threshold: " + ownershipChangesUnderThreshold);
+		if (ownershipChangesUnderThreshold >= Integer.parseInt(props.getProperty("search.min_alive_threshold_stones"))) {
+			if (!forceDetect) return;
+		}
+
 		System.out.println("Detected prob at move: " + prev.turnNumber);
 		validProblem = true;
 		
 		// construct a new board position with relevant stones
 		makeProblem();
+	}
+
+	// from the ownership changes, check how many stones are in a not super clear state
+	private int countOwnershipChangesUnderThreshold(KataAnalysisResult kar) {
+		int count = 0;
+		double minAliveThreshold = Double.parseDouble(props.getProperty("search.min_alive_threshold"));
+
+		// loop over just stones
+		for (Point p: ownershipChanges) {
+			double aliveness = kar.ownership.get(p.x + p.y * 19);
+			// debug print
+			System.out.println("  aliveness: " + aliveness + " at " + Intersection.toGTPloc(p.x, p.y));
+			if (Math.abs(aliveness) < minAliveThreshold) {
+				count++;
+			}
+		}
+		return count;
 	}
 
 	// for testing
@@ -250,6 +278,7 @@ public class ProblemDetector {
 	}
 
 	// what stone ownership changes significantly between these moves
+	// store delta in ownershipChanges
 	public void stoneDelta(KataAnalysisResult kar, Node node, KataAnalysisResult prev) {
 		// reset any existing data
 		ownDeltaB = ownDeltaW = 0;
@@ -274,13 +303,16 @@ public class ProblemDetector {
 					ownershipChanges.add(new Point(x, y));
 				}
 			}
-		System.out.println("max ownership delta (stones relatively changing sides): " + df.format(maxDelta));
+		boolean dbg = Boolean.parseBoolean(props.getProperty("extract.debug_print_ownership", "false"));
+		if (dbg) {
+			System.out.println("max ownership delta (stones relatively changing sides): " + df.format(maxDelta));
+		}
 		totDelta = ownDeltaB + ownDeltaW;
 	}
 
 	// what stone ownership changes significantly between these moves
 	private void calcFullDelta(KataAnalysisResult kar, Node node, KataAnalysisResult prev) {
-		boolean dbg = Boolean.parseBoolean(props.getProperty("extract.debugprintownership", "false"));
+		boolean dbg = Boolean.parseBoolean(props.getProperty("extract.debug_print_ownership", "false"));
 		if (dbg) {
 			System.out.println("prev ownership:");
 			prev.drawNumericalOwnership(node);

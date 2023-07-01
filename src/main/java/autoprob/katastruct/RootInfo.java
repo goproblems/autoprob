@@ -34,4 +34,16 @@ public class RootInfo {
 	@SerializedName("winrate")
 	@Expose
 	public Double winrate;
+
+	@Override
+	public String toString() {
+		return "RootInfo{" +
+				"currentPlayer='" + currentPlayer + '\'' +
+				", scoreLead=" + scoreLead +
+				", scoreStdev=" + scoreStdev +
+				", utility=" + utility +
+				", visits=" + visits +
+				", winrate=" + winrate +
+				'}';
+	}
 }

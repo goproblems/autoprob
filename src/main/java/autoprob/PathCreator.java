@@ -15,10 +15,16 @@ import autoprob.katastruct.MoveInfo;
 // creates solution and refutation paths given a problem
 public class PathCreator {
     private static final DecimalFormat df = new DecimalFormat("0.00");
-	private final int maxDepth;
+	private final boolean debugOwnership;
+	private final KataBrain brain;
+	private final int ignoreResponseVisitsDepth; // normally we do responses if they get enough visits, even if the policy is low but setting this will cap it out -- otherwise variations go almost forever
 	private boolean abortNow = false;
+	private BasicGoban probGoban;
+	private GenOptions gopts;
+	private NodeChangeListener ncl;
 
-    public void abortPathCreation() {
+	// signal to stop exploring new things, exit gracefully
+	public void abortPathCreation() {
 		abortNow = true;
     }
 
@@ -26,52 +32,102 @@ public class PathCreator {
 	public class GenOptions {
 		public boolean altRefutes = false;
 		public boolean altChallenges = false; // alternative ways to test human on correct line
-		public int bailNum = 40; // max moves in tree
-		public int bailDepth = 2; // only bail if at least this deep
-		public double minPrior = 0.04; // for determining interesting variations, require this
 		public boolean onlyConsiderNear = true; // tell kata to only look at possible moves near existing stones
 		public double considerNearDist = 2.1; // how close for near moves
-		
+		public int pathsVisits = 1000;
+		public int maxDepth = 10000;
+
 		@Override
 		public String toString() {
-			return "bail num: " + bailNum + ", bail depth: " + bailDepth;
+			return "GenOptions [altRefutes=" + altRefutes + ", altChallenges=" + altChallenges + ", onlyConsiderNear="
+					+ onlyConsiderNear + ", considerNearDist=" + considerNearDist + ", pathsVisits=" + pathsVisits
+					+ ", maxDepth=" + maxDepth + "]";
 		}
 	}
 
-	public static final int MOVE_VISITS_DEF = 1000;
-	public static final double EXTRA_SOLUTION_THRESHOLD = 10; // scores within this range
 	public static final int MIN_VISITS_WRONG = 10; // consider wrong moves with this many visits
 	public static final double TENUKI_DIST = 2.7; // a move this far away from any other is a tenuki
 	public static final double TENUKI_DIST_ERR = 2.5; // a move this far away from any other is a tenuki
 	public static final double OWNERSHIP_THRESHOLD = 1.1;
-	public static final double MOVE_DELTA_OWNERSHIP_THRESHOLD = 0.8; // how moves affect ownership
-	public static final int MIN_OWNERSHIP_CHANGE_INTEREST = 5; // 
+	public static double MOVE_DELTA_OWNERSHIP_THRESHOLD = 0.8; // how moves affect ownership
+	public static int MIN_OWNERSHIP_CHANGE_INTEREST = 4; // max deviation from detector ownership
 	public static final int MIN_GOOD_RESPONSE_VISITS = 5;
 	public static final double MIN_GOOD_RESPONSE_POLICY = 0.05;
 	public static final double MIN_GOOD_DEEP_RESPONSE_VISIT_RATIO = 0.5;
 	public static final double MAX_VULN_INTEREST = 2.1; // 
-	
+	public int bailNum = 40; // max moves in tree
+	public int bailDepth = 2; // only bail if at least this deep
+
 	private int totalVarMoves = 0; // how many have been added to tree
 	private Node firstSol = null; // first solution we find
 	private final ProblemDetector det;
 	private final Properties props;
+	private int[] minPolicies;
 
-	public PathCreator(ProblemDetector det, Properties props) {
+	public PathCreator(ProblemDetector det, Properties props, KataBrain brain) {
 		this.det = det;
 		this.props = props;
-		this.maxDepth = Integer.parseInt(props.getProperty("paths.max_depth", "10000"));
+		this.brain = brain;
+//		this.maxDepth = Integer.parseInt(props.getProperty("paths.max_depth", "10000"));
+		MIN_OWNERSHIP_CHANGE_INTEREST = Integer.parseInt(props.getProperty("paths.life_mistake_stones", "4"));
+		MOVE_DELTA_OWNERSHIP_THRESHOLD = Double.parseDouble(props.getProperty("paths.life_mistake_threshold", "0.8"));
+
+		this.debugOwnership = Boolean.parseBoolean(props.getProperty("paths.debug_ownership", "false"));
+		bailDepth = Integer.parseInt(props.getProperty("paths.bail_depth", "4"));
+		bailNum = Integer.parseInt(props.getProperty("paths.bail_num", "40000"));
+		parseMinPolicyPrefs();
+		this.ignoreResponseVisitsDepth = Integer.parseInt(props.getProperty("paths.ignore_response_visits_depth", "8"));
 	}
 
-	// RIGHT: we are in a correct variation -- no errors by human
-	private void handleRightMoveOption(KataBrain brain, Node node, BasicGoban probGoban, int depth, MoveInfo mi, KataAnalysisResult kar, GenOptions gopts, NodeChangeListener ncl) throws Exception {
+	// we specify minimum policy with a comma separated list
+	private void parseMinPolicyPrefs() {
+		String s = props.getProperty("paths.min_policy");
+		String[] split = s.split(",");
+		minPolicies = new int[split.length];
+		// convert to integers
+		for (int i = 0; i < split.length; i++) {
+			split[i] = split[i].trim();
+			minPolicies[i] = Integer.parseInt(split[i]);
+		}
+	}
+
+	// get min policy for a given depth
+	private int getMinPolicy(int depth) {
+		if (depth >= minPolicies.length) return minPolicies[minPolicies.length - 1];
+		return minPolicies[depth];
+	}
+
+	// checks policy and sometimes visits
+	private boolean interestingLookingMove(MoveInfo mi, int depth, boolean considerResponseDepth) {
+		int visits = gopts.pathsVisits;
+
+		int minPolicy = getMinPolicy(depth);
+		boolean interesting = false;
+
+		if (mi.prior > ((double)minPolicy / 1000.0))
+			interesting = true;
+		if (mi.visits > visits * 0.5) {
+			if (considerResponseDepth && depth >= ignoreResponseVisitsDepth) {
+				// ignore it
+			} else {
+				interesting = true;
+			}
+		}
+		return interesting;
+	}
+
+	private boolean interestingLookingMove(MoveInfo mi, int depth) {
+		return interestingLookingMove(mi, depth, false);
+	}
+
+		// RIGHT: we are in a correct variation -- no errors by human
+	private void handleRightMoveOption(Node nodeParent, int depth, MoveInfo mi, KataAnalysisResult kar) throws Exception {
 		if (abortNow) return; // early exit
 
 		boolean isResponse = (depth & 1) == 1; // are we in a computer response move?
-		double score = mi.scoreLead;
 		Point p = Intersection.gtp2point(mi.move);
-		double nearest = findNearest(node.board, p);
-		double baseline = kar.rootInfo.scoreLead;
-		
+		double nearest = findNearest(nodeParent.board, p);
+
 		// for right sequences, we END with a human move
 		// we always respond to a good human move
 		// try to add good human moves to the tree
@@ -82,105 +138,107 @@ public class PathCreator {
 		// human or computer move?
 		if (isResponse) {
 			// COMPUTER
-			if (Math.abs(baseline - score) < EXTRA_SOLUTION_THRESHOLD) {
+			boolean goodMove = true; // should calc on something? used to be Math.abs(baseline - score) < EXTRA_SOLUTION_THRESHOLD
+			if (goodMove) {
 				// good response relative to the situation
 				// but we have to check if it's interesting to add to the tree -- if it challenges the human in a way that makes sense
 				// not necessary to add this depending on situation
-				
 
 				// if too far from other moves, not interesting
 				if (nearest > TENUKI_DIST_ERR) return;
 				
-				System.out.println("  _considering_ response: " + node.printPath2Here() + ", " + mi.move + ", visits: " + mi.visits + ", policy: " + df.format(mi.prior * 1000.0));
+				System.out.println("  _considering_ response: " + nodeParent.printPath2Here() + ", " + mi.extString());
 
 				if (mi.visits < MIN_GOOD_RESPONSE_VISITS && mi.prior < MIN_GOOD_RESPONSE_POLICY) {
 					System.out.println("  bad visits and policy");
 					return;
 				}
-				if (firstSol != null && node.depth > firstSol.depth) {
+				if (firstSol != null && nodeParent.depth > firstSol.depth) {
 					// check vs first sol depth, don't exceed too much
 					if (mi.visits < MIN_GOOD_DEEP_RESPONSE_VISIT_RATIO * kar.rootInfo.visits) {
 						System.out.println("  too deep");
 						return;
 					}
 				}
-				if (depth >= maxDepth) {
-					System.out.println("(computer response) reached max depth as specified: " + maxDepth);
+				if (depth >= gopts.maxDepth) {
+					System.out.println("(computer response) reached max depth as specified: " + gopts.maxDepth);
 					return;
 				}
 
-				if (!gopts.altRefutes && node.babies.size() > 0) return; // already handled this var (we already refuted)
+				if (!gopts.altRefutes && nodeParent.babies.size() > 0) return; // already handled this var (we already refuted)
 				
 				// if this is not an intuitive move, don't bother
-				if (mi.prior < gopts.minPrior) {
-					System.out.println("  low prior " + mi.prior + " for " + mi.move);
+				if (!interestingLookingMove(mi, depth, true)) {
+					System.out.println("  low prior " + mi.extString() + " depth " + depth);
 					return;
 				}
 				
 				// it's only interesting if it threatens to change life status
-				int delta = calcPassDelta(brain, node, p, gopts);
+				int delta = calcPassDelta(nodeParent, p, gopts);
 		        if (delta < MIN_OWNERSHIP_CHANGE_INTEREST) {
 		        	System.out.println("  response rejected, no threat: " + delta);
 		        	return; // no threat, so don't add to tree
 		        }
 
 				// okay we have decided it's interesting, let's add the response and challenge the human
-				System.out.println("  interesting response: " + mi.move + ", visits: " + mi.visits + ", policy: " + df.format(mi.prior * 1000.0) + ", " + node.printPath2Here());
-		        Node tike = node.addBasicMove(p.x, p.y);
+				System.out.println("  interesting response: " + nodeParent.printPath2Here() + ", " + mi.extString());
+		        Node tike = nodeParent.addBasicMove(p.x, p.y);
 		        // recurse for responses
-		        genPathRecurse(brain, tike, probGoban, depth + 1, true, gopts, ncl);
+		        genPathRecurse(tike, depth + 1, true);
 			} else {
 				// bad move -- ignore
 			}
 		} else {
 			// HUMAN
-			if (Math.abs(baseline - score) < EXTRA_SOLUTION_THRESHOLD) {
+			// see if we have kept the relevant alive state -- we know we are still comparing against original detection because we're in a right variation
+			int delta = calcMoveDelta(nodeParent, p, kar, gopts);
+			boolean significantOwnershipChange = (delta > MIN_OWNERSHIP_CHANGE_INTEREST);
+
+			if (!significantOwnershipChange) {
 				// they are making a correct move
-				System.out.println("  d:" + depth + " >> human sol: " + mi.move + ", nearest: " + nearest + ", visits: " + mi.visits + ", policy: " + df.format(mi.prior * 1000.0) + ", score: " + score + ", " + node.printPath2Here());
+				System.out.println("  d:" + depth + " >> human sol: " + mi.extString() + ", nearest: " + df.format(nearest) + ", path: " + nodeParent.printPath2Here());
 
 				// check move isn't a tenuki
 				if (nearest > TENUKI_DIST) {
 					return;
 				}
-					
-				// validate this is actually right and doesn't blow it
-				int delta = calcMoveDelta(brain, node, p, kar, gopts);
-		        if (delta > MIN_OWNERSHIP_CHANGE_INTEREST) {
-		        	System.out.println("  not really a good move: " + mi.move + ", delta: " + delta);
-		        	return;
-		        }
-			        
-		        Node tike = node.addBasicMove(p.x, p.y);
+
+				// add to tree
+				Node tike = nodeParent.addBasicMove(p.x, p.y);
 		        tike.result = Intersection.RIGHT;
+
+				// track first solution we find
 		        if (firstSol == null)
 		        	firstSol = tike;
 		        if (depth > 1) {
-		        	node.mom.result = 0; // this becomes not a solution
-		        	if (firstSol == node.mom)
+		        	nodeParent.mom.result = 0; // this becomes not a solution
+		        	if (firstSol == nodeParent.mom)
 		        		firstSol = tike; // update to deeper in tree
 		        }
 
-		        if (totalVarMoves++ > gopts.bailNum && depth > gopts.bailDepth) {
+		        if (totalVarMoves++ > bailNum && depth > bailDepth) {
 					System.out.println("$$$$$$$$$ human solve bail");
 					return;
 				}
-				if (depth >= maxDepth) {
-					System.out.println("(human good move) reached max depth as specified: " + maxDepth);
+				if (depth >= gopts.maxDepth) {
+					System.out.println("(human good move) reached max depth as specified: " + gopts.maxDepth);
 					return;
 				}
 
 		        // recurse for responses
-		        genPathRecurse(brain, tike, probGoban, depth + 1, true, gopts, ncl);
+		        genPathRecurse(tike, depth + 1, true);
 			} else {
-				// bad move
-				System.out.println("  _considering_ new mistake: " + node.printPath2Here() + ", " + mi.move + ", visits: " + mi.visits + ", policy: " + df.format(mi.prior * 1000.0) + ", score: " + score);
+				// bad human move
+				System.out.println("  _considering_ new mistake: " + nodeParent.printPath2Here() + ", " + mi.extString());
 				
-				if (nearest > TENUKI_DIST_ERR)
+				if (nearest > TENUKI_DIST_ERR) {
+					System.out.println("tenuki");
 					return; // if too far from other moves, not interesting
-				
+				}
+
 				if (mi.visits < MIN_VISITS_WRONG && mi.prior < MIN_GOOD_RESPONSE_POLICY) {
 					if (depth > 0) {
-			        	System.out.println("  too few visits and policy: " + mi.move + ", visits: " + mi.visits);
+			        	System.out.println("  too few visits and policy: " + mi.extString());
 						return; // too obscure
 					} else {
 						// ensure within good starting moves
@@ -193,60 +251,59 @@ public class PathCreator {
 					}
 				}
 				
-//					if (mi.prior < 0.015) {
-//			        	System.out.println("  too low policy on root: " + mi.move + ", visits: " + mi.visits);
-//						return; // too obscure
-//					}
-				if (depth > 3 && mi.prior < 0.02) {
-					System.out.println("  too weird deep");
-					return; // too weird this deep
-				}
-				if (countEmptyShots(p, node) >= 3)
-					return; // looks on outside
-				if (depth >= maxDepth) {
-					System.out.println("(human mistake) reached max depth as specified: " + maxDepth);
+				if (!interestingLookingMove(mi, depth)) {
+					System.out.println("  low prior " + mi.extString() + " depth " + depth);
 					return;
 				}
 
-				// it's only interesting if it threatens to change life status
-				int delta = calcPassDelta(brain, node, p, gopts);
-		        if (delta < MIN_OWNERSHIP_CHANGE_INTEREST) {
-		        	System.out.println("  mistake has bad ownership change: " + mi.move + ", delta: " + delta);
+				if (countEmptyShots(p, nodeParent) >= 3 && !det.fullOwnershipChanges.contains(p))
+					return; // looks on outside
+				if (depth >= gopts.maxDepth) {
+					System.out.println("(human mistake) reached max depth as specified: " + gopts.maxDepth);
+					return;
+				}
+
+				// it's only interesting if it threatens to change life status, as in the opponent at least needs to respond to this move
+				int passDelta = calcPassDelta(nodeParent, p, gopts);
+		        if (passDelta < MIN_OWNERSHIP_CHANGE_INTEREST) {
+		        	System.out.println("  mistake has bad pass ownership change: " + mi.move + ", delta: " + passDelta);
 		        	return; // no threat, so don't add to tree
 		        }
 		        
 		        // this human move should be answered
-		        System.out.println("  will respond to mistake: " + node.printPath2Here() + ", " + mi.move + ", visits: " + mi.visits + ", policy: " + df.format(mi.prior * 1000.0) + ", score: " + score);
+		        System.out.println("  will respond to mistake: " + nodeParent.printPath2Here() + ", " + mi.extString());
 		        // recurse
-		        Node tike = node.addBasicMove(p.x, p.y);
-		        genPathRecurse(brain, tike, probGoban, depth + 1, false, gopts, ncl);
+		        Node tike = nodeParent.addBasicMove(p.x, p.y);
+		        genPathRecurse(tike, depth + 1, false);
 			}
 		}
 	}
 
-	// WRONG: we are in a wrong variation -- one more more human errors
-	private void handleWrongMoveOption(KataBrain brain, Node node, BasicGoban probGoban, int depth, MoveInfo mi,
-			KataAnalysisResult kar, GenOptions gopts, NodeChangeListener ncl) throws Exception {
+	// WRONG: we are in a wrong variation -- one or more human errors
+	private void handleWrongMoveOption(Node node, int depth, MoveInfo mi,
+			KataAnalysisResult karParent) throws Exception {
 		if (abortNow) return; // early exit
 
 		boolean isResponse = (depth & 1) == 1; // are we in a computer response move?
-		double score = mi.scoreLead;
 		Point p = Intersection.gtp2point(mi.move);
 		double nearest = findNearest(node.board, p);
-		double baseline = kar.rootInfo.scoreLead;
-		
-		// for wrong sequences, we END with a computer move, which is the refutation
 
+		// for wrong sequences, we END with a computer move, which is the refutation
 		// human or computer move?
 		if (isResponse) {
 			// computer
-			if (Math.abs(baseline - score) < EXTRA_SOLUTION_THRESHOLD) {
+			if (!gopts.altRefutes && node.babies.size() > 0) return; // already handled this var
+			// get more visits on this move
+			var karMove = calcMoveAnalysis(node, p, gopts);
+			int ownershipDelta = stoneDelta(karParent, karMove, node);
+			// note, a move can only make ownership worse, since it was already assumed to have perfect responses
+
+			if (ownershipDelta < MIN_OWNERSHIP_CHANGE_INTEREST) {
 				// good response relative to the situation
 				// necessary to add so we refute
 				//TODO maybe only add if not already a good refutation. eventually, figure out best refutation. or possibly make them choices
 				
 				// if too far from other moves, not interesting
-				if (!gopts.altRefutes && node.babies.size() > 0) return; // already handled this var
 				if (nearest > TENUKI_DIST) {
 					System.out.println("WARNING: oddly distant refutation move " + mi.move);
 				}
@@ -255,56 +312,63 @@ public class PathCreator {
 				System.out.println("  refutation: " + mi.move + ", visits: " + mi.visits + ", " + node.printPath2Here());
 		        Node tike = node.addBasicMove(p.x, p.y);
 		        // recurse for responses
-		        genPathRecurse(brain, tike, probGoban, depth + 1, false, gopts, ncl);
+		        genPathRecurse(tike, depth + 1, false);
 			} else {
 				// bad move -- ignore
 			}
 		} else {
 			// human is trying this
-			if (Math.abs(baseline - score) < EXTRA_SOLUTION_THRESHOLD) {
-				// good response relative to the situation
-				
-				// check if it's relevant
-				
-				double dist = distance2vulnerable(p);
-				if (mi.visits > 5 || mi.prior > 0.01) // cut down spam
-					System.out.println("  _considering_ human wrong path attempt: " + node.printPath2Here() + ", " + mi.move + ", visits: " + mi.visits + ", policy: " + df.format(mi.prior * 1000.0));
-				if (dist > MAX_VULN_INTEREST) {
+
+			// check if it's relevant
+			System.out.println("  _considering_ human wrong path attempt: " + node.printPath2Here() + ", " + mi.extString());
+
+			double dist = distance2vulnerable(p);
+			if (dist > MAX_VULN_INTEREST) {
 //					System.out.println("  too dist to vuln: " + dist);
-					return;
-				}
-				if (nearest > TENUKI_DIST_ERR) {
-					System.out.println("  tenuki: " + nearest);
-					return;
-				}
-				if (countEmptyShots(p, node) >= 3)
-					return; // looks on outside
-				
-				// only consider if enough visits were found, or the policy looked interesting
-				double minPolicy = 0.03;
-				if (mi.visits < MIN_VISITS_WRONG && mi.prior < minPolicy)
-					return; // too obscure
-				if (totalVarMoves++ > gopts.bailNum && depth > gopts.bailDepth) {
-					System.out.println("$$$$$$$$$$$$$$ bail wrong");
-					return;
-				}
-				if (depth >= maxDepth) {
-					System.out.println("(human mistake in wrong) reached max depth as specified: " + maxDepth);
-					return;
-				}
+				return;
+			}
+			if (nearest > TENUKI_DIST_ERR) {
+				System.out.println("  tenuki: " + nearest);
+				return;
+			}
+			if (countEmptyShots(p, node) >= 3 && !det.fullOwnershipChanges.contains(p))
+				return; // looks on outside
+
+			if (!interestingLookingMove(mi, depth)) {
+				System.out.println("  low prior " + mi.extString() + " depth " + depth);
+				return;
+			}
+
+			if (totalVarMoves++ > bailNum && depth > bailDepth) {
+				System.out.println("$$$$$$$$$$$$$$ bail wrong");
+				return;
+			}
+			if (depth >= gopts.maxDepth) {
+				System.out.println("(human mistake in wrong) reached max depth as specified: " + gopts.maxDepth);
+				return;
+			}
+
+			// get more visits on this move
+			var karMove = calcMoveAnalysis(node, p, gopts);
+			int ownershipDelta = stoneDelta(karParent, karMove, node);
+
+			// note, a move can only make ownership worse, since it was already assumed to have perfect responses
+			if (ownershipDelta < MIN_OWNERSHIP_CHANGE_INTEREST) {
+				// good response relative to the situation
 
 				// it's only interesting if it threatens to change life status
-				int delta = calcPassDelta(brain, node, p, gopts);
+				int delta = calcPassDelta(node, p, gopts);
 		        if (delta < MIN_OWNERSHIP_CHANGE_INTEREST) {
 		        	return; // no threat, so don't add to tree
 		        }
 				
-		        System.out.println("  human wrong path attempt: " + node.printPath2Here() + ", " + mi.move + ", visits: " + mi.visits + ", policy: " + df.format(mi.prior * 1000.0));
+		        System.out.println("  human wrong path attempt: " + node.printPath2Here() + ", " + mi.extString());
 				Node tike = node.addBasicMove(p.x, p.y);
 		        // recurse for responses
-		        genPathRecurse(brain, tike, probGoban, depth + 1, false, gopts, ncl);
+		        genPathRecurse(tike, depth + 1, false);
 			} else {
 				// bad move in a bad var
+				//TODO: still consider if policy very high
 			}
 		}
 	}
@@ -313,6 +377,7 @@ public class PathCreator {
 	// approximation for empty space
 	private int countEmptyShots(Point p, Node node) {
 		int cnt = 0;
+
 		// count edges specially -- add one if on edge
 		if (p.x == 0 || p.y == 0 || p.x == 18 || p.y == 18)
 			cnt = 1;
@@ -323,11 +388,12 @@ public class PathCreator {
 				if (dx == 0 && dy == 0) continue;
 				
 				int x = p.x, y = p.y;
+				// add one if we find a stone
 				while (node.board.inBoard(x, y)) {
 					if (node.board.board[x][y].stone != 0) {
 						if (det.filledStones.board[x][y].stone == 0) {
 							cnt++;
-	//						System.out.println("hit " + x + "," + y);
+//							System.out.println("empty shots hit " + x + "," + y);
 							break; // found something
 						}
 					}
@@ -343,29 +409,26 @@ public class PathCreator {
 	// we can basically be in 2x2 states:
 	// on a correct path or not, in computer response or not
 	// then we consider both good and bad moves in each scenario
-	private void genPathRecurse(KataBrain brain, Node node, BasicGoban probGoban, int depth, boolean onRight, GenOptions gopts, NodeChangeListener ncl) throws Exception {
+	private void genPathRecurse(Node node, int depth, boolean onRight) throws Exception {
 		node.getRoot().markCrayons();
         ncl.nodeChanged(node);
 		boolean isResponse = (depth & 1) == 1; // are we in a computer response move?
 
 		if (abortNow) return; // early exit
 
-		int visits = Integer.parseInt(props.getProperty("paths.visits"));
+		int visits = gopts.pathsVisits;
 		if (depth == 0) visits = Integer.parseInt(props.getProperty("paths.visits_root"));
-		var na = new NodeAnalyzer(props);
-		KataAnalysisResult kar = na.analyzeNode(brain, node, visits, gopts.considerNearDist, gopts.onlyConsiderNear);
+		var na = new NodeAnalyzer(props, debugOwnership);
+		KataAnalysisResult kar = na.analyzeNode(brain, node, visits, gopts.considerNearDist, gopts.onlyConsiderNear, det.filledStones);
 		node.kres = kar; // save for debugging
-		double baseline = kar.rootInfo.scoreLead;
 		System.out.println();
-		System.out.println("***> Path: <" + node.printPath2Here() + "> (" + onRight + ")" + ", score: " + df.format(baseline) + ", total: " + totalVarMoves);
+		System.out.println("***> Path: <" + node.printPath2Here() + "> (" + onRight + ")" + ", total: " + totalVarMoves);
 		int movePrintMax = Integer.parseInt(props.getProperty("paths.debug_print_moves", "0"));
 		System.out.println(kar.printMoves(movePrintMax));
 
 		// moves from top root analysis (root of this branch, not necessarily root of tree)
 		for (MoveInfo mi: kar.moveInfos) {
-//			double score = mi.scoreLead;
-//			Point p = Intersection.gtp2point(mi.move);
-//			double nearest = findNearest(node.board, p);
+			//TODO: analyze this with more visits
 			// skip moves if in forbidden list
 			if (depth == 0 && !isAllowedRootMove(mi.move)) {
 				System.out.println("  skip not allowed: " + mi.move);
@@ -373,28 +436,17 @@ public class PathCreator {
 			}
 
 			if (onRight) {
-				handleRightMoveOption(brain, node, probGoban, depth, mi, kar, gopts, ncl);
+				handleRightMoveOption(node, depth, mi, kar);
 			} else {
-				handleWrongMoveOption(brain, node, probGoban, depth, mi, kar, gopts, ncl);
-
-				//				if (nearest > TENUKI_DIST_ERR) continue;
-//				// not a good score, but maybe a good move for the tree
-//				double dist = distance2vulnerable(p);
-//				if (dist < MAX_VULN_INTEREST) {
-//					System.out.println(depth + " >> err: " + mi.move + ", visits: " + mi.visits + ", score: " + score + ", dist vuln: " + dist);
-//					// add mistake path
-//			        Node tike = node.addBasicMove(p.x, p.y);
-//			        if (depth == 0)
-//			        	genPathRecurse(engine, tike, probGoban, depth + 1, false);
-//				}
+				handleWrongMoveOption(node, depth, mi, kar);
 			}
 		}
 		
 		// look at moves in primary solution and other hints for starting moves
 		if (depth == 0 && firstSol != null) {
-			considerPrimaryPath(brain, node, probGoban, gopts, ncl, visits, kar.rootInfo.scoreLead);
-			considerOwnershipChangesAsStart(brain, node, probGoban, gopts, ncl, visits, kar.rootInfo.scoreLead);
-			considerSolutionNeighbors(brain, node, probGoban, gopts, ncl, visits, kar.rootInfo.scoreLead);
+			considerPrimaryPathAsStart(node, kar);
+			considerOwnershipChangesAsStart(node, kar);
+			considerSolutionNeighborsAsStart(node, kar);
 			
 			//TODO consider game mistake if nearby
 		}
@@ -412,12 +464,31 @@ public class PathCreator {
 		return true;
 	}
 
+	// given a potential starting move, analyze it and recurse appropriately
+	// auto adds this to tree to start
+	private boolean analyzeAndStart(Node node, Point p, KataAnalysisResult karParent) throws Exception {
+		if (abortNow) return false; // early exit
+		String mv = Intersection.toGTPloc(p.x, p.y);
+		if (!isAllowedRootMove(mv)) return false;
+		Node tike = node.addBasicMove(p.x, p.y);
+		var na = new NodeAnalyzer(props);
+		int visits = Integer.parseInt(props.getProperty("paths.visits_root"));
+		KataAnalysisResult karMove = na.analyzeNode(brain, tike, visits);
+
+		// decide if this is a good or bad move
+		int ownershipDelta = stoneDelta(karParent, karMove, node);
+		boolean onRight = (ownershipDelta < MIN_OWNERSHIP_CHANGE_INTEREST);
+		// recurse
+		genPathRecurse(tike, 1, onRight);
+
+		return true;
+	}
+
 	// look for good starting moves by looking at moves along the primary solution path
-	private void considerPrimaryPath(KataBrain brain, Node node, BasicGoban probGoban, GenOptions gopts,
-			NodeChangeListener ncl, int visits, double scoreLead) throws Exception {
+	// theory is changing move order is always something to consider, for both right and wrong
+	private void considerPrimaryPathAsStart(Node node, KataAnalysisResult kar) throws Exception {
 		System.out.println("first sol: " + firstSol.printPath2Here());
 		// as a nice heuristic, let's make sure we consider all moves on this solution path as first move attempts
-		var moves = new ArrayList<String>();
 		Node n = firstSol;
 		while (n != null) {
 			MoveAction ma = n.getMoveAction();
@@ -425,31 +496,20 @@ public class PathCreator {
 			
 			if (ma == null) continue;
 			Point p = ma.loc;
+			if (!node.legalMove(p))
+				continue;
+
 			// check if in tree already
 			if (!node.hasMove(p)) {
-				System.out.println("adding move from sol: " + Intersection.toGTPloc(p.x, p.y, 19));
-				moves.add(Intersection.toGTPloc(p.x, p.y, 19));
-			}
-		}
-		// what do we have?
-		if (moves.size() > 0) {
-			var na = new NodeAnalyzer(props);
-			KataAnalysisResult karSol = na.analyzeNode(brain, node, visits, moves); 
-			// override baseline because we're missing the best moves
-			karSol.rootInfo.scoreLead = scoreLead;
-			System.out.println(karSol.printMoves(3));
-			for (MoveInfo mi: karSol.moveInfos) {
-				System.out.println("---------> " + mi.move);
-				handleRightMoveOption(brain, node, probGoban, 0, mi, karSol, gopts, ncl);
+				String mv = Intersection.toGTPloc(p.x, p.y);
+				System.out.println("adding move from sol: " + mv);
+				analyzeAndStart(node, p, kar);
 			}
 		}
 	}
 	
-	// look for good starting moves by looking at places ownership changes
-	private void considerSolutionNeighbors(KataBrain brain, Node node, BasicGoban probGoban, GenOptions gopts,
-			NodeChangeListener ncl, int visits, double scoreLead) throws Exception {
-		var moves = new ArrayList<String>();
-
+	// look for good starting moves next to known solutions
+	private void considerSolutionNeighborsAsStart(Node node, KataAnalysisResult kar) throws Exception {
 		StoneConnect scon = new StoneConnect();
 		// first collect all options
         for (Enumeration e = node.babies.elements(); e.hasMoreElements();) {
@@ -465,31 +525,18 @@ public class PathCreator {
     			if (node.hasMove(pn)) {
     				continue;
     			}
+				if (!node.legalMove(pn))
+					continue;
     			String mv = Intersection.toGTPloc(pn.x, pn.y, 19);
     			System.out.println("sol neighbor: " + mv);
-    			moves.add(mv);
+				if (!isAllowedRootMove(mv)) continue;
+				analyzeAndStart(node, p, kar);
     		}
         }
-        
-		// what do we have?
-		if (moves.size() > 0) {
-			// TODO: dups??
-			var na = new NodeAnalyzer(props);
-			KataAnalysisResult karSol = na.analyzeNode(brain, node, visits, moves);
-			// override baseline because we're missing the best moves
-			karSol.rootInfo.scoreLead = scoreLead;
-			System.out.println(karSol.printMoves(3));
-			for (MoveInfo mi: karSol.moveInfos) {
-				System.out.println("---------> nbor: " + mi.move);
-				handleRightMoveOption(brain, node, probGoban, 0, mi, karSol, gopts, ncl);
-			}
-		}
 	}
 
 	// look for good starting moves by looking at places ownership changes
-	private void considerOwnershipChangesAsStart(KataBrain brain, Node node, BasicGoban probGoban, GenOptions gopts,
-			NodeChangeListener ncl, int visits, double scoreLead) throws Exception {
-
+	private void considerOwnershipChangesAsStart(Node node, KataAnalysisResult kar) throws Exception {
 		for (Point op: det.fullOwnNeighbors) {
 			if (abortNow) return; // early exit
 			// check space is empty
@@ -500,61 +547,64 @@ public class PathCreator {
 			if (node.hasMove(op)) {
 				continue;
 			}
+			if (!node.legalMove(op))
+				continue;
 			var moves = new ArrayList<String>();
-			String mv = Intersection.toGTPloc(op.x, op.y, 19);
-			moves.add(mv);
-			var na = new NodeAnalyzer(props);
-			KataAnalysisResult karSol = na.analyzeNode(brain, node, visits, moves);
-			// override baseline because we're missing the best moves
-			karSol.rootInfo.scoreLead = scoreLead;
-//			System.out.println("own start seq: " + karSol.printMoves());
-			for (MoveInfo mi: karSol.moveInfos) {
-				System.out.println();
-				System.out.println("own change start >>-------> " + mi.move + ", v: " + mi.visits + ", policy: " + df.format(mi.prior * 1000.0));
-				handleRightMoveOption(brain, node, probGoban, 0, mi, karSol, gopts, ncl);
-			}
+			String mv = Intersection.toGTPloc(op.x, op.y);
+			System.out.println("own change start >>-------> " + mv);
+			analyzeAndStart(node, op, kar);
 		}
 	}
 
-	// return stone ownership change by moving here
-	private int calcMoveDelta(KataBrain brain, Node node, Point p, KataAnalysisResult kar, GenOptions gopts) throws Exception {
-		// we can verify this by trying a pass
+	// calculate KAR for a move with katago
+	private KataAnalysisResult calcMoveAnalysis(Node node, Point p, GenOptions gopts) throws Exception {
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);
-		var na = new NodeAnalyzer(props);
-		KataAnalysisResult karMove = na.analyzeNode(brain, tike, MOVE_VISITS_DEF, gopts.considerNearDist, gopts.onlyConsiderNear); 
-//		KataAnalysisResult karMove = gopts.onlyConsiderNear ? brain.analyzeNode(tike, MOVE_VISITS_DEF, gopts.considerNearDist) : brain.analyzeNode(tike, MOVE_VISITS_DEF);
+		var na = new NodeAnalyzer(props, debugOwnership);
+		int visits = gopts.pathsVisits;
+		KataAnalysisResult karMove = na.analyzeNode(brain, tike, visits, gopts.considerNearDist, gopts.onlyConsiderNear, det.filledStones);
+
+		// clean up
+		node.removeChildNode(tike);
+		return karMove;
+	}
+
+	// return stone ownership change by moving here, the delta between this and the original ownership change from the detector
+	private int calcMoveDelta(Node node, Point p, KataAnalysisResult kar, GenOptions gopts) throws Exception {
+		// first put this move down and measure it directly (existing KAR may have few visits)
+		KataAnalysisResult karMove = calcMoveAnalysis(node, p, gopts);
 
 		// look at original ownership change stones, see how they differ after this move
 		int delta = 0;
 		for (Point op: det.ownershipChanges) {
 			double od = kar.ownership.get(op.x + op.y * 19) - karMove.ownership.get(op.x + op.y * 19);
-//			System.out.println("    md " + op + " : " + od);
+			if (debugOwnership) {
+				String mv = Intersection.toGTPloc(op.x, op.y);
+				System.out.println("    stone " + mv + " : " + df.format(od));
+			}
 			if (Math.abs(od) > MOVE_DELTA_OWNERSHIP_THRESHOLD) {
 				delta++;
 			}
 		}
-		System.out.println("  move delta: " + delta + ", " + tike.printPath2Here());
+		System.out.println("  move delta vs detector: " + delta + ", " + node.printPath2Here() + ", " + p);
 
-		// clean up
-		node.removeChildNode(tike);
 		return delta;
 	}
 	
 	// return stone ownership change by passing here
 	// this can help determine if a given move is pointless and can be ignored
-	private int calcPassDelta(KataBrain brain, Node node, Point p, GenOptions gopts) throws Exception {
+	private int calcPassDelta(Node node, Point p, GenOptions gopts) throws Exception {
 		// we can verify this by trying a pass
-		int baseVisits = Integer.parseInt(props.getProperty("paths.passvisitsbase", "1000"));
-		int passVisits = Integer.parseInt(props.getProperty("paths.passvisitspass", "1000"));
+		int baseVisits = Integer.parseInt(props.getProperty("paths.pass_visits_base", "1000"));
+		int passVisits = Integer.parseInt(props.getProperty("paths.pass_visits_pass", "1000"));
 		System.out.println("starting pass value calculation, base visits: " + baseVisits + ", pass visits: " + passVisits);
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);
-		var na = new NodeAnalyzer(props, Boolean.parseBoolean(props.getProperty("paths.debugpassownership", "false")));
-		KataAnalysisResult karMove = na.analyzeNode(brain, tike, baseVisits, gopts.considerNearDist, gopts.onlyConsiderNear);
+		var na = new NodeAnalyzer(props, debugOwnership);
+		KataAnalysisResult karMove = na.analyzeNode(brain, tike, baseVisits, gopts.considerNearDist, gopts.onlyConsiderNear, det.filledStones);
 
 		Node passNode = tike.addBasicMove(19, 19);
-		KataAnalysisResult karPass = na.analyzeNode(brain, passNode, passVisits, gopts.considerNearDist, gopts.onlyConsiderNear);
+		KataAnalysisResult karPass = na.analyzeNode(brain, passNode, passVisits, gopts.considerNearDist, gopts.onlyConsiderNear, det.filledStones);
 		
 		int delta = stoneDelta(karMove, karPass, tike);
 		System.out.println("  Pass delta stones: " + delta + ", " + tike.printPath2Here());
@@ -575,13 +625,13 @@ public class PathCreator {
 	}
 
 	// total significant ownership changes
-	public int stoneDelta(KataAnalysisResult k1, KataAnalysisResult k2, Node node) {
+	public int stoneDelta(KataAnalysisResult k1, KataAnalysisResult k2, Node childNode) {
 		int cnt = 0;
 		double maxDelta = 0;
 		for (int x = 0; x < 19; x++)
 			for (int y = 0; y < 19; y++) {
 				double od = k1.ownership.get(x + y * 19) - k2.ownership.get(x + y * 19);
-				int stn = node.board.board[x][y].stone;
+				int stn = childNode.board.board[x][y].stone;
 				if (stn == 0) continue;
 				maxDelta = Math.max(maxDelta, Math.abs(od));
 				if (Math.abs(od) > OWNERSHIP_THRESHOLD) {
@@ -590,7 +640,7 @@ public class PathCreator {
 					cnt++;
 				}
 			}
-		System.out.println("max move ownership delta: " + maxDelta);
+		System.out.println("max move ownership delta: " + df.format(maxDelta));
 		return cnt;
 	}
 
@@ -608,7 +658,11 @@ public class PathCreator {
 	}
 
 	// create problem branches
-	public void makePaths(KataBrain brain, Node problem, BasicGoban probGoban, GenOptions gopts, NodeChangeListener ncl) throws Exception {
+	public void makePaths(Node problem, BasicGoban probGoban, GenOptions gopts, NodeChangeListener ncl) throws Exception {
+		this.probGoban = probGoban;
+		this.gopts = gopts;
+		this.ncl = ncl;
+
 		System.out.print("ownership change: ");
 		for (Point op: det.ownershipChanges) {
 			System.out.print(Intersection.toGTPloc(op.x, op.y, 19));
@@ -616,7 +670,7 @@ public class PathCreator {
 		}
 		System.out.println();
 		
-		genPathRecurse(brain, problem, probGoban, 0, true, gopts, ncl);
+		genPathRecurse(problem, 0, true);
 
 		problem.markCrayons();
 	}

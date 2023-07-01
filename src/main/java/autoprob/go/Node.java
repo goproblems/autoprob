@@ -424,7 +424,18 @@ public class Node {
         node = last;
         return node;
     }
-    
+
+    // tests if it is on board, but also legal capturing etc.
+    public boolean legalMove(Point op) {
+        // test board
+        try {
+            Board nb = (Board) board.clone();
+            return nb.makeMove(op.x, op.y, getToMove());
+        } catch (CloneNotSupportedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     // find node closest to where we just clicked
     class DepthCalcRecurser extends NodeRecurser {
         public DepthCalcRecurser() {
@@ -742,11 +753,16 @@ public class Node {
     public String toString() {
         Point p = findMove();
         if (p == null) return "root";
-        return p.toString();
+        return Intersection.toGTPloc(p.x, p.y, board.boardY);
     }
 
     public void removeChildNode(Node del) {
         babies.remove(del);
+        markCrayons();
+    }
+
+    public void removeAllChildren() {
+        babies.removeAllElements();
         markCrayons();
     }
 

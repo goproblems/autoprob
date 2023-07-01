@@ -101,7 +101,11 @@ public class Intersection {
         String sy = "" + (boardY - y); // upside down
         return sx + sy;
     }
-    
+
+    public static String toGTPloc(int x, int y) {
+        return toGTPloc(x, y, 19);
+    }
+
     public static String toSGFcoord(int x, int y) {
     	String sx = Character.toString('a' + x);
     	String sy = Character.toString('a' + y);
@@ -117,5 +121,13 @@ public class Intersection {
 		if (cx > 'I') x--; // we skip 'I'
     	int y = 19 - Integer.parseInt(gpt.substring(1));
     	return new Point(x, y);
+    }
+
+    public static String color2katagoname(int color) {
+    	if (color == BLACK)
+    		return "B";
+    	if (color == WHITE)
+    		return "W";
+        throw new RuntimeException("invalid color " + color);
     }
 } // Intersection

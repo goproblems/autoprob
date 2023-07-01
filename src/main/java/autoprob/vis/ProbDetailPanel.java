@@ -15,7 +15,7 @@ import java.awt.event.ActionListener;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Properties;
+import java.util.*;
 
 // buttons and text fields for creating paths
 public class ProbDetailPanel extends JPanel {
@@ -24,6 +24,8 @@ public class ProbDetailPanel extends JPanel {
     private final Node problem;
     private final Properties props;
     public final IntersectionDetailPanel idp;
+    private final JTextField pathsVisits;
+    private final JTextField maxDepthField;
     //    private final BasicGoban goban;
 //    private final KataAnalysisResult prev;
 //    private final KataAnalysisResult mistake;
@@ -44,17 +46,17 @@ public class ProbDetailPanel extends JPanel {
 
         JPanel p1 = new JPanel();
         p1.setLayout(new FlowLayout(FlowLayout.LEFT));
-        p1.add(new JLabel("bail after moves:"));
-        JTextField bailNum = new JTextField(7);
-        bailNum.setText(props.getProperty("paths.bailnumber"));
-        bailNum.setPreferredSize(new Dimension(150, 20));
-        p1.add(bailNum);
+        p1.add(new JLabel("max depth:"));
+        maxDepthField = new JTextField(7);
+        maxDepthField.setText(props.getProperty("paths.max_depth", "32"));
+        maxDepthField.setPreferredSize(new Dimension(150, 20));
+        p1.add(maxDepthField);
 
         JPanel p2 = new JPanel();
         p2.setLayout(new FlowLayout(FlowLayout.LEFT));
-        p2.add(new JLabel("bail depth:"));
-        JTextField bailDepth = new JTextField("3", 7);
-        p2.add(bailDepth);
+        p2.add(new JLabel("paths.visits:"));
+        pathsVisits = new JTextField(props.getProperty("paths.visits"), 7);
+        p2.add(pathsVisits);
 
         JPanel p3 = new JPanel();
         p3.setLayout(new GridLayout(2, 1));
@@ -70,10 +72,10 @@ public class ProbDetailPanel extends JPanel {
         makePathsButton.addActionListener(e -> {
             makePathsButton.setEnabled(false);
             stopButton.setEnabled(true);
-            pc = new PathCreator(det, props);
+            pc = new PathCreator(det, props, brain);
             PathCreator.GenOptions gopts = pc.new GenOptions();
-            gopts.bailNum = Integer.parseInt(bailNum.getText());
-            gopts.bailDepth = Integer.parseInt(bailDepth.getText());
+            gopts.maxDepth = Integer.parseInt(maxDepthField.getText());
+            gopts.pathsVisits = Integer.parseInt(pathsVisits.getText());
             createPaths(problem, det, probPanel.getProbGoban(), brain, pc, gopts);
         });
         buttonsPanel.add(makePathsButton);
@@ -103,8 +105,7 @@ public class ProbDetailPanel extends JPanel {
         showFileButton.addActionListener(e -> {
             System.out.println("file source:");
             System.out.println(name);
-            System.out.println(prev.turnNumber);
-            System.out.println("singles.add(new SingleTarget(\"" + name + "\", " + prev.turnNumber + ", true));");
+            System.out.println("at move: " + prev.turnNumber);
         });
         buttonsPanel.add(showFileButton);
         JPanel p4 = new JPanel();
@@ -121,11 +122,16 @@ public class ProbDetailPanel extends JPanel {
     private void createPaths(Node problem, ProblemDetector det, BasicGoban probGoban, final KataBrain brain, PathCreator pc, PathCreator.GenOptions gopts) {
         System.out.println("=========== make paths ===========");
         System.out.println("opts: " + gopts);
+
+        // remove anything existing, if this is a rerun
+        problem.removeAllChildren();
+        getParent().repaint();
+
         try {
             Thread thread = new Thread(() -> {
                 System.out.println("Thread Running");
                 try {
-                    pc.makePaths(brain, problem, probGoban, gopts, probPanel);
+                    pc.makePaths(problem, probGoban, gopts, probPanel);
                     makePathsButton.setEnabled(true);
                     stopButton.setEnabled(false);
                     removeFill(); // clear this before outputting sgf
@@ -151,6 +157,15 @@ public class ProbDetailPanel extends JPanel {
         } catch (Exception e1) {
             e1.printStackTrace();
         }
+    }
+
+    protected boolean hasFill() {
+        // check if there is any filled stones
+        for (int x = 0; x < problem.board.board.length; x++)
+            for (int y = 0; y < problem.board.board.length; y++)
+                if (det.filledStones.board[x][y].stone != 0)
+                    return true;
+        return false;
     }
 
     protected void addFill(int x, int y, int stone) {
@@ -188,11 +203,63 @@ public class ProbDetailPanel extends JPanel {
 
     // put down some solid stones so kata isn't searching empty here
     protected void fillEmpty() {
-        fillCorner(0, 0, 1, 1);
-        fillCorner(18, 0, -1, 1);
-        fillCorner(0, 18, 1, -1);
-        fillCorner(18, 18, -1, -1);
+        if (hasFill()) {
+            expandFill();
+        }
+        else {
+            fillCorner(0, 0, 1, 1);
+            fillCorner(18, 0, -1, 1);
+            fillCorner(0, 18, 1, -1);
+            fillCorner(18, 18, -1, -1);
+        }
         getParent().repaint();
+    }
+
+    // expand the fill outwards
+    private void expandFill() {
+        // create set of new points
+        Map<Point, Integer> newPoints = new HashMap<>();
+        Intersection[][] b = problem.board.board;
+
+        // look through all filled points
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                if (det.filledStones.board[x][y].stone != 0) {
+
+
+                    // check all neighbours
+                    for (int dx = -1; dx <= 1; dx += 2)
+                        for (int dy = -1; dy <= 1; dy += 2) {
+                            int nx = x + dx;
+                            int ny = y + dy;
+                            if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19) {
+                                // find nearest stone that isn't filled but is on the board
+                                int minDist = 100;
+                                for (int bx = 0; bx < 19; bx++)
+                                    for (int by = 0; by < 19; by++) {
+                                        if (b[bx][by].stone != 0 && det.filledStones.board[bx][by].stone == 0) {
+                                            int dist = Math.abs(bx - x) + Math.abs(by - y);
+                                            if (dist < minDist)
+                                                minDist = dist;
+                                        }
+                                    }
+
+                                // if too close, skip
+                                if (minDist < 5)
+                                    continue;
+
+                                if (det.filledStones.board[nx][ny].stone == 0) {
+                                    // add to new points
+                                    newPoints.put(new Point(nx, ny), det.filledStones.board[x][y].stone);
+                                }
+                            }
+                        }
+                }
+            }
+        // add new points
+        for (Point p : newPoints.keySet()) {
+            addFill(p.x, p.y, newPoints.get(p));
+        }
     }
 
     protected void removeFill() {

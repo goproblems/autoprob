@@ -5,6 +5,7 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Properties;
 
+import autoprob.go.Board;
 import com.google.gson.Gson;
 
 import autoprob.go.Intersection;
@@ -49,7 +50,7 @@ public class NodeAnalyzer {
 		// required moves set?
 		if (moves != null && moves.size() > 0) {
 			var am = new AllowMove();
-			am.player = query.initialPlayer;
+			am.player = Intersection.color2katagoname(node.getToMove());
 			am.untilDepth = 1;
 			am.moves = moves;
 			query.allowMoves = new ArrayList<>();
@@ -63,7 +64,7 @@ public class NodeAnalyzer {
 			Point loc = moveAction.loc;
 			lm = Intersection.toGTPloc(loc.x, loc.y, 19);
 		}
-		boolean dbgNal = Boolean.parseBoolean(props.getProperty("kata.printanalyzerquery", "false"));
+		boolean dbgNal = Boolean.parseBoolean(props.getProperty("kata.print_analyzer_query", "false"));
 		if (dbgNal)
 			System.out.println("NAL query (" + lm + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
 		
@@ -74,7 +75,7 @@ public class NodeAnalyzer {
 			System.out.println("> NAL parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead));
 				
 		if (debugOwnership) {
-			System.out.println("Ownership after move " + lm + ":");
+			System.out.println("Ownership after move " + lm + " depth: " + node.depth + ":");
 			kres.drawOwnership(node);
 			kres.drawNumericalOwnership(node);
 		}
@@ -93,7 +94,7 @@ public class NodeAnalyzer {
 		return analyzeNode(brain, node, visits, null);
 	}
 
-	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, double dist, boolean useDistance) throws Exception {
+	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, double dist, boolean useDistance, Board ignoreStones) throws Exception {
 		if (!useDistance) {
 			return analyzeNode(brain, node, visits, null);
 		}
@@ -107,6 +108,10 @@ public class NodeAnalyzer {
 					for (int dy = y - idist; dy <= y + idist; dy++) {
 						if (node.board.inBoard(dx, dy))
 							if (node.board.board[dx][dy].stone != 0) {
+								if (ignoreStones != null && ignoreStones.board[dx][dy].stone != 0) {
+									continue; // false hit, this was a filled stone
+								}
+
 								double d = Math.max(Math.abs(dx - x), Math.abs(dy - y));
 								min = Math.min(min, d);
 							}

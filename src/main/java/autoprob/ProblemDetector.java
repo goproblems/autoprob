@@ -136,6 +136,11 @@ public class ProblemDetector {
 
 		// redo delta with more accurate analysis
 		stoneDelta(karPass, node, karDeep); // also saves in ownershipChanges
+		if (totDelta < DETECT_OWNERSHIP_STONES) {
+			System.out.println("  deep search low ownership change: " + (totDelta));
+			if (!forceDetect) return;
+		}
+
 		// calc delta including empties
 		calcFullDelta(karPass, node, karDeep);
 
@@ -281,7 +286,7 @@ public class ProblemDetector {
 	// store delta in ownershipChanges
 	public void stoneDelta(KataAnalysisResult kar, Node node, KataAnalysisResult prev) {
 		// reset any existing data
-		ownDeltaB = ownDeltaW = 0;
+		ownDeltaB = ownDeltaW = totDelta = 0;
 		ownershipChanges.clear();
 		double maxDelta = 0;
 
@@ -366,7 +371,7 @@ public class ProblemDetector {
 	}
 	
 	// how many moves lead to a solution?
-	//TODO maybe also measure against next move?
+	//TODO convert to life/death instead
 	private int countSolutions(KataAnalysisResult kar) {
 		double baseline = kar.rootInfo.scoreLead;
 		int count = 0;

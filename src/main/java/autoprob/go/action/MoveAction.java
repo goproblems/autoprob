@@ -10,7 +10,7 @@ import autoprob.go.Node;
 
 public class MoveAction extends Action {
     public Point loc = new Point(-1, -1);
-    public int   stone;
+    public int stone;
 
     public MoveAction(int stone, Node node, int x, int y) {
         this.stone = stone;
@@ -19,9 +19,15 @@ public class MoveAction extends Action {
         node.hasMove = true;
     }
 
+    // spec: https://www.red-bean.com/sgf/go.html
+    // pass is either "tt" or an empty string
     public MoveAction(String src, int instone, Node node) {
+        if (src.length() == 0) {
+            // pass
+            return;
+        }
         if (src.length() != 2) {
-            System.out.println("Error in move: not two chars long, will treat as pass: '" + src + "'");
+            System.out.println("Error in move: not correct chars long, will treat as pass: '" + src + "'");
             return;
         }
         stone = instone;
@@ -39,8 +45,8 @@ public class MoveAction extends Action {
     }
 
     public void execute(Board board) {
-    	if (loc.x == 19 || loc.y == 19)
-    		return; // pass
+        if (loc.x == 19 || loc.y == 19)
+            return; // pass
         if (!board.inBoard(loc.x, loc.y)) {
             // it's a pass
             return;
@@ -56,9 +62,9 @@ public class MoveAction extends Action {
             s = "W[";
         return s + loc2string(loc) + "]";
     }
-    
+
     @Override
     public String toString() {
-    	return Intersection.toGTPloc(loc.x, loc.y, 19);
+        return Intersection.toGTPloc(loc.x, loc.y, 19);
     }
 }

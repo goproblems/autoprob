@@ -74,7 +74,7 @@ public class PathCreator {
 
 		this.debugOwnership = Boolean.parseBoolean(props.getProperty("paths.debug_ownership", "false"));
 		bailDepth = Integer.parseInt(props.getProperty("paths.bail_depth", "4"));
-		bailNum = Integer.parseInt(props.getProperty("paths.bail_num", "40000"));
+		bailNum = Integer.parseInt(props.getProperty("paths.bail_number", "40000"));
 		parseMinPolicyPrefs();
 		this.ignoreResponseVisitsDepth = Integer.parseInt(props.getProperty("paths.ignore_response_visits_depth", "8"));
 	}

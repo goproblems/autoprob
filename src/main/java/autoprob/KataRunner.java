@@ -189,7 +189,14 @@ public class KataRunner {
 						forceDetect = true;
 					}
 				}
-				ProblemDetector detector = new ProblemDetector(brain, kprev, kres, n, props, forceDetect);
+				ProblemDetector detector;
+				if (props.containsKey("type") &&
+                        props.getProperty("type").equals("shape")) {
+					detector = new ShapeProblemDetector(kprev, kres, n, props);
+				} else {
+					detector = new ProblemDetector(kprev, kres, n, props);
+				}
+				detector.detectProblem(brain, forceDetect);
 				if (detector.validProblem) {
 					// valid problem according to detector
 					if (vis.newDetection(brain, detector, fileName)) {

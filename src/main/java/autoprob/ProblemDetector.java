@@ -13,7 +13,7 @@ import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.MoveInfo;
 
 public class ProblemDetector {
-    private static final DecimalFormat df = new DecimalFormat("0.00");
+    protected static final DecimalFormat df = new DecimalFormat("0.00");
 	
 //	public static final int DETECT_SCORE = 18;
 	public static final double OWNERSHIP_THRESHOLD = 1.5;
@@ -23,7 +23,7 @@ public class ProblemDetector {
 	public static int DETECT_MAX_SOLUTIONS = 1;
 	public static final double MIN_SOL_VISIT_RATIO = 0.05;
 	public static double MAX_POLICY; // anything over this is just toooo obvious
-	private final Properties props;
+	protected final Properties props;
 
 	public boolean validProblem;
 	
@@ -33,7 +33,7 @@ public class ProblemDetector {
 	public double highestPrior = 0;
 	public int totDelta;
 	public int numSols;
-	private ArrayList<String> sols = new ArrayList<>();
+	protected ArrayList<String> sols = new ArrayList<>();
 	Node node;
 	public String solString;
 	public int ownDeltaB;
@@ -51,19 +51,21 @@ public class ProblemDetector {
 	// prev is the problem position. kar is the mistake position. node represents prev.
 	// the constructor tries to detect a problem. if it does, validProblem is set to true.
 	// @forcedetect: if true, ignore score and ownership thresholds etc
-	public ProblemDetector(KataBrain brain, KataAnalysisResult prev, KataAnalysisResult mistake, Node node, Properties props, boolean forceDetect) throws Exception {
+	public ProblemDetector(KataAnalysisResult prev, KataAnalysisResult mistake, Node node, Properties props) throws Exception {
 		this.mistake = mistake;
 		this.prev = prev;
 		this.node = node;
 		this.props = props;
-		
+
 		// set from properties
 		MAX_POLICY = Double.parseDouble(props.getProperty("search.max_policy"));
 		DETECT_MAX_SOLUTIONS = Integer.parseInt(props.getProperty("search.max_solutions"));
 		DETECT_OWNERSHIP_STONES = Integer.parseInt(props.getProperty("search.life_mistake_stones"));
 
 		validProblem = false;
+	}
 
+	public void detectProblem(KataBrain brain, boolean forceDetect) throws Exception {
         Node child = node.favoriteSon();
         Point nextMove = child.findMove();
         if (nextMove.x == 19) return;
@@ -158,8 +160,18 @@ public class ProblemDetector {
 		makeProblem();
 	}
 
+	// for testing
+	public ProblemDetector(KataAnalysisResult prev, KataAnalysisResult mistake, Node n, Properties props, boolean b) {
+		this.mistake = mistake;
+		this.prev = prev;
+		this.node = n;
+		this.props = props;
+
+		makeProblem();
+	}
+
 	// from the ownership changes, check how many stones are in a not super clear state
-	private int countOwnershipChangesUnderThreshold(KataAnalysisResult kar) {
+	protected int countOwnershipChangesUnderThreshold(KataAnalysisResult kar) {
 		int count = 0;
 		double minAliveThreshold = Double.parseDouble(props.getProperty("search.min_alive_threshold"));
 
@@ -175,18 +187,8 @@ public class ProblemDetector {
 		return count;
 	}
 
-	// for testing
-	public ProblemDetector(KataAnalysisResult prev, KataAnalysisResult mistake, Node n, Properties props, boolean b) {
-		this.mistake = mistake;
-		this.prev = prev;
-		this.node = n;
-		this.props = props;
-
-		makeProblem();
-	}
-
 	// create initial position and paths
-	private void makeProblem() {
+	protected void makeProblem() {
 		problem = new Node(null);
 		
 		// add some metadata, give credit
@@ -203,8 +205,11 @@ public class ProblemDetector {
 		// helps some editors
 		problem.addXtraTag("PL", problem.defaultToMoveColor == Intersection.BLACK ? "B" : "W");
 		
-		// figure out what stones should be on our problem board
-		
+		makeProblemStones();
+	}
+
+	// figure out what stones should be on our problem board
+	protected void makeProblemStones() {
 		StoneConnect scon = new StoneConnect();
 		// copy ownership change stones
 		for (Point p: ownershipChanges) {
@@ -238,23 +243,22 @@ public class ProblemDetector {
 				}
 			}
 		}
-		
+
 		// if the previous move stone got placed, let's mark it by default
-        Point lastMove = node.findMove();
-        if (lastMove != null && lastMove.x != 19) {
+		Point lastMove = node.findMove();
+		if (lastMove != null && lastMove.x != 19) {
 			if (problem.board.board[lastMove.x][lastMove.y].stone != Intersection.EMPTY)
 				problem.board.board[lastMove.x][lastMove.y].setMarkup(Intersection.MARK_TRIANGLE);
-        }
-		
+		}
 	}
 
-	private void copyTag(String nm, Node src, Node dest) {
+	protected void copyTag(String nm, Node src, Node dest) {
 		String s = src.getRoot().getXtra(nm);
 		if (s != null)
 			dest.addXtraTag(nm, s);
 	}
 
-	private void addFromFull(StoneConnect scon) {
+	protected void addFromFull(StoneConnect scon) {
 		fullOwnNeighbors = scon.floodGroup(ownershipChanges, fullOwnershipChanges, node.board);
 		for (Point pn: fullOwnNeighbors) {
 //			System.out.println("flooded: " + Intersection.toGTPloc(pn.x,  pn.y, 19));
@@ -263,7 +267,7 @@ public class ProblemDetector {
 		}
 	}
 
-	private void addNeighbors(StoneConnect scon, Point p, boolean alsoConnected) {
+	protected void addNeighbors(StoneConnect scon, Point p, boolean alsoConnected) {
 		ArrayList<Point> neighbs = scon.calcNeighbors(p, node.board);
 		for (Point pn: neighbs) {
 			stone2problem(pn);
@@ -277,7 +281,7 @@ public class ProblemDetector {
 		}
 	}
 
-	private void stone2problem(Point p) {
+	protected void stone2problem(Point p) {
 		int stn = node.board.board[p.x][p.y].stone;
 		problem.board.board[p.x][p.y].stone = stn;
 	}
@@ -316,7 +320,7 @@ public class ProblemDetector {
 	}
 
 	// what stone ownership changes significantly between these moves
-	private void calcFullDelta(KataAnalysisResult kar, Node node, KataAnalysisResult prev) {
+	protected void calcFullDelta(KataAnalysisResult kar, Node node, KataAnalysisResult prev) {
 		boolean dbg = Boolean.parseBoolean(props.getProperty("extract.debug_print_ownership", "false"));
 		if (dbg) {
 			System.out.println("prev ownership:");
@@ -372,7 +376,7 @@ public class ProblemDetector {
 	
 	// how many moves lead to a solution?
 	//TODO convert to life/death instead
-	private int countSolutions(KataAnalysisResult kar) {
+	protected int countSolutions(KataAnalysisResult kar) {
 		double baseline = kar.rootInfo.scoreLead;
 		int count = 0;
 		solString = "";

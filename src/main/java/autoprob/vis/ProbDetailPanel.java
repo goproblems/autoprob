@@ -3,6 +3,7 @@ package autoprob.vis;
 import autoprob.KataBrain;
 import autoprob.PathCreator;
 import autoprob.ProblemDetector;
+import autoprob.ShapePathCreator;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.vis.BasicGoban;
@@ -72,7 +73,12 @@ public class ProbDetailPanel extends JPanel {
         makePathsButton.addActionListener(e -> {
             makePathsButton.setEnabled(false);
             stopButton.setEnabled(true);
-            pc = new PathCreator(det, props, brain);
+            if (props.containsKey("type") &&
+                    props.getProperty("type").equals("shape")) {
+                pc = new ShapePathCreator(det, props, brain);
+            } else {
+                pc = new PathCreator(det, props, brain);
+            }
             PathCreator.GenOptions gopts = pc.new GenOptions();
             gopts.maxDepth = Integer.parseInt(maxDepthField.getText());
             gopts.pathsVisits = Integer.parseInt(pathsVisits.getText());

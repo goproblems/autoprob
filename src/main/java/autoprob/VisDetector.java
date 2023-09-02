@@ -71,5 +71,4 @@ public class VisDetector {
         pf.addSourceInfoPanelEntry("#sols: ", det.numSols + ", " + det.solString);
         return true;
     }
-
 }

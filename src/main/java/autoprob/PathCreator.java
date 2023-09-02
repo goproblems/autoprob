@@ -14,14 +14,14 @@ import autoprob.katastruct.MoveInfo;
 
 // creates solution and refutation paths given a problem
 public class PathCreator {
-    private static final DecimalFormat df = new DecimalFormat("0.00");
-	private final boolean debugOwnership;
-	private final KataBrain brain;
-	private final int ignoreResponseVisitsDepth; // normally we do responses if they get enough visits, even if the policy is low but setting this will cap it out -- otherwise variations go almost forever
-	private boolean abortNow = false;
-	private BasicGoban probGoban;
-	private GenOptions gopts;
-	private NodeChangeListener ncl;
+    protected static final DecimalFormat df = new DecimalFormat("0.00");
+	protected final boolean debugOwnership;
+	protected final KataBrain brain;
+	protected final int ignoreResponseVisitsDepth; // normally we do responses if they get enough visits, even if the policy is low but setting this will cap it out -- otherwise variations go almost forever
+	protected boolean abortNow = false;
+	protected BasicGoban probGoban;
+	protected GenOptions gopts;
+	protected NodeChangeListener ncl;
 
 	// signal to stop exploring new things, exit gracefully
 	public void abortPathCreation() {
@@ -58,11 +58,11 @@ public class PathCreator {
 	public int bailNum = 40; // max moves in tree
 	public int bailDepth = 2; // only bail if at least this deep
 
-	private int totalVarMoves = 0; // how many have been added to tree
-	private Node firstSol = null; // first solution we find
-	private final ProblemDetector det;
-	private final Properties props;
-	private int[] minPolicies;
+	protected int totalVarMoves = 0; // how many have been added to tree
+	protected Node firstSol = null; // first solution we find
+	protected final ProblemDetector det;
+	protected final Properties props;
+	protected int[] minPolicies;
 
 	public PathCreator(ProblemDetector det, Properties props, KataBrain brain) {
 		this.det = det;
@@ -80,7 +80,7 @@ public class PathCreator {
 	}
 
 	// we specify minimum policy with a comma separated list
-	private void parseMinPolicyPrefs() {
+	protected void parseMinPolicyPrefs() {
 		String s = props.getProperty("paths.min_policy");
 		String[] split = s.split(",");
 		minPolicies = new int[split.length];
@@ -92,13 +92,13 @@ public class PathCreator {
 	}
 
 	// get min policy for a given depth
-	private int getMinPolicy(int depth) {
+	protected int getMinPolicy(int depth) {
 		if (depth >= minPolicies.length) return minPolicies[minPolicies.length - 1];
 		return minPolicies[depth];
 	}
 
 	// checks policy and sometimes visits
-	private boolean interestingLookingMove(MoveInfo mi, int depth, boolean considerResponseDepth) {
+	protected boolean interestingLookingMove(MoveInfo mi, int depth, boolean considerResponseDepth) {
 		int visits = gopts.pathsVisits;
 
 		int minPolicy = getMinPolicy(depth);
@@ -116,12 +116,12 @@ public class PathCreator {
 		return interesting;
 	}
 
-	private boolean interestingLookingMove(MoveInfo mi, int depth) {
+	protected boolean interestingLookingMove(MoveInfo mi, int depth) {
 		return interestingLookingMove(mi, depth, false);
 	}
 
 		// RIGHT: we are in a correct variation -- no errors by human
-	private void handleRightMoveOption(Node nodeParent, int depth, MoveInfo mi, KataAnalysisResult kar) throws Exception {
+	protected void handleRightMoveOption(Node nodeParent, int depth, MoveInfo mi, KataAnalysisResult kar) throws Exception {
 		if (abortNow) return; // early exit
 
 		boolean isResponse = (depth & 1) == 1; // are we in a computer response move?
@@ -280,7 +280,7 @@ public class PathCreator {
 	}
 
 	// WRONG: we are in a wrong variation -- one or more human errors
-	private void handleWrongMoveOption(Node node, int depth, MoveInfo mi,
+	protected void handleWrongMoveOption(Node node, int depth, MoveInfo mi,
 			KataAnalysisResult karParent) throws Exception {
 		if (abortNow) return; // early exit
 
@@ -375,7 +375,7 @@ public class PathCreator {
 
 	// how many directions can we shoot a line off the board unimpeded?
 	// approximation for empty space
-	private int countEmptyShots(Point p, Node node) {
+	protected int countEmptyShots(Point p, Node node) {
 		int cnt = 0;
 
 		// count edges specially -- add one if on edge
@@ -409,7 +409,7 @@ public class PathCreator {
 	// we can basically be in 2x2 states:
 	// on a correct path or not, in computer response or not
 	// then we consider both good and bad moves in each scenario
-	private void genPathRecurse(Node node, int depth, boolean onRight) throws Exception {
+	protected void genPathRecurse(Node node, int depth, boolean onRight) throws Exception {
 		node.getRoot().markCrayons();
         ncl.nodeChanged(node);
 		boolean isResponse = (depth & 1) == 1; // are we in a computer response move?
@@ -453,7 +453,7 @@ public class PathCreator {
 	}
 
 	// user can specify allowed and forbidden moves from the command line
-	private boolean isAllowedRootMove(String move) {
+	protected boolean isAllowedRootMove(String move) {
 		String onlyTry = props.getProperty("paths.only_try_moves", "");
 		if (onlyTry.length() > 0) {
 			if (onlyTry.contains(move)) {
@@ -466,7 +466,7 @@ public class PathCreator {
 
 	// given a potential starting move, analyze it and recurse appropriately
 	// auto adds this to tree to start
-	private boolean analyzeAndStart(Node node, Point p, KataAnalysisResult karParent) throws Exception {
+	protected boolean analyzeAndStart(Node node, Point p, KataAnalysisResult karParent) throws Exception {
 		if (abortNow) return false; // early exit
 		String mv = Intersection.toGTPloc(p.x, p.y);
 		if (!isAllowedRootMove(mv)) return false;
@@ -486,7 +486,7 @@ public class PathCreator {
 
 	// look for good starting moves by looking at moves along the primary solution path
 	// theory is changing move order is always something to consider, for both right and wrong
-	private void considerPrimaryPathAsStart(Node node, KataAnalysisResult kar) throws Exception {
+	protected void considerPrimaryPathAsStart(Node node, KataAnalysisResult kar) throws Exception {
 		System.out.println("first sol: " + firstSol.printPath2Here());
 		// as a nice heuristic, let's make sure we consider all moves on this solution path as first move attempts
 		Node n = firstSol;
@@ -509,7 +509,7 @@ public class PathCreator {
 	}
 	
 	// look for good starting moves next to known solutions
-	private void considerSolutionNeighborsAsStart(Node node, KataAnalysisResult kar) throws Exception {
+	protected void considerSolutionNeighborsAsStart(Node node, KataAnalysisResult kar) throws Exception {
 		StoneConnect scon = new StoneConnect();
 		// first collect all options
         for (Enumeration e = node.babies.elements(); e.hasMoreElements();) {
@@ -536,7 +536,7 @@ public class PathCreator {
 	}
 
 	// look for good starting moves by looking at places ownership changes
-	private void considerOwnershipChangesAsStart(Node node, KataAnalysisResult kar) throws Exception {
+	protected void considerOwnershipChangesAsStart(Node node, KataAnalysisResult kar) throws Exception {
 		for (Point op: det.fullOwnNeighbors) {
 			if (abortNow) return; // early exit
 			// check space is empty
@@ -557,7 +557,7 @@ public class PathCreator {
 	}
 
 	// calculate KAR for a move with katago
-	private KataAnalysisResult calcMoveAnalysis(Node node, Point p, GenOptions gopts) throws Exception {
+	protected KataAnalysisResult calcMoveAnalysis(Node node, Point p, GenOptions gopts) throws Exception {
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		Node tike = node.addBasicMove(p.x, p.y);
 		var na = new NodeAnalyzer(props, debugOwnership);
@@ -570,7 +570,7 @@ public class PathCreator {
 	}
 
 	// return stone ownership change by moving here, the delta between this and the original ownership change from the detector
-	private int calcMoveDelta(Node node, Point p, KataAnalysisResult kar, GenOptions gopts) throws Exception {
+	protected int calcMoveDelta(Node node, Point p, KataAnalysisResult kar, GenOptions gopts) throws Exception {
 		// first put this move down and measure it directly (existing KAR may have few visits)
 		KataAnalysisResult karMove = calcMoveAnalysis(node, p, gopts);
 
@@ -593,7 +593,7 @@ public class PathCreator {
 	
 	// return stone ownership change by passing here
 	// this can help determine if a given move is pointless and can be ignored
-	private int calcPassDelta(Node node, Point p, GenOptions gopts) throws Exception {
+	protected int calcPassDelta(Node node, Point p, GenOptions gopts) throws Exception {
 		// we can verify this by trying a pass
 		int baseVisits = Integer.parseInt(props.getProperty("paths.pass_visits_base", "1000"));
 		int passVisits = Integer.parseInt(props.getProperty("paths.pass_visits_pass", "1000"));
@@ -615,7 +615,7 @@ public class PathCreator {
 	}
 	
 	// how close is this point to orig ownership change stones?
-	private double distance2vulnerable(Point p) {
+	protected double distance2vulnerable(Point p) {
 		double d = 100000;
 		for (Point op: det.ownershipChanges) {
 			double nd = Math.sqrt((op.x - p.x) * (op.x - p.x) + (op.y - p.y) * (op.y - p.y));
@@ -645,7 +645,7 @@ public class PathCreator {
 	}
 
 	// nearest stone to point
-	private double findNearest(Board board, Point p) {
+	protected double findNearest(Board board, Point p) {
 		double d = 100000;
 		for (int x = 0; x < 19; x++)
 			for (int y = 0; y < 19; y++) {

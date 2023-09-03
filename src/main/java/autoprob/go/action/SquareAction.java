@@ -22,6 +22,6 @@ public class SquareAction extends TriangleAction {
     }
 
     public String outputSGF() {
-        return "MA[" + loc2string(loc) + "]";
+        return "SQ[" + loc2string(loc) + "]";
     }
 }

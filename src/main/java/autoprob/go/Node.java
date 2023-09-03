@@ -11,14 +11,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.Vector;
 
-import autoprob.go.action.Action;
-import autoprob.go.action.CommentAction;
-import autoprob.go.action.LabelAction;
-import autoprob.go.action.MoveAction;
-import autoprob.go.action.SetupAction;
-import autoprob.go.action.SizeAction;
-import autoprob.go.action.SquareAction;
-import autoprob.go.action.TriangleAction;
+import autoprob.go.action.*;
 import autoprob.go.parse.ChoiceRecurser;
 import autoprob.go.parse.FindSpecificNodeRecurser;
 import autoprob.go.parse.NodeRecurser;
@@ -159,6 +152,8 @@ public class Node {
                     addAct(new LabelAction(val, this));
                 else if (tag.equals("TR"))
                     addAct(new TriangleAction(val, this));
+                else if (tag.equals("CR"))
+                    addAct(new CircleAction(val, this));
                 else if (tag.equals("MA") || tag.equals("SQ"))
                     addAct(new SquareAction(val, this));
                 else if (tag.equals("SZ"))

@@ -162,6 +162,10 @@ public class KataRunner {
 		
 		brain.doQuery(query); // kick off katago
 
+		boolean shapeMode = (props.containsKey("type") &&
+				props.getProperty("type").equals("shape"));
+		int shapeMaxTurn = Integer.parseInt(props.getProperty("shape.max_turn", "40"));
+
         Node n = node;
         int foundCount = 0;
         int targetTurn = onlySearchTurn; // next one to parse
@@ -178,6 +182,9 @@ public class KataRunner {
 				
 			targetTurn++;
 
+			if (shapeMode && targetTurn > shapeMaxTurn)
+				break;
+
 			if (kprev != null) {
 				// run detector
 				boolean forceDetect = false;
@@ -190,8 +197,7 @@ public class KataRunner {
 					}
 				}
 				ProblemDetector detector;
-				if (props.containsKey("type") &&
-                        props.getProperty("type").equals("shape")) {
+				if (shapeMode) {
 					detector = new ShapeProblemDetector(kprev, kres, n, props);
 				} else {
 					detector = new ProblemDetector(kprev, kres, n, props);

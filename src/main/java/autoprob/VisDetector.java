@@ -32,7 +32,7 @@ public class VisDetector {
         }
 
         // hack to avoid more dups, don't repeat solve coords
-        if (prevDetection != null) {
+        if (prevDetection != null && prevDetection.solString != null) {
             if (prevDetection.solString.equals(det.solString)) {
                 System.out.println("* skipping dup sol string: " + det.solString);
                 return false;

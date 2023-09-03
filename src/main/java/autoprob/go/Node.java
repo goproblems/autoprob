@@ -513,7 +513,7 @@ public class Node {
     
     public String outputSGF(boolean createSetup) {
         String s = ";"; // always start with a semicolon. that's just the way it is
-        
+
         // now add all the actions of our node
         boolean hitComment = false;
         String comXtra = null;
@@ -540,7 +540,7 @@ public class Node {
                 s = s.substring(0, s.length() - 1) + comXtra + "]";
             }
         }
-        
+
         // add setup nodes from board
         if (createSetup) {
     		var initB = new ArrayList<String>();
@@ -568,17 +568,17 @@ public class Node {
         		}
         	}
         }
-        
+
         // if we didn't hit a comment action, we need to insert one if there's XTRA
         if (comXtra != null && hitComment == false) {
             s += "C[" + comXtra + "]";
         }
-        
+
         // add any xtra tag stuff we took from SGF but didn't use
         for (int i = 0; i < xtraTags.size(); i++) {
             s += ((String) xtraTags.elementAt(i)) + "[" + ((String) xtraTagVals.elementAt(i)) + "]";
         }
-        
+
         // and add from babies
         if (babies.size() == 1) {
             Node babe = (Node) (babies.firstElement());
@@ -592,7 +592,7 @@ public class Node {
                     s += "\n(" + node.outputSGF() + ")";
             }
         }
-        
+
         return s;
     }
     

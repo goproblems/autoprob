@@ -9,6 +9,7 @@ import autoprob.go.Board;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.StoneConnect;
+import autoprob.go.action.TriangleAction;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.MoveInfo;
 
@@ -247,8 +248,9 @@ public class ProblemDetector {
 		// if the previous move stone got placed, let's mark it by default
 		Point lastMove = node.findMove();
 		if (lastMove != null && lastMove.x != 19) {
-			if (problem.board.board[lastMove.x][lastMove.y].stone != Intersection.EMPTY)
-				problem.board.board[lastMove.x][lastMove.y].setMarkup(Intersection.MARK_TRIANGLE);
+			if (problem.board.board[lastMove.x][lastMove.y].stone != Intersection.EMPTY) {
+				problem.addAct(new TriangleAction(lastMove.x, lastMove.y));
+			}
 		}
 	}
 

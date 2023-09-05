@@ -13,6 +13,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -114,6 +115,23 @@ public class ProbDetailPanel extends JPanel {
             System.out.println("at move: " + prev.turnNumber);
         });
         buttonsPanel.add(showFileButton);
+
+        JButton writeFileButton = new JButton("write file");
+        writeFileButton.addActionListener(e -> {
+            String sgf = ("(" + problem.outputSGF(true) + ")");
+            String pathString = props.getProperty("output.path");
+            Path path = Paths.get(pathString);
+            byte[] strToBytes = sgf.getBytes();
+
+            try {
+                Files.write(path, strToBytes);
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+            System.out.println("wrote problem at: " + pathString);
+        });
+        buttonsPanel.add(writeFileButton);
+
         JPanel p4 = new JPanel();
         p4.setLayout(new GridLayout(2, 1));
         p4.add(p3);

@@ -27,7 +27,7 @@ public class ShapeProblemDetector extends ProblemDetector {
         System.out.println("validating shape problem...");
         // max policy
         if (calcHighestPrior(prev) > MAX_POLICY) {
-            System.out.println("too high policy: " + highestPrior);
+            System.out.println("too high policy: " + calcHighestPrior(prev));
             if (!forceDetect) return;
         }
 
@@ -132,7 +132,7 @@ public class ShapeProblemDetector extends ProblemDetector {
                 if (x == p.x && y == p.y) continue; // same as top move
                 if (!node.board.board[x][y].isEmpty()) continue;
 
-                double policy = prev.policy.get(x + y * 19);
+                double policy = karRoot.policy.get(x + y * 19);
                 if (policy < minPolicy) continue;
 
                 // make sure this move is near other stones

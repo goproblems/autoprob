@@ -2,6 +2,8 @@ package autoprob;
 
 import autoprob.go.Intersection;
 import autoprob.go.Node;
+import autoprob.go.StoneGroup;
+import autoprob.go.StoneGrouping;
 import autoprob.go.action.*;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.MoveInfo;
@@ -9,6 +11,7 @@ import autoprob.katastruct.MoveInfo;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -54,6 +57,8 @@ public class ShapeProblemDetector extends ProblemDetector {
                 return;
         }
 
+        groupAnanlysis(karDeep);
+
         // add solution to problem
         Point p = Intersection.gtp2point(topMove.move);
         Node solution = problem.addBasicMove(p.x, p.y);
@@ -75,6 +80,15 @@ public class ShapeProblemDetector extends ProblemDetector {
         labelProblemChoices();
         problem.forceMove = true;
         validProblem = true;
+    }
+
+    private void groupAnanlysis(KataAnalysisResult karDeep) {
+        StoneGrouping sg = new StoneGrouping();
+        List<StoneGroup> stoneGroups = sg.groupStones(problem.board, karDeep);
+        for (StoneGroup g : stoneGroups) {
+            System.out.println(g);
+        }
+
     }
 
     private boolean validateTopMoveMargin(KataAnalysisResult kar) {

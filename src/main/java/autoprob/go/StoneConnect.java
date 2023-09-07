@@ -105,5 +105,4 @@ public class StoneConnect {
 			floodRecurse(nx, ny, match, board, fill, res);
 		}
 	}
-
 }

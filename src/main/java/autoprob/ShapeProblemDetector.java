@@ -14,6 +14,7 @@ import java.util.Properties;
 
 public class ShapeProblemDetector extends ProblemDetector {
     private static final int MAX_RELEVANCE_DISTANCE = 2;
+    private KataAnalysisResult rootAnalysis;
 
     // prev is the problem position. kar is the mistake position. node represents prev.
     public ShapeProblemDetector(KataAnalysisResult prev, KataAnalysisResult mistake, Node node, Properties props) throws Exception {
@@ -43,18 +44,18 @@ public class ShapeProblemDetector extends ProblemDetector {
         boolean dbgOwn = Boolean.parseBoolean(props.getProperty("search.debug_pass_ownership", "false"));
         int rootVisits = Integer.parseInt(props.getProperty("search.root_visits"));
         var na = new NodeAnalyzer(props, dbgOwn);
-        KataAnalysisResult karDeep = na.analyzeNode(brain, problem, rootVisits);
+        rootAnalysis = na.analyzeNode(brain, problem, rootVisits);
 
-        MoveInfo topMove = karDeep.moveInfos.get(0);
+        MoveInfo topMove = rootAnalysis.moveInfos.get(0);
         System.out.println("top move: " + topMove.extString());
 
         // check there is only one good top move
-        if (!validateTopMoveMargin(karDeep)) {
+        if (!validateTopMoveMargin(rootAnalysis)) {
             if (!forceDetect)
                 return;
         }
 
-        var rootGroups = groupAnanlysis(problem.board, karDeep);
+        var rootGroups = groupAnanlysis(problem.board, rootAnalysis);
 
         // add solution to problem
         Point p = Intersection.gtp2point(topMove.move);
@@ -62,9 +63,7 @@ public class ShapeProblemDetector extends ProblemDetector {
         solution.result = Intersection.RIGHT;
 
         double minBadMovePolicy = Double.parseDouble(props.getProperty("shape.min_bad_move_policy", "0.02"));
-        tryMovesWithMinPolicy(brain, topMove, na, karDeep, minBadMovePolicy, rootGroups);
-
-//        tryNearbyMoves(brain, topMove, na, karDeep);
+        tryMovesWithMinPolicy(brain, topMove, na, rootAnalysis, minBadMovePolicy, rootGroups);
 
         // if we found no bad moves, then this isn't a problem
         if (problem.babies.size() <= 1) {
@@ -183,6 +182,7 @@ public class ShapeProblemDetector extends ProblemDetector {
         KataAnalysisResult karMistake = na.analyzeNode(brain, problem, visits, analyzeMoves);
 
         MoveInfo varMove = karMistake.moveInfos.get(0);
+        System.out.println("====================================================");
         System.out.println("var move: " + varMove.extString());
         double deltaScore = varMove.scoreLead - topMove.scoreLead;
         System.out.println("delta score: " + deltaScore);
@@ -217,8 +217,32 @@ public class ShapeProblemDetector extends ProblemDetector {
 
 //        comment = ownershipChanges2Comment(ownershipChanges, feedbackNode, comment);
         String groupComment = groupChanges2Comment(rootGroups, mistakeGroups, feedbackNode);
+        String cornerPointsComment = cornerPoints2Comment(feedbackNode, karMistake);
 
-        feedbackNode.addAct(new CommentAction(comment + groupComment));
+        feedbackNode.addAct(new CommentAction(comment + groupComment + cornerPointsComment));
+    }
+
+    private String cornerPoints2Comment(Node node, KataAnalysisResult kar) {
+        StoneGroupLogic groupLogic = new StoneGroupLogic();
+        // we compare initial state to this state
+        StoneGroupLogic.PointCount initialPointCount = groupLogic.countCornerPoints(problem.board, rootAnalysis);
+        StoneGroupLogic.PointCount pointCount = groupLogic.countCornerPoints(node.board, kar);
+
+        if (initialPointCount == null && pointCount == null) {
+            // no corner points at any point
+            return "";
+        }
+
+        int minPointInterest = 4;
+
+        StringBuilder sb = new StringBuilder();
+        if (initialPointCount == null) {
+            if (pointCount.count >= minPointInterest) {
+                sb.append(Intersection.color2name(pointCount.stone, true)).append(" makes ").append(pointCount.count).append(" corner points. ");
+            }
+        }
+
+        return sb.toString();
     }
 
     // calculate changes between the root groups and the mistake groups
@@ -226,6 +250,12 @@ public class ShapeProblemDetector extends ProblemDetector {
         StoneGroupLogic groupLogic = new StoneGroupLogic();
 
         StringBuilder sb = new StringBuilder();
+
+        double minAbsChange = 0.5;
+        double minGroupChange = 2.5; // the whole group ownership status changed by this much
+
+        int markCount = 0; // how many groups we have marked
+
         for (StoneGroup sg: rootGroups) {
             StoneGroup sg2 = groupLogic.findGroupAfterChange(sg, feedbackNode.board, mistakeGroups);
             if (sg2 == null) {
@@ -236,16 +266,51 @@ public class ShapeProblemDetector extends ProblemDetector {
             else {
                 // group changed
                 double delta = sg2.ownership - sg.ownership;
-                if (delta > 0) {
-                    sb.append("The ").append(sg).append(" got ").append(df.format(delta)).append(" more black. ");
-                }
-                else if (delta < 0) {
-                    sb.append("The ").append(sg).append(" got ").append(df.format(-delta)).append(" more white. ");
-                }
                 System.out.println("<==> group delta: " + df.format(delta) + ": " + sg);
+
+                if (Math.abs(delta) < minAbsChange) continue;
+                int numStones = sg.stones.size();
+                // check group change
+                if (Math.abs(delta * numStones) < minGroupChange) continue;
+
+                // see if the change is aligned with player color
+                boolean playerAligned = problem.getToMove() == Intersection.BLACK ? delta > 0 : delta < 0;
+
+                // mark stones
+                String markName = markGroup(sg, feedbackNode, markCount++);
+                boolean stoneAligned = sg.stone == Intersection.BLACK ? delta > 0 : delta < 0;
+                System.out.println("=> player aligned: " + playerAligned + ", stone aligned: " + stoneAligned);
+                String stoneAlignText = stoneAligned ? "stronger" : "weaker";
+                if (playerAligned) {
+                    sb.append("The stones marked with ").append(markName).append(" are ").append(stoneAlignText).append(" but this is not sufficient. ");
+                } else {
+                    sb.append("The stones marked with ").append(markName).append(" are ").append(stoneAlignText).append(". ");
+                }
             }
         }
         return sb.toString();
+    }
+
+    // mark these stones on the board
+    private String markGroup(StoneGroup sg, Node node, int markType) {
+        String nm = "overflow";
+        for (Point p: sg.stones) {
+            switch (markType) {
+                case 0:
+                    node.addAct(new TriangleAction(p.x, p.y));
+                    nm = "a triangle";
+                    break;
+                case 1:
+                    node.addAct(new SquareAction(p.x, p.y));
+                    nm = "a square";
+                    break;
+                case 2:
+                    node.addAct(new CircleAction(p.x, p.y));
+                    nm = "a circle";
+                    break;
+            }
+        }
+        return nm;
     }
 
     private String ownershipChanges2Comment(Map<Point, Double> ownershipChanges, Node feedbackNode, String comment) {

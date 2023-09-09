@@ -11,7 +11,7 @@ public class StoneGroup {
 
     public final int stone;
     public double ownership;
-    HashSet<Point> stones = new HashSet<>();
+    public HashSet<Point> stones = new HashSet<>();
 
     public StoneGroup(int stone) {
     	this.stone = stone;

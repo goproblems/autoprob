@@ -130,4 +130,22 @@ public class Intersection {
     		return "W";
         throw new RuntimeException("invalid color " + color);
     }
+
+    public static String color2name(int color) {
+        if (color == BLACK)
+            return "black";
+        if (color == WHITE)
+            return "white";
+        throw new RuntimeException("invalid color " + color);
+    }
+
+    public static String color2name(int color, boolean capFirstLetter) {
+        if (!capFirstLetter)
+            return color2name(color);
+        if (color == BLACK)
+            return "Black";
+        if (color == WHITE)
+            return "White";
+        throw new RuntimeException("invalid color " + color);
+    }
 } // Intersection

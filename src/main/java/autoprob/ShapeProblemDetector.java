@@ -1,9 +1,6 @@
 package autoprob;
 
-import autoprob.go.Intersection;
-import autoprob.go.Node;
-import autoprob.go.StoneGroup;
-import autoprob.go.StoneGrouping;
+import autoprob.go.*;
 import autoprob.go.action.*;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.MoveInfo;
@@ -57,7 +54,7 @@ public class ShapeProblemDetector extends ProblemDetector {
                 return;
         }
 
-        groupAnanlysis(karDeep);
+        var rootGroups = groupAnanlysis(problem.board, karDeep);
 
         // add solution to problem
         Point p = Intersection.gtp2point(topMove.move);
@@ -65,7 +62,7 @@ public class ShapeProblemDetector extends ProblemDetector {
         solution.result = Intersection.RIGHT;
 
         double minBadMovePolicy = Double.parseDouble(props.getProperty("shape.min_bad_move_policy", "0.02"));
-        tryMovesWithPolicy(brain, topMove, na, karDeep, minBadMovePolicy);
+        tryMovesWithMinPolicy(brain, topMove, na, karDeep, minBadMovePolicy, rootGroups);
 
 //        tryNearbyMoves(brain, topMove, na, karDeep);
 
@@ -82,13 +79,13 @@ public class ShapeProblemDetector extends ProblemDetector {
         validProblem = true;
     }
 
-    private void groupAnanlysis(KataAnalysisResult karDeep) {
-        StoneGrouping sg = new StoneGrouping();
-        List<StoneGroup> stoneGroups = sg.groupStones(problem.board, karDeep);
+    private List<StoneGroup> groupAnanlysis(Board board, KataAnalysisResult karDeep) {
+        StoneGroupLogic groupLogic = new StoneGroupLogic();
+        List<StoneGroup> stoneGroups = groupLogic.groupStones(board, karDeep);
         for (StoneGroup g : stoneGroups) {
             System.out.println(g);
         }
-
+        return stoneGroups;
     }
 
     private boolean validateTopMoveMargin(KataAnalysisResult kar) {
@@ -135,7 +132,7 @@ public class ShapeProblemDetector extends ProblemDetector {
             }
     }
 
-    private void tryMovesWithPolicy(KataBrain brain, MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot, double minPolicy) throws Exception {
+    private void tryMovesWithMinPolicy(KataBrain brain, MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot, double minPolicy, List<StoneGroup> rootGroups) throws Exception {
         // evaluate nearby possible moves
         int maxDist = 1;
         Point p = Intersection.gtp2point(topMove.move);
@@ -153,38 +150,39 @@ public class ShapeProblemDetector extends ProblemDetector {
                 double distanceToBoard = nearestBoardDistance(new Point(x, y), problem.board.board);
                 if (distanceToBoard > 1.7) continue;
 
-                tryMove(brain, topMove, na, x, y, visits, karRoot);
+                tryMove(brain, topMove, na, x, y, visits, karRoot, rootGroups);
             }
         }
     }
 
-    private void tryNearbyMoves(KataBrain brain, MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot) throws Exception {
-        // evaluate nearby possible moves
-        int maxDist = 1;
-        Point p = Intersection.gtp2point(topMove.move);
-        int minDistanceFromEdge = 1;
-        int visits = Integer.parseInt(props.getProperty("paths.visits"));
-        for (int x = p.x - maxDist; x <= p.x + maxDist; x++) {
-            for (int y = p.y - maxDist; y <= p.y + maxDist; y++) {
-                if (x == p.x && y == p.y) continue; // same as top move
-                if (!isOnboard(x, y)) continue;
-                if (!node.board.board[x][y].isEmpty()) continue;
+//    private void tryNearbyMoves(KataBrain brain, MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot) throws Exception {
+//        // evaluate nearby possible moves
+//        int maxDist = 1;
+//        Point p = Intersection.gtp2point(topMove.move);
+//        int minDistanceFromEdge = 1;
+//        int visits = Integer.parseInt(props.getProperty("paths.visits"));
+//        for (int x = p.x - maxDist; x <= p.x + maxDist; x++) {
+//            for (int y = p.y - maxDist; y <= p.y + maxDist; y++) {
+//                if (x == p.x && y == p.y) continue; // same as top move
+//                if (!isOnboard(x, y)) continue;
+//                if (!node.board.board[x][y].isEmpty()) continue;
+//
+//                // don't consider moves too close to the edge of the board
+//                if (x < minDistanceFromEdge || y < minDistanceFromEdge || x >= 19 - minDistanceFromEdge || y >= 19 - minDistanceFromEdge) continue;
+//
+//                tryMove(brain, topMove, na, x, y, visits, karRoot, rootGrouping);
+//            }
+//        }
+//    }
 
-                // don't consider moves too close to the edge of the board
-                if (x < minDistanceFromEdge || y < minDistanceFromEdge || x >= 19 - minDistanceFromEdge || y >= 19 - minDistanceFromEdge) continue;
-
-                tryMove(brain, topMove, na, x, y, visits, karRoot);
-            }
-        }
-    }
-
-    private void tryMove(KataBrain brain, MoveInfo topMove, NodeAnalyzer na, int x, int y, int visits, KataAnalysisResult karRoot) throws Exception {
+    private void tryMove(KataBrain brain, MoveInfo topMove, NodeAnalyzer na, int x, int y, int visits, KataAnalysisResult karRoot, List<StoneGroup> rootGroups) throws Exception {
+        // run katago on this move, forcing it only to consider this option
         String moveVar = Intersection.toGTPloc(x, y);
         ArrayList<String> analyzeMoves = new ArrayList<>();
         analyzeMoves.add(moveVar);
-        KataAnalysisResult karVar = na.analyzeNode(brain, problem, visits, analyzeMoves);
+        KataAnalysisResult karMistake = na.analyzeNode(brain, problem, visits, analyzeMoves);
 
-        MoveInfo varMove = karVar.moveInfos.get(0);
+        MoveInfo varMove = karMistake.moveInfos.get(0);
         System.out.println("var move: " + varMove.extString());
         double deltaScore = varMove.scoreLead - topMove.scoreLead;
         System.out.println("delta score: " + deltaScore);
@@ -192,17 +190,18 @@ public class ShapeProblemDetector extends ProblemDetector {
         // add to problem paths
         Point varPoint = Intersection.gtp2point(varMove.move);
         Node mistake = problem.addBasicMove(varPoint.x, varPoint.y);
-        String comment = "This loses " + humanScoreDifference(-deltaScore) + " points.";
+        String comment = "This loses " + humanScoreDifference(-deltaScore) + " points. ";
         Node feedbackNode = mistake; // the node where we give user feedback. may change if we add a response
 
         // check ownership changes for smart comments
         double ownershipThreshold = Double.parseDouble(props.getProperty("shape.ownership_threshold", "0.9"));
-        Map<Point, Double> ownershipChanges = calculateOwnershipDelta(karVar, mistake, karRoot, ownershipThreshold);
+        Map<Point, Double> ownershipChanges = calculateOwnershipDelta(karMistake, mistake, karRoot, ownershipThreshold);
 
-        // add the response
+        // add the response -- the refutation for a human mistake
         if (varMove.pv.size() > 1) {
+            // pv is the move sequence
             String responseMove = varMove.pv.get(1);
-            System.out.println("refutation response: " + responseMove);
+            System.out.println("refutation: " + responseMove);
             Point responsePoint = Intersection.gtp2point(responseMove);
             double distanceToBoard = nearestBoardDistance(responsePoint, mistake.board.board);
             if (distanceToBoard > MAX_RELEVANCE_DISTANCE) {
@@ -214,6 +213,42 @@ public class ShapeProblemDetector extends ProblemDetector {
             }
         }
 
+        var mistakeGroups = groupAnanlysis(mistake.board, karMistake);
+
+//        comment = ownershipChanges2Comment(ownershipChanges, feedbackNode, comment);
+        String groupComment = groupChanges2Comment(rootGroups, mistakeGroups, feedbackNode);
+
+        feedbackNode.addAct(new CommentAction(comment + groupComment));
+    }
+
+    // calculate changes between the root groups and the mistake groups
+    private String groupChanges2Comment(List<StoneGroup> rootGroups, List<StoneGroup> mistakeGroups, Node feedbackNode) {
+        StoneGroupLogic groupLogic = new StoneGroupLogic();
+
+        StringBuilder sb = new StringBuilder();
+        for (StoneGroup sg: rootGroups) {
+            StoneGroup sg2 = groupLogic.findGroupAfterChange(sg, feedbackNode.board, mistakeGroups);
+            if (sg2 == null) {
+                // group disappeared
+                sb.append("The ").append(Intersection.color2katagoname(sg.stone)).append(" group at ").append(sg).append(" disappeared. ");
+                System.out.println("<==> group disappeared: " + sg);
+            }
+            else {
+                // group changed
+                double delta = sg2.ownership - sg.ownership;
+                if (delta > 0) {
+                    sb.append("The ").append(sg).append(" got ").append(df.format(delta)).append(" more black. ");
+                }
+                else if (delta < 0) {
+                    sb.append("The ").append(sg).append(" got ").append(df.format(-delta)).append(" more white. ");
+                }
+                System.out.println("<==> group delta: " + df.format(delta) + ": " + sg);
+            }
+        }
+        return sb.toString();
+    }
+
+    private String ownershipChanges2Comment(Map<Point, Double> ownershipChanges, Node feedbackNode, String comment) {
         if (!ownershipChanges.isEmpty()) {
             int hasDeath = 0;
             int hasLife = 0;
@@ -239,8 +274,7 @@ public class ShapeProblemDetector extends ProblemDetector {
                 comment += " The circle marked " + (hasDeath == 1 ? "stone is" : "stones are") + " more dead.";
             }
         }
-
-        feedbackNode.addAct(new CommentAction(comment));
+        return comment;
     }
 
     private double nearestBoardDistance(Point p, Intersection[][] board) {

@@ -4,15 +4,14 @@ import autoprob.katastruct.KataAnalysisResult;
 
 import java.awt.*;
 import java.text.DecimalFormat;
-import java.util.HashMap;
 import java.util.HashSet;
 
 public class StoneGroup {
     protected static final DecimalFormat df = new DecimalFormat("0.00");
 
     public final int stone;
-    double ownership;
-    HashSet<Point> stones = new HashSet<Point>();
+    public double ownership;
+    HashSet<Point> stones = new HashSet<>();
 
     public StoneGroup(int stone) {
     	this.stone = stone;

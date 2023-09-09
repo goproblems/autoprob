@@ -6,7 +6,7 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class StoneGrouping {
+public class StoneGroupLogic {
     int[][] offsets = {{-1, 0}, {0, 1}, {1, 0}, {0, -1}};
 
     public boolean isOnboard(int x, int y) {
@@ -51,5 +51,26 @@ public class StoneGrouping {
             }
         }
         return groups;
+    }
+
+    // find where a group has gone to
+    public StoneGroup findGroupAfterChange(StoneGroup sg, Board board, List<StoneGroup> postChangeGroups) {
+        // iterate through groups, look for one where all the stones in the needle are in the haystack
+        for (StoneGroup sg2: postChangeGroups) {
+            boolean found = true;
+            for (Point p: sg.stones) {
+                if (!sg2.stones.contains(p)) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) return sg2;
+        }
+    	return null;
+    }
+
+    // calculate a group delta
+    public double groupDelta(StoneGroup sg, KataAnalysisResult kar) {
+    	return sg.ownership - (sg.stone == Intersection.BLACK ? kar.ownership.get(0) : kar.ownership.get(1));
     }
 }

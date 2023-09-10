@@ -121,15 +121,31 @@ public class ShapeProblemDetector extends ProblemDetector {
         StoneGroupLogic.PointCount pointCount = groupLogic.countCornerPoints(node.board, karTenuki);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("Playing here is worth about ").append(Math.abs(deltaScore)).append(" points over tenuki. ");
+        sb.append("Playing here is worth about ").append(Math.round(Math.abs(deltaScore))).append(" points over playing away in an empty corner. ");
+        var tenukiGroups = groupAnanlysis(tenukiNode.board, karTenuki);
+        sb.append(groupChanges2CommentSolution(rootGroups, tenukiGroups, tenukiNode, solution));
+
         String opponentColor = Intersection.color2name(tenukiNode.getToMove() == Intersection.BLACK ? Intersection.BLACK : Intersection.WHITE);
+        String opponentColorCaps = Intersection.color2name(tenukiNode.getToMove() == Intersection.BLACK ? Intersection.BLACK : Intersection.WHITE, true);
+        boolean sameMove = topMove.move.equals(rootAnalysis.moveInfos.get(0).move);
+        sb.append(opponentColorCaps).append(" would have played at ");
+        if (sameMove) {
+            sb.append("the same place");
+        } else {
+            Point p = Intersection.gtp2point(topMove.move);
+            solution.addAct(new LabelAction("A", p.x, p.y));
+            sb.append("A");
+//            sb.append(topMove.move);
+        }
+        sb.append(" if you played away. ");
+
         if (initialPointCount == null && pointCount == null) {
         }
         else {
             int minPointInterest = 4;
             if (initialPointCount == null) {
                 if (pointCount.count >= minPointInterest) {
-                    sb.append("This prevents ").append(opponentColor).append(" from making about ").append(pointCount.count).append(" corner points. ");
+                    sb.append("Your move prevents ").append(opponentColor).append(" from making about ").append(pointCount.count).append(" points in the corner. ");
                 }
             }
         }
@@ -138,6 +154,50 @@ public class ShapeProblemDetector extends ProblemDetector {
         problem.babies.remove(tenukiNode);
 
         solution.addAct(new CommentAction(sb.toString()));
+    }
+
+    // any comment for group changes playing the solution
+    private String groupChanges2CommentSolution(List<StoneGroup> rootGroups, List<StoneGroup> tenukiGroups, Node tenukiNode, Node solution) {
+        StoneGroupLogic groupLogic = new StoneGroupLogic();
+
+        StringBuilder sb = new StringBuilder();
+
+        double minAbsChange = 0.5;
+        double minGroupChange = 2.5; // the whole group ownership status changed by this much
+
+        int markCount = 0; // how many groups we have marked
+
+        for (StoneGroup sg: rootGroups) {
+            StoneGroup sg2 = groupLogic.findGroupAfterChange(sg, tenukiNode.board, tenukiGroups);
+            if (sg2 == null) {
+                // group disappeared
+                System.out.println("<==> group disappeared: " + sg);
+            }
+            else {
+                // group changed
+                double delta = sg2.ownership - sg.ownership;
+                System.out.println("<==> group delta: " + df.format(delta) + ": " + sg);
+
+                if (Math.abs(delta) < minAbsChange) continue;
+                int numStones = sg.stones.size();
+                // check group change
+                if (Math.abs(delta * numStones) < minGroupChange) continue;
+
+                // see if the change is aligned with player color
+                boolean playerAligned = problem.getToMove() == Intersection.BLACK ? delta > 0 : delta < 0;
+
+                // mark stones
+                String markName = markGroup(sg, solution, markCount++);
+                boolean stoneAligned = sg.stone == Intersection.BLACK ? delta > 0 : delta < 0;
+                System.out.println("=> player aligned: " + playerAligned + ", stone aligned: " + stoneAligned);
+                String stoneAlignText = stoneAligned ? "weaker" : "stronger";
+                if (playerAligned) {
+                } else {
+                    sb.append("The stones marked with ").append(markName).append(" are ").append(stoneAlignText).append(". ");
+                }
+            }
+        }
+        return sb.toString();
     }
 
     private List<StoneGroup> groupAnanlysis(Board board, KataAnalysisResult karDeep) {
@@ -322,7 +382,6 @@ public class ShapeProblemDetector extends ProblemDetector {
             StoneGroup sg2 = groupLogic.findGroupAfterChange(sg, feedbackNode.board, mistakeGroups);
             if (sg2 == null) {
                 // group disappeared
-                sb.append("The ").append(Intersection.color2katagoname(sg.stone)).append(" group at ").append(sg).append(" disappeared. ");
                 System.out.println("<==> group disappeared: " + sg);
             }
             else {

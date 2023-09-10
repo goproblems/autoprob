@@ -15,6 +15,7 @@ import java.util.Properties;
 public class ShapeProblemDetector extends ProblemDetector {
     private static final int MAX_RELEVANCE_DISTANCE = 2;
     private KataAnalysisResult rootAnalysis;
+    private KataBrain brain;
 
     // prev is the problem position. kar is the mistake position. node represents prev.
     public ShapeProblemDetector(KataAnalysisResult prev, KataAnalysisResult mistake, Node node, Properties props) throws Exception {
@@ -23,6 +24,7 @@ public class ShapeProblemDetector extends ProblemDetector {
 
     public void detectProblem(KataBrain brain, boolean forceDetect) throws Exception {
         validProblem = false;
+        this.brain = brain;
         makeProblem();
 
         System.out.println("validating shape problem...");
@@ -63,7 +65,7 @@ public class ShapeProblemDetector extends ProblemDetector {
         solution.result = Intersection.RIGHT;
 
         double minBadMovePolicy = Double.parseDouble(props.getProperty("shape.min_bad_move_policy", "0.02"));
-        tryMovesWithMinPolicy(brain, topMove, na, rootAnalysis, minBadMovePolicy, rootGroups);
+        tryMovesWithMinPolicy(topMove, na, rootAnalysis, minBadMovePolicy, rootGroups);
 
         // if we found no bad moves, then this isn't a problem
         if (problem.babies.size() <= 1) {
@@ -73,9 +75,69 @@ public class ShapeProblemDetector extends ProblemDetector {
             }
         }
 
+        setSolutionComment(solution, rootGroups);
+
         labelProblemChoices();
         problem.forceMove = true;
         validProblem = true;
+    }
+
+    // set a good readable comment for the solution
+    private void setSolutionComment(Node solution, List<StoneGroup> rootGroups) throws Exception {
+        // first, let's analyze a contrapositive, play a tenuki in an empty corner and see how that compares in evaluation
+        System.out.println("====================================================");
+        System.out.println("tenuki analysis on solution");
+        // let's find the emptiest corner on the 4-4 point
+        Point best = null;
+        double farthestDist = 0;
+        int inset = 3;
+        for (int startx = inset; startx < 19; startx += 18 - inset * 2) {
+            for (int starty = inset; starty < 19; starty += 18 - inset * 2) {
+                double d = nearestBoardDistance(new Point(startx, starty), problem.board.board);
+                if (best == null || d > farthestDist) {
+                    best = new Point(startx, starty);
+                    farthestDist = d;
+                }
+            }
+        }
+        System.out.println("best corner: " + best + ", dist: " + farthestDist);
+
+        // add to tree
+        Node tenukiNode = problem.addBasicMove(best.x, best.y);
+
+        var na = new NodeAnalyzer(props);
+        int visits = Integer.parseInt(props.getProperty("paths.visits"));
+        var karTenuki = na.analyzeNode(brain, tenukiNode, visits);
+
+        MoveInfo topMove = karTenuki.moveInfos.get(0);
+        double tenukiResponseDist = nearestBoardDistance(Intersection.gtp2point(topMove.move), tenukiNode.board.board);
+        System.out.println("top move after tenuki: " + topMove.extString() + ", distance: " + df.format(tenukiResponseDist));
+        double deltaScore = topMove.scoreLead - rootAnalysis.moveInfos.get(0).scoreLead;
+        System.out.println("delta score: " + df.format(deltaScore));
+
+        StoneGroupLogic groupLogic = new StoneGroupLogic();
+        // we compare initial state to this state
+        StoneGroupLogic.PointCount initialPointCount = groupLogic.countCornerPoints(problem.board, rootAnalysis);
+        StoneGroupLogic.PointCount pointCount = groupLogic.countCornerPoints(node.board, karTenuki);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Playing here is worth about ").append(Math.abs(deltaScore)).append(" points over tenuki. ");
+        String opponentColor = Intersection.color2name(tenukiNode.getToMove() == Intersection.BLACK ? Intersection.BLACK : Intersection.WHITE);
+        if (initialPointCount == null && pointCount == null) {
+        }
+        else {
+            int minPointInterest = 4;
+            if (initialPointCount == null) {
+                if (pointCount.count >= minPointInterest) {
+                    sb.append("This prevents ").append(opponentColor).append(" from making about ").append(pointCount.count).append(" corner points. ");
+                }
+            }
+        }
+
+        // remove tenuki node since it was only for analysis
+        problem.babies.remove(tenukiNode);
+
+        solution.addAct(new CommentAction(sb.toString()));
     }
 
     private List<StoneGroup> groupAnanlysis(Board board, KataAnalysisResult karDeep) {
@@ -131,7 +193,7 @@ public class ShapeProblemDetector extends ProblemDetector {
             }
     }
 
-    private void tryMovesWithMinPolicy(KataBrain brain, MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot, double minPolicy, List<StoneGroup> rootGroups) throws Exception {
+    private void tryMovesWithMinPolicy(MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot, double minPolicy, List<StoneGroup> rootGroups) throws Exception {
         // evaluate nearby possible moves
         int maxDist = 1;
         Point p = Intersection.gtp2point(topMove.move);
@@ -149,7 +211,7 @@ public class ShapeProblemDetector extends ProblemDetector {
                 double distanceToBoard = nearestBoardDistance(new Point(x, y), problem.board.board);
                 if (distanceToBoard > 1.7) continue;
 
-                tryMove(brain, topMove, na, x, y, visits, karRoot, rootGroups);
+                tryMove(topMove, na, x, y, visits, karRoot, rootGroups);
             }
         }
     }
@@ -174,7 +236,7 @@ public class ShapeProblemDetector extends ProblemDetector {
 //        }
 //    }
 
-    private void tryMove(KataBrain brain, MoveInfo topMove, NodeAnalyzer na, int x, int y, int visits, KataAnalysisResult karRoot, List<StoneGroup> rootGroups) throws Exception {
+    private void tryMove(MoveInfo topMove, NodeAnalyzer na, int x, int y, int visits, KataAnalysisResult karRoot, List<StoneGroup> rootGroups) throws Exception {
         // run katago on this move, forcing it only to consider this option
         String moveVar = Intersection.toGTPloc(x, y);
         ArrayList<String> analyzeMoves = new ArrayList<>();
@@ -238,7 +300,7 @@ public class ShapeProblemDetector extends ProblemDetector {
         StringBuilder sb = new StringBuilder();
         if (initialPointCount == null) {
             if (pointCount.count >= minPointInterest) {
-                sb.append(Intersection.color2name(pointCount.stone, true)).append(" makes ").append(pointCount.count).append(" corner points. ");
+                sb.append(Intersection.color2name(pointCount.stone, true)).append(" makes about ").append(pointCount.count).append(" corner points. ");
             }
         }
 
@@ -342,6 +404,7 @@ public class ShapeProblemDetector extends ProblemDetector {
         return comment;
     }
 
+    // return the distance to the nearest stone on the board
     private double nearestBoardDistance(Point p, Intersection[][] board) {
         double minDist = 100;
         for (int x = 0; x < 19; x++)

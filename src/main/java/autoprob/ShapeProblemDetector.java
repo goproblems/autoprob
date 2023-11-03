@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.Properties;
 
 public class ShapeProblemDetector extends ProblemDetector {
-    private static final int MAX_RELEVANCE_DISTANCE = 2;
+    private static final double MAX_RELEVANCE_DISTANCE = 2.5;
     private KataAnalysisResult rootAnalysis;
     private KataBrain brain;
 
@@ -65,7 +65,11 @@ public class ShapeProblemDetector extends ProblemDetector {
         solution.result = Intersection.RIGHT;
 
         double minBadMovePolicy = Double.parseDouble(props.getProperty("shape.min_bad_move_policy", "0.02"));
-        tryMovesWithMinPolicy(topMove, na, rootAnalysis, minBadMovePolicy, rootGroups);
+        if (!tryMovesWithMinPolicy(topMove, na, rootAnalysis, minBadMovePolicy, rootGroups)) {
+            System.out.println("exiting problem, a mistake isn't bad enough");
+            if (!forceDetect)
+                return;
+        }
 
         // if we found no bad moves, then this isn't a problem
         if (problem.babies.size() <= 1) {
@@ -189,8 +193,22 @@ public class ShapeProblemDetector extends ProblemDetector {
                 // mark stones
                 String markName = markGroup(sg, solution, markCount++);
                 boolean stoneAligned = sg.stone == Intersection.BLACK ? delta > 0 : delta < 0;
-                System.out.println("=> player aligned: " + playerAligned + ", stone aligned: " + stoneAligned);
-                String stoneAlignText = stoneAligned ? "weaker" : "stronger";
+
+                boolean absoluteLife = Math.abs(sg2.ownership) > 0.7;
+                System.out.println("=> player aligned: " + playerAligned + ", stone aligned: " + stoneAligned + ", absolute life: " + absoluteLife);
+                String stoneAlignText = "";
+                if (!stoneAligned) {
+                    if (absoluteLife)
+                        stoneAlignText = "alive";
+                    else
+                        stoneAlignText = "stronger";
+                } else {
+                    if (absoluteLife)
+                        stoneAlignText = "dead";
+                    else
+                        stoneAlignText = "weaker";
+                }
+
                 if (playerAligned) {
                 } else {
                     sb.append("The stones marked with ").append(markName).append(" are ").append(stoneAlignText).append(". ");
@@ -216,7 +234,7 @@ public class ShapeProblemDetector extends ProblemDetector {
             MoveInfo secondMove = kar.moveInfos.get(1);
             System.out.println("second move: " + secondMove.extString());
             double deltaScore = topMove.scoreLead - secondMove.scoreLead;
-            System.out.println("delta score: " + deltaScore);
+            System.out.println("delta score: " + df.format(deltaScore));
             if (deltaScore < minTopMoveScoreMargin) {
                 System.out.println("not a good shape problem, second move too good");
                 return false;
@@ -253,7 +271,8 @@ public class ShapeProblemDetector extends ProblemDetector {
             }
     }
 
-    private void tryMovesWithMinPolicy(MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot, double minPolicy, List<StoneGroup> rootGroups) throws Exception {
+    // returns false if a move is discoved with too low a delta
+    private boolean tryMovesWithMinPolicy(MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot, double minPolicy, List<StoneGroup> rootGroups) throws Exception {
         // evaluate nearby possible moves
         int maxDist = 1;
         Point p = Intersection.gtp2point(topMove.move);
@@ -271,9 +290,17 @@ public class ShapeProblemDetector extends ProblemDetector {
                 double distanceToBoard = nearestBoardDistance(new Point(x, y), problem.board.board);
                 if (distanceToBoard > 1.7) continue;
 
-                tryMove(topMove, na, x, y, visits, karRoot, rootGroups);
+                double scoreDelta = tryMove(topMove, na, x, y, visits, karRoot, rootGroups);
+
+                // fail if scoreDelta is too low
+                double minDelta = Double.parseDouble(props.getProperty("shape.min_mistake_score_delta", "6.0"));
+                if (Math.abs(scoreDelta) < minDelta) {
+                    System.out.println("score delta too low: " + scoreDelta);
+                    return false;
+                }
             }
         }
+        return true;
     }
 
 //    private void tryNearbyMoves(KataBrain brain, MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot) throws Exception {
@@ -296,7 +323,7 @@ public class ShapeProblemDetector extends ProblemDetector {
 //        }
 //    }
 
-    private void tryMove(MoveInfo topMove, NodeAnalyzer na, int x, int y, int visits, KataAnalysisResult karRoot, List<StoneGroup> rootGroups) throws Exception {
+    private double tryMove(MoveInfo topMove, NodeAnalyzer na, int x, int y, int visits, KataAnalysisResult karRoot, List<StoneGroup> rootGroups) throws Exception {
         // run katago on this move, forcing it only to consider this option
         String moveVar = Intersection.toGTPloc(x, y);
         ArrayList<String> analyzeMoves = new ArrayList<>();
@@ -342,6 +369,8 @@ public class ShapeProblemDetector extends ProblemDetector {
         String cornerPointsComment = cornerPoints2Comment(feedbackNode, karMistake);
 
         feedbackNode.addAct(new CommentAction(comment + groupComment + cornerPointsComment));
+
+        return deltaScore;
     }
 
     private String cornerPoints2Comment(Node node, KataAnalysisResult kar) {
@@ -400,8 +429,20 @@ public class ShapeProblemDetector extends ProblemDetector {
                 // mark stones
                 String markName = markGroup(sg, feedbackNode, markCount++);
                 boolean stoneAligned = sg.stone == Intersection.BLACK ? delta > 0 : delta < 0;
-                System.out.println("=> player aligned: " + playerAligned + ", stone aligned: " + stoneAligned);
-                String stoneAlignText = stoneAligned ? "stronger" : "weaker";
+                boolean absoluteLife = Math.abs(sg2.ownership) > 0.7;
+                System.out.println("=> player aligned: " + playerAligned + ", stone aligned: " + stoneAligned + ", absolute life: " + absoluteLife);
+                String stoneAlignText = "";
+                if (stoneAligned) {
+                    if (absoluteLife)
+                        stoneAlignText = "alive";
+                    else
+                        stoneAlignText = "stronger";
+                } else {
+                    if (absoluteLife)
+                        stoneAlignText = "dead";
+                    else
+                        stoneAlignText = "weaker";
+                }
                 if (playerAligned) {
                     sb.append("The stones marked with ").append(markName).append(" are ").append(stoneAlignText).append(" but this is not sufficient. ");
                 } else {

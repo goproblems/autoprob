@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.text.DecimalFormat;
 import java.util.Properties;
 
+import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.parse.Parser;
 import autoprob.katastruct.KataAnalysisResult;
@@ -142,6 +143,8 @@ public class KataRunner {
 		Node node;
 		try {
 			node = parser.parse(sgf);
+			if (node.getToMove() == Intersection.EMPTY)
+				throw new Exception("no to move in SGF");
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.out.println("bad sgf");

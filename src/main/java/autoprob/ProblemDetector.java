@@ -71,13 +71,33 @@ public class ProblemDetector {
         Point nextMove = child.findMove();
         if (nextMove.x == 19) return;
 
-		// no longer using score, for now...
-//        // big score differential?
-//		scoreDelta = mistake.rootInfo.scoreLead - prev.rootInfo.scoreLead;
-//		if (Math.abs(scoreDelta) < DETECT_SCORE) {
-//			if (!forceDetect) return;
-//		}
-		
+		// possibly check score
+		double minScoreDelta = Double.parseDouble(props.getProperty("search.min_score_delta", "0"));
+		if (minScoreDelta > 0) {
+			// big score differential?
+			scoreDelta = mistake.rootInfo.scoreLead - prev.rootInfo.scoreLead;
+			if (Math.abs(scoreDelta) < minScoreDelta) {
+				System.out.println("score delta too small: " + Math.abs(scoreDelta));
+				if (!forceDetect) return;
+			}
+		}
+
+		double minAbsoluteScore = Double.parseDouble(props.getProperty("search.min_absolute_score", "0"));
+		if (minAbsoluteScore > 0) {
+			// needs to go from clearly winning to clearly losing
+			double score = prev.rootInfo.scoreLead;
+			if (Math.abs(score) < minAbsoluteScore) {
+				System.out.println("score before too small: " + Math.abs(score));
+				if (!forceDetect) return;
+			}
+			// check for after
+			score = mistake.rootInfo.scoreLead;
+			if (Math.abs(score) > minAbsoluteScore) {
+				System.out.println("score after too big: " + Math.abs(score));
+				if (!forceDetect) return;
+			}
+		}
+
 		// ownership delta: what dies in this mistake?
 		stoneDelta(mistake, node, prev); // also saves in ownershipChanges
 		if (totDelta < DETECT_OWNERSHIP_STONES) {

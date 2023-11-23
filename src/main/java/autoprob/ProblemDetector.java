@@ -231,6 +231,16 @@ public class ProblemDetector {
 
 	// figure out what stones should be on our problem board
 	protected void makeProblemStones() {
+		boolean fullBoard = Boolean.parseBoolean(props.getProperty("extract.full_board", "false"));
+		// if full board, copy every stone
+		if (fullBoard) {
+			for (int x = 0; x < 19; x++)
+				for (int y = 0; y < 19; y++) {
+					problem.board.board[x][y].stone = node.board.board[x][y].stone;
+				}
+			return;
+		}
+
 		StoneConnect scon = new StoneConnect();
 		// copy ownership change stones
 		for (Point p: ownershipChanges) {

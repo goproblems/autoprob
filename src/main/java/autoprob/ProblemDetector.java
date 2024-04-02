@@ -238,38 +238,39 @@ public class ProblemDetector {
 				for (int y = 0; y < 19; y++) {
 					problem.board.board[x][y].stone = node.board.board[x][y].stone;
 				}
-			return;
 		}
+		else {
 
-		StoneConnect scon = new StoneConnect();
-		// copy ownership change stones
-		for (Point p: ownershipChanges) {
-			stone2problem(p);
-			addNeighbors(scon, p, true);
-		}
-
-		System.out.println("add full ownership change stones to problem....");
-		// full ownership change stones
-		addFromFull(scon);
-
-		System.out.println("make from near...");
-		// near solutions
-		double baseline = prev.rootInfo.scoreLead;
-		int solDist = 1;
-		for (MoveInfo mi: prev.moveInfos) {
-			double score = mi.scoreLead;
-			if (Math.abs(baseline - score) < EXTRA_SOLUTION_THRESHOLD) {
-				String spos = mi.move;
-//						System.out.println("p " + spos);
-				Point p = Intersection.gtp2point(spos);
-				if (p.x == 19) continue;
+			StoneConnect scon = new StoneConnect();
+			// copy ownership change stones
+			for (Point p : ownershipChanges) {
 				stone2problem(p);
-				for (int dx = -solDist; dx <= solDist; dx++) {
-					for (int dy = -solDist; dy <= solDist; dy++) {
-						int x = p.x + dx;
-						int y = p.y + dy;
-						if (scon.isOnboard(x, y))
-							addNeighbors(scon, new Point(x, y), true);
+				addNeighbors(scon, p, true);
+			}
+
+			System.out.println("add full ownership change stones to problem....");
+			// full ownership change stones
+			addFromFull(scon);
+
+			System.out.println("make from near...");
+			// near solutions
+			double baseline = prev.rootInfo.scoreLead;
+			int solDist = 1;
+			for (MoveInfo mi : prev.moveInfos) {
+				double score = mi.scoreLead;
+				if (Math.abs(baseline - score) < EXTRA_SOLUTION_THRESHOLD) {
+					String spos = mi.move;
+//						System.out.println("p " + spos);
+					Point p = Intersection.gtp2point(spos);
+					if (p.x == 19) continue;
+					stone2problem(p);
+					for (int dx = -solDist; dx <= solDist; dx++) {
+						for (int dy = -solDist; dy <= solDist; dy++) {
+							int x = p.x + dx;
+							int y = p.y + dy;
+							if (scon.isOnboard(x, y))
+								addNeighbors(scon, new Point(x, y), true);
+						}
 					}
 				}
 			}

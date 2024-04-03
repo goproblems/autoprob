@@ -249,8 +249,6 @@ public class ProbDetailPanel extends JPanel {
         for (int x = 0; x < 19; x++)
             for (int y = 0; y < 19; y++) {
                 if (det.filledStones.board[x][y].stone != 0) {
-
-
                     // check all neighbours
                     for (int dx = -1; dx <= 1; dx += 2)
                         for (int dy = -1; dy <= 1; dy += 2) {

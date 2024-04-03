@@ -123,4 +123,55 @@ public class StoneGroupLogic {
         }
         return null;
     }
+
+    // returns distance from each side, plus color of stone in 5th array index
+    public int[] calcGroupExtents(Board board) {
+        int[] extents = {0, 0, 0, 0, Intersection.EMPTY};
+        int[] stonesHit = {0, 0, 0}; // accumulate stones hit on each side
+
+        // shoot rays from each side of board on every line
+        // int[][] offsets = {{-1, 0}, {0, 1}, {1, 0}, {0, -1}};
+        for (int i = 0; i < 4; i++) {
+            int dx = offsets[i][0];
+            int dy = offsets[i][1];
+            // start at edge depending on direction
+            for (int line = 0; line < 19; line++) {
+                int x = 0, y = 0;
+                if (dx != 0) { // moving horizontally
+                    y = line;
+                    x = (dx == 1 ? 0 : 1) * 18;
+                }
+                if (dy != 0) { // moving vertically
+                    x = line;
+                    y = (dy == 1 ? 0 : 1) * 18;
+                }
+                // keep moving until we hit a stone or edge of board
+                int distance = 0;
+                while (isOnboard(x, y)) {
+                    if (board.board[x][y].stone != Intersection.EMPTY) {
+                        stonesHit[board.board[x][y].stone]++;
+                        extents[i] = Math.max(extents[i], distance);
+                        break;
+                    }
+                    x += dx;
+                    y += dy;
+                    distance++;
+                }
+            }
+        }
+
+        // set 5th index to color of stone that hit most sides
+        if (stonesHit[Intersection.BLACK] > stonesHit[Intersection.WHITE]) {
+            extents[4] = Intersection.BLACK;
+        } else {
+            extents[4] = Intersection.WHITE;
+        }
+
+        return extents;
+    }
+
+    // finds the group, puts a wall around it at the specified gap
+    public void buildFortress(Board board, int gap) {
+
+    }
 }

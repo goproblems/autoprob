@@ -4,7 +4,6 @@ import java.util.Properties;
 
 // run detector with visualization
 public class VisRunner {
-
 	public static void main(String[] args) throws Exception {
 		System.out.println("vis runner start...");
 

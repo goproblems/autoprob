@@ -1,6 +1,8 @@
 package autoprob;
 
+import autoprob.go.Intersection;
 import autoprob.go.Node;
+import autoprob.go.StoneGroupLogic;
 import autoprob.go.parse.Parser;
 
 import java.io.File;
@@ -49,13 +51,38 @@ public class GoTool {
         }
         if (command.equals("extents")) {
             runExtentsCommand(prop);
+        }
+        else if (command.equals("fortress")) {
+            runFortressCommand(prop);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
     }
 
+    private void runFortressCommand(Properties prop) throws Exception {
+        runExtentsCommand(prop);
+        System.out.println();
+
+        Node node = loadPassedSgf(prop);
+        StoneGroupLogic sgl = new StoneGroupLogic();
+
+        // build fortress
+        int gap = 4;
+        if (prop.containsKey("gap")) {
+            gap = Integer.parseInt(prop.getProperty("gap"));
+        }
+        sgl.buildFortress(node.board, gap);
+        System.out.println(node.board);
+    }
+
     private void runExtentsCommand(Properties prop) throws Exception {
         Node node = loadPassedSgf(prop);
         System.out.println(node.board);
+        StoneGroupLogic sgl = new StoneGroupLogic();
+        int[] extents = sgl.calcGroupExtents(node.board);
+        // print out the extents
+        System.out.println("extents: right:" + extents[0] + " top:" + extents[1] + " left:" + extents[2] + " bottom:" + extents[3]);
+        // print stone color
+        System.out.println("stone color: " + (extents[4] == Intersection.BLACK ? "black" : "white"));
     }
 }

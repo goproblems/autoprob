@@ -126,7 +126,7 @@ public class StoneGroupLogic {
 
     // returns distance from each side, plus color of stone in 5th array index
     public int[] calcGroupExtents(Board board) {
-        int[] extents = {0, 0, 0, 0, Intersection.EMPTY};
+        int[] extents = {19, 19, 19, 19, Intersection.EMPTY};
         int[] stonesHit = {0, 0, 0}; // accumulate stones hit on each side
 
         // shoot rays from each side of board on every line
@@ -150,7 +150,7 @@ public class StoneGroupLogic {
                 while (isOnboard(x, y)) {
                     if (board.board[x][y].stone != Intersection.EMPTY) {
                         stonesHit[board.board[x][y].stone]++;
-                        extents[i] = Math.max(extents[i], distance);
+                        extents[i] = Math.min(extents[i], distance);
                         break;
                     }
                     x += dx;
@@ -170,8 +170,29 @@ public class StoneGroupLogic {
         return extents;
     }
 
+    public void drawWall(Board board, int startx, int starty, int endx, int endy, int stone) {
+        int dx = endx - startx;
+        int dy = endy - starty;
+        int steps = Math.max(Math.abs(dx), Math.abs(dy));
+        for (int i = 0; i <= steps; i++) {
+            int x = startx + i * dx / steps;
+            int y = starty + i * dy / steps;
+            System.out.println("x: " + x + " y: " + y);
+            if (isOnboard(x, y)) {
+                board.board[x][y].stone = stone;
+            }
+        }
+    }
+
     // finds the group, puts a wall around it at the specified gap
     public void buildFortress(Board board, int gap) {
-
+        int[] extents = calcGroupExtents(board);
+        int stone = extents[4];
+        // draw up to 4 walls around it at the specified gap
+        int right = extents[0], left = extents[2], top = extents[1], bottom = extents[3];
+        drawWall(board, left - gap, top - gap, left - gap, 19 - bottom + gap, stone); // left wall
+        drawWall(board, left - gap, top - gap, 19 - right + gap, top - gap, stone); // top wall
+        drawWall(board, 19 - right + gap, top - gap, 19 - right + gap, 19 - bottom + gap, stone); // right wall
+        drawWall(board, left - gap, 19 - bottom + gap, 19 - right + gap, 19 - bottom + gap, stone); // bottom wall
     }
 }

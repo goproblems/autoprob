@@ -177,7 +177,6 @@ public class StoneGroupLogic {
         for (int i = 0; i <= steps; i++) {
             int x = startx + i * dx / steps;
             int y = starty + i * dy / steps;
-            System.out.println("x: " + x + " y: " + y);
             if (isOnboard(x, y)) {
                 board.board[x][y].stone = stone;
             }
@@ -188,11 +187,38 @@ public class StoneGroupLogic {
     public void buildFortress(Board board, int gap) {
         int[] extents = calcGroupExtents(board);
         int stone = extents[4];
+        int opposite = stone == Intersection.BLACK ? Intersection.WHITE : Intersection.BLACK;
         // draw up to 4 walls around it at the specified gap
         int right = extents[0], left = extents[2], top = extents[1], bottom = extents[3];
-        drawWall(board, left - gap, top - gap, left - gap, 19 - bottom + gap, stone); // left wall
-        drawWall(board, left - gap, top - gap, 19 - right + gap, top - gap, stone); // top wall
-        drawWall(board, 19 - right + gap, top - gap, 19 - right + gap, 19 - bottom + gap, stone); // right wall
-        drawWall(board, left - gap, 19 - bottom + gap, 19 - right + gap, 19 - bottom + gap, stone); // bottom wall
+        // put an extra wall behind the wall, opposite color
+        drawWall(board, left - gap, top - gap, left - gap, 18 - bottom + gap, stone); // left wall
+        drawWall(board, left - gap - 1, top - gap, left - gap - 1, 18 - bottom + gap, opposite); // left wall
+
+        drawWall(board, left - gap, top - gap, 18 - right + gap, top - gap, stone); // top wall
+        drawWall(board, left - gap, top - gap - 1, 18 - right + gap, top - gap - 1, opposite); // top wall
+
+        drawWall(board, 18 - right + gap, top - gap, 18 - right + gap, 18 - bottom + gap, stone); // right wall
+        drawWall(board, 18 - right + gap + 1, top - gap, 18 - right + gap + 1, 18 - bottom + gap, opposite); // right wall
+
+        drawWall(board, left - gap, 18 - bottom + gap, 18 - right + gap, 18 - bottom + gap, stone); // bottom wall
+        drawWall(board, left - gap, 18 - bottom + gap + 1, 18 - right + gap, 18 - bottom + gap + 1, opposite); // bottom wall
+
+        // paint the outside of the walls checkerboard
+        paintCheckerboard(board, opposite, 0, 18 - bottom + gap + 1, 18, 18); // bottom
+        paintCheckerboard(board, opposite, 0, 0, 18, top - gap - 1); // top
+        paintCheckerboard(board, opposite, 0, 0, left - gap - 1, 18); // left
+        paintCheckerboard(board, opposite, 18 - right + gap + 1, 0, 18, 18); // right
+    }
+
+    private void paintCheckerboard(Board board, int stone, int startx, int starty, int endx, int endy) {
+        for (int x = startx; x <= endx; x++) {
+            for (int y = starty; y <= endy; y++) {
+                if ((x + y) % 2 == 0) {
+                    if (isOnboard(x, y)) {
+                        board.board[x][y].stone = stone;
+                    }
+                }
+            }
+        }
     }
 }

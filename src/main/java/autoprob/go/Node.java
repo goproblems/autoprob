@@ -28,7 +28,7 @@ public class Node {
 
     public Node mom;
     /** Vector< Node >: progeny */
-    public Vector babies = new Vector();
+    public Vector<Node> babies = new Vector<>();
     /** Vector< Action > : the actions this node contains, like moves or addstones */
     public Vector acts = new Vector();
 
@@ -112,11 +112,11 @@ public class Node {
                     char c = src.charAt(i);
                     val += c;
                     i++;
-                    /*			 // sometimes we have two tags stuck together -- bitch!
+                    /*			 // sometimes we have two tags stuck together
                      if (src.charAt(i) == ']')
                      if (i+1 < src.length())
                      if (src.charAt(i+1) == '[')
-                     // compact the fucker
+                     // compact
                       i += 2;
                       */
                 }

@@ -1,6 +1,8 @@
 package autoprob.katastruct;
 
+import java.awt.*;
 import java.text.DecimalFormat;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.google.gson.annotations.Expose;
@@ -34,6 +36,12 @@ public class KataAnalysisResult {
 	public List<Double> ownership = null;
 	public List<Double> ownershipStdev = null;
 	public List<Double> policy = null;
+
+	public static class Policy {
+		public double policy;
+		public int x;
+        public int y;
+	}
 	
 	public String printMoves(int max) {
 		StringBuilder sb = new StringBuilder();
@@ -105,6 +113,58 @@ public class KataAnalysisResult {
 			System.out.println();
 		}
 		System.out.println();
+	}
+
+	// print a graphical representation
+	public void drawPolicy(Node node) {
+		if (policy == null) return;
+		for (int y = 0; y < 19; y++) {
+			for (int x = 0; x < 19; x++) {
+				if (node.board.board[x][y].stone == Intersection.EMPTY) {
+					double o = policy.get(x + y * 19);
+					if (o > 0.01) {
+						int d = (int) (o * 99.99);
+						// print padded int to 2 digits
+						if (d < 10)
+							System.out.print(' ');
+						System.out.print(d);
+					}
+					else
+						System.out.print(" -");
+				}
+				else {
+					System.out.print(' ');
+					System.out.print(node.board.board[x][y].stone == Intersection.BLACK ? 'X' : 'O');
+				}
+			}
+			System.out.println();
+		}
+		System.out.println();
+	}
+
+	// returns top num policy moves with their board locations
+	public List<Policy> getTopPolicy(int num, List<Point> moves, boolean includeMoves) {
+		List<Policy> top = new ArrayList<>();
+		// add all policy locations to list, then sort
+		for (int i = 0; i < policy.size(); i++) {
+			Policy p = new Policy();
+			p.policy = policy.get(i);
+			p.x = i % 19;
+			p.y = i / 19;
+			if (includeMoves) {
+				if (moves.contains(new Point(p.x, p.y))) {
+					top.add(p);
+				}
+			} else {
+				if (!moves.contains(new Point(p.x, p.y))) {
+					top.add(p);
+				}
+			}
+		}
+		top.sort((a, b) -> Double.compare(b.policy, a.policy));
+		// truncate to num
+		if (top.size() > num) top = top.subList(0, num);
+		return top;
 	}
 
 	public MoveInfo getMoveInfo(String loc) {

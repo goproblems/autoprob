@@ -175,6 +175,7 @@ public class GoTool {
         System.out.println("parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", ");
 
         kres.drawPolicy(node);
+
         // get top policy from result
         var solMoves = getSolutionMoves(node);
         var topSolPolicy = kres.getTopPolicy(5, solMoves, true);
@@ -206,13 +207,14 @@ public class GoTool {
         // read all items until finished
         while (scanner.hasNextLine()) {
             String s = scanner.nextLine();
+            String id = s.split(",")[0];
             writer.print(s); // start by copying existing
             writer.print(",");
             Node node = csv2node(s);
             createFortress(props, node);
 
             KataQuery query = qb.buildQuery(node);
-            query.id = "auto:x";
+            query.id = "auto:" + id;
             query.maxVisits = 1;
             query.includePolicy = true;
             query.analyzeTurns.clear();

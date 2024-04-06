@@ -146,18 +146,20 @@ public class KataAnalysisResult {
 	public List<Policy> getTopPolicy(int num, List<Point> moves, boolean includeMoves) {
 		List<Policy> top = new ArrayList<>();
 		// add all policy locations to list, then sort
-		for (int i = 0; i < policy.size(); i++) {
-			Policy p = new Policy();
-			p.policy = policy.get(i);
-			p.x = i % 19;
-			p.y = i / 19;
-			if (includeMoves) {
-				if (moves.contains(new Point(p.x, p.y))) {
-					top.add(p);
-				}
-			} else {
-				if (!moves.contains(new Point(p.x, p.y))) {
-					top.add(p);
+		for (int y = 0; y < 19; y++) {
+			for (int x = 0; x < 19; x++) {
+				Policy p = new Policy();
+				p.policy = policy.get(x + y * 19);
+				p.x = x;
+				p.y = y;
+				if (includeMoves) {
+					if (moves.contains(new Point(p.x, p.y))) {
+						top.add(p);
+					}
+				} else {
+					if (!moves.contains(new Point(p.x, p.y))) {
+						top.add(p);
+					}
 				}
 			}
 		}

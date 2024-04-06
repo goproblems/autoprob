@@ -11,6 +11,7 @@ import autoprob.katastruct.KataQuery;
 import java.awt.Point;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.DecimalFormat;
@@ -21,6 +22,7 @@ import java.util.Scanner;
 
 public class GoTool {
     private static final DecimalFormat df = new DecimalFormat("0.00");
+    private static final DecimalFormat dfp = new DecimalFormat("0.000");
 
     private void runTool(Properties props) throws Exception {
         String command = props.getProperty("cmd");
@@ -34,6 +36,8 @@ public class GoTool {
             runFortressCommand(props);
         } else if (command.equals("showpolicy")) {
             runShowPolicyCommand(props);
+        } else if (command.equals("writepolicy")) {
+            runWritePolicyCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -181,6 +185,78 @@ public class GoTool {
         for (KataAnalysisResult.Policy p : topMistakePolicy) {
             System.out.println("mistake policy: " + df.format(p.policy) + " at " + p.x + "," + p.y);
         }
+    }
+
+    private void runWritePolicyCommand(Properties props) throws Exception {
+        String outPathString = props.getProperty("csvout.path");
+        PrintWriter writer = new PrintWriter(outPathString);
+
+        String path = props.getProperty("csv");
+        Scanner scanner = new Scanner(new File(path));
+        // csv header
+        String headerString = scanner.nextLine();
+        String[] hdr = headerString.split(",");
+
+        // write header
+        writer.println(headerString + ",solpolicy,mistakepolicy");
+
+        KataBrain brain = new KataBrain(props);
+        QueryBuilder qb = new QueryBuilder();
+
+        // read all items until finished
+        while (scanner.hasNextLine()) {
+            String s = scanner.nextLine();
+            writer.print(s); // start by copying existing
+            writer.print(",");
+            Node node = csv2node(s);
+            createFortress(props, node);
+
+            KataQuery query = qb.buildQuery(node);
+            query.id = "auto:x";
+            query.maxVisits = 1;
+            query.includePolicy = true;
+            query.analyzeTurns.clear();
+            query.analyzeTurns.add(0);
+            brain.doQuery(query); // kick off katago
+
+            KataAnalysisResult kres = brain.getResult(query.id, 0);
+            System.out.println("parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", ");
+
+            kres.drawPolicy(node);
+            // get top policy from result
+            var solMoves = getSolutionMoves(node);
+            var topSolPolicy = kres.getTopPolicy(5, solMoves, true);
+            for (KataAnalysisResult.Policy p : topSolPolicy) {
+                System.out.println("solution policy: " + df.format(p.policy) + " at " + p.x + "," + p.y);
+            }
+            writer.print(policy2string(topSolPolicy));
+            writer.print(",");
+
+            var topMistakePolicy = kres.getTopPolicy(5, solMoves, false);
+            for (KataAnalysisResult.Policy p : topMistakePolicy) {
+                System.out.println("mistake policy: " + df.format(p.policy) + " at " + p.x + "," + p.y);
+            }
+            writer.print(policy2string(topMistakePolicy));
+
+            writer.println();
+        }
+
+        writer.flush();
+        writer.close();
+        System.out.println("complete to " + outPathString);
+    }
+
+    // format like 7:18;2:4
+    private String policy2string(List<KataAnalysisResult.Policy> policies) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < policies.size(); i++) {
+            KataAnalysisResult.Policy p = policies.get(i);
+            if (i != 0) {
+                sb.append(";");
+            }
+            sb.append(p.x + ":" + p.y + ":" + dfp.format(p.policy));
+        }
+        return sb.toString();
     }
 
     private List<Point> getSolutionMoves(Node node) {

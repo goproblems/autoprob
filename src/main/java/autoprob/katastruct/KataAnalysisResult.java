@@ -134,7 +134,7 @@ public class KataAnalysisResult {
 				}
 				else {
 					System.out.print(' ');
-					System.out.print(node.board.board[x][y].stone == Intersection.BLACK ? 'X' : 'O');
+					System.out.print(node.board.board[x][y].stone == Intersection.BLACK ? 'X' : '@');
 				}
 			}
 			System.out.println();

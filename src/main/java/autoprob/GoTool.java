@@ -222,7 +222,8 @@ public class GoTool {
             brain.doQuery(query); // kick off katago
 
             KataAnalysisResult kres = brain.getResult(query.id, 0);
-            System.out.println("parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", ");
+            System.out.println();
+            System.out.println("=> parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", elo: " + s.split(",")[1]);
 
             kres.drawPolicy(node);
             // get top policy from result

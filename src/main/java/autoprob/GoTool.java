@@ -199,10 +199,15 @@ public class GoTool {
         String[] hdr = headerString.split(",");
 
         // write header
-        writer.println(headerString + ",solpolicy,mistakepolicy");
+        String solHdr = props.getProperty("policy.sol_hdr", "solpolicy");
+        String misHdr = props.getProperty("policy.mis_hdr", "mistakepolicy");
+        writer.println(headerString + "," + solHdr + "," + misHdr);
 
         KataBrain brain = new KataBrain(props);
         QueryBuilder qb = new QueryBuilder();
+
+        int numPolicies = Integer.parseInt(props.getProperty("policy.max_count", "5"));
+        boolean simplePolicy = Boolean.parseBoolean(props.getProperty("policy.simple", "false"));
 
         // read all items until finished
         while (scanner.hasNextLine()) {
@@ -228,18 +233,18 @@ public class GoTool {
             kres.drawPolicy(node);
             // get top policy from result
             var solMoves = getSolutionMoves(node);
-            var topSolPolicy = kres.getTopPolicy(5, solMoves, true);
+            var topSolPolicy = kres.getTopPolicy(numPolicies, solMoves, true);
             for (KataAnalysisResult.Policy p : topSolPolicy) {
                 System.out.println("solution policy: " + df.format(p.policy) + " at " + p.x + "," + p.y);
             }
-            writer.print(policy2string(topSolPolicy));
+            writer.print(policy2string(topSolPolicy, simplePolicy));
             writer.print(",");
 
-            var topMistakePolicy = kres.getTopPolicy(5, solMoves, false);
+            var topMistakePolicy = kres.getTopPolicy(numPolicies, solMoves, false);
             for (KataAnalysisResult.Policy p : topMistakePolicy) {
                 System.out.println("mistake policy: " + df.format(p.policy) + " at " + p.x + "," + p.y);
             }
-            writer.print(policy2string(topMistakePolicy));
+            writer.print(policy2string(topMistakePolicy, simplePolicy));
 
             writer.println();
         }
@@ -249,15 +254,18 @@ public class GoTool {
         System.out.println("complete to " + outPathString);
     }
 
-    // format like 7:18;2:4
-    private String policy2string(List<KataAnalysisResult.Policy> policies) {
+    // format like 7:18:0.356;2:4:0.122
+    private String policy2string(List<KataAnalysisResult.Policy> policies, boolean simplePolicy) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < policies.size(); i++) {
             KataAnalysisResult.Policy p = policies.get(i);
             if (i != 0) {
                 sb.append(";");
             }
-            sb.append(p.x + ":" + p.y + ":" + dfp.format(p.policy));
+            if (!simplePolicy) {
+                sb.append(p.x + ":" + p.y + ":");
+            }
+            sb.append(dfp.format(p.policy));
         }
         return sb.toString();
     }

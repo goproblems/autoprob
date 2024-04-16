@@ -7,10 +7,12 @@ import autoprob.go.action.MoveAction;
 import autoprob.go.parse.Parser;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
+import autoprob.katastruct.MoveInfo;
 
 import java.awt.Point;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,6 +40,8 @@ public class GoTool {
             runShowPolicyCommand(props);
         } else if (command.equals("writepolicy")) {
             runWritePolicyCommand(props);
+        } else if (command.equals("solve")) {
+            runSolveCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -248,6 +252,53 @@ public class GoTool {
 
             writer.println();
         }
+
+        writer.flush();
+        writer.close();
+        System.out.println("complete to " + outPathString);
+    }
+
+    private void runSolveCommand(Properties props) throws Exception {
+        String outPathString = props.getProperty("csvout.path");
+        PrintWriter writer = new PrintWriter(outPathString);
+
+        // choose a mode depending on properties
+        String sgfPath = props.getProperty("path");
+        if (sgfPath == null) {
+            throw new RuntimeException("you must pass in a path");
+        }
+        File f = new File(sgfPath);
+        System.out.println("reading from: " + sgfPath + ", is file: " + f.isFile());
+
+        // get sgf
+        String sgf = Files.readString(Path.of(sgfPath));
+        var parser = new Parser();
+        Node node = parser.parse(sgf);
+
+        KataBrain brain = new KataBrain(props);
+        QueryBuilder qb = new QueryBuilder();
+
+        createFortress(props, node);
+
+        KataQuery query = qb.buildQuery(node);
+        query.id = "auto:sgf";
+        query.maxVisits = Integer.parseInt(props.getProperty("search.visits"));
+        query.includePolicy = true;
+        query.analyzeTurns.clear();
+        query.analyzeTurns.add(0);
+        brain.doQuery(query); // kick off katago
+
+        KataAnalysisResult kres = brain.getResult(query.id, 0);
+        System.out.println();
+        System.out.println("=> parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead));
+
+        kres.drawPolicy(node);
+
+        // top move from result is engine choice
+        System.out.println(kres.printMoves(3));
+        MoveInfo topMove = kres.moveInfos.get(0);
+
+        writer.println();
 
         writer.flush();
         writer.close();

@@ -48,7 +48,10 @@ public class KataAnalysisResult {
 		int cnt = 0;
 		for (MoveInfo mi: moveInfos) {
 			if (cnt++ == max) break;
-			sb.append("kar move: ").append(mi.move).append(", visits: ").append(mi.visits).append(", score: ").append(df.format(mi.scoreLead)).append(", policy: ").append(df.format(mi.prior * 1000.0)).append("\n");
+			sb.append("kar move: ").append(mi.move).append(", visits: ").append(mi.visits).append(", score: ").
+					append(df.format(mi.scoreLead)).append(", policy: ").append(df.format(mi.prior * 1000.0)).
+					append(", order: ").append(mi.order).
+					append("\n");
 		}
 		return sb.toString();
 	}

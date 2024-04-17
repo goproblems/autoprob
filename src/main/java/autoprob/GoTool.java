@@ -270,39 +270,111 @@ public class GoTool {
         File f = new File(sgfPath);
         System.out.println("reading from: " + sgfPath + ", is file: " + f.isFile());
 
-        // get sgf
-        String sgf = Files.readString(Path.of(sgfPath));
-        var parser = new Parser();
-        Node node = parser.parse(sgf);
-
         KataBrain brain = new KataBrain(props);
-        QueryBuilder qb = new QueryBuilder();
 
-        createFortress(props, node);
+        // write CSV header
+        writer.println("file,weights,visits,correct,solved,moves");
 
-        KataQuery query = qb.buildQuery(node);
-        query.id = "auto:sgf";
-        query.maxVisits = Integer.parseInt(props.getProperty("search.visits"));
-        query.includePolicy = true;
-        query.analyzeTurns.clear();
-        query.analyzeTurns.add(0);
-        brain.doQuery(query); // kick off katago
-
-        KataAnalysisResult kres = brain.getResult(query.id, 0);
-        System.out.println();
-        System.out.println("=> parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead));
-
-        kres.drawPolicy(node);
-
-        // top move from result is engine choice
-        System.out.println(kres.printMoves(3));
-        MoveInfo topMove = kres.moveInfos.get(0);
-
-        writer.println();
+        solveSgfFile(props, sgfPath, brain, writer);
 
         writer.flush();
         writer.close();
         System.out.println("complete to " + outPathString);
+    }
+
+    private static void solveSgfFile(Properties props, String sgfPath, KataBrain brain, PrintWriter writer) throws Exception {
+        // get just the name of the file
+        writer.print(Path.of(sgfPath).getFileName() + ",");
+        // get sgf
+        String sgf = Files.readString(Path.of(sgfPath));
+        var parser = new Parser();
+        Node root = parser.parse(sgf);
+
+        Node node = root;
+        int correctCount = 0;
+        String moveSequence = "";
+        boolean solved = false;
+        int visits = Integer.parseInt(props.getProperty("search.visits"));
+
+        // keep playing as long as we're on the correct path
+        while (true) {
+            QueryBuilder qb = new QueryBuilder();
+
+            createFortress(props, node);
+
+            KataQuery query = qb.buildQuery(node);
+            query.id = "auto:sgf";
+            query.maxVisits = visits;
+            query.includePolicy = true;
+            query.analyzeTurns.clear();
+            query.analyzeTurns.add(0);
+            brain.doQuery(query); // kick off katago
+
+            KataAnalysisResult kres = brain.getResult(query.id, 0);
+            System.out.println();
+            System.out.println("=> parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead));
+
+            kres.drawPolicy(node);
+
+            // top move from result is engine choice
+            System.out.println(kres.printMoves(3));
+            MoveInfo topMove = kres.moveInfos.get(0);
+            moveSequence = moveSequence + topMove.move + " ";
+
+            // figure out if this is a correct move or not
+            Point p = Intersection.gtp2point(topMove.move);
+            if (node.hasMove(p)) {
+                Node n = node.getChildWithMove(p);
+                if (n.searchForTheTruth()) {
+                    correctCount++;
+                    System.out.println("correct move: " + topMove.move);
+                    // since we got the correct move, we can move on
+                    if (n.babies.isEmpty()) {
+                        System.out.println("solved!"); // end of sequence
+                        solved = true;
+                        break;
+                    }
+                    // do a computer response
+                    n = n.chooseResponse();
+                    moveSequence = moveSequence + n.getMoveAction() + " ";
+                    // it's possible this is the end of the sequence, altho unlikely
+                    if (n.babies.isEmpty()) {
+                        System.out.println("solved on response!"); // end of sequence
+                        solved = true;
+                        break;
+                    }
+                    node = n; // advance
+                } else {
+                    System.out.println("incorrect move: " + topMove.move);
+                    break;
+                }
+            } else {
+                System.out.println("off path move: " + topMove.move);
+                break;
+            }
+        }
+
+        // record results in csv
+        writer.print(weightsName(brain.modelPath));
+        writer.print(",");
+        writer.print(visits);
+        writer.print(",");
+        writer.print(correctCount);
+        writer.print(",");
+        writer.print(solved ? "solved" : "failed");
+        writer.print(",");
+        writer.print(moveSequence);
+
+        System.out.println("final sequence: " + moveSequence);
+    }
+
+    // human readable version of weights
+    // start from eg: /home/jeff/Downloads/katago-weights/g170-b20c256x2-s5303129600-d1228401921.bin.gz
+    private static String weightsName(String modelPath) {
+        String[] parts = modelPath.split("-");
+        String last = parts[parts.length - 1];
+        String[] lastParts = last.split("\\.");
+        return lastParts[0];
     }
 
     // format like 7:18:0.356;2:4:0.122

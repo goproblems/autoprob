@@ -23,12 +23,13 @@ public class KataBrain {
 	private BufferedReader reader;
 	private Map<String, KataAnalysisResult> results = new Hashtable<>();
 	private static final DecimalFormat df = new DecimalFormat("0.00");
+	public String modelPath;
 
 	public KataBrain(Properties props) throws Exception {
 		this.props = props;
 		String kataPath = props.getProperty("katago").trim();
 		String configPath = props.getProperty("kata.config").trim();
-		String modelPath = props.getProperty("kata.model").trim();
+		modelPath = props.getProperty("kata.model").trim();
 		debugPrintKatago = Boolean.parseBoolean(props.getProperty("kata.debug_print", "false"));
 
 		// create a native katago process

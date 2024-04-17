@@ -313,7 +313,7 @@ public class Node {
     }
     
     // how should the SGF respond to a user's move?
-    protected Node chooseResponse() throws Exception {
+    public Node chooseResponse() throws Exception {
         if (babies.size() == 0)
             throw new Exception("no moves!");
         
@@ -738,6 +738,19 @@ public class Node {
             }
         }
         return false;
+    }
+
+    public Node getChildWithMove(Point move) {
+        for (Enumeration e = babies.elements(); e.hasMoreElements();) {
+            Node n = (Node) e.nextElement();
+            MoveAction ma = n.getMoveAction();
+            if (ma != null) {
+                Point p = ma.loc;
+                if (p.x == move.x && p.y == move.y)
+                    return n;
+            }
+        }
+        return null;
     }
 
     public BoardDelta getDelta() {

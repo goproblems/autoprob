@@ -275,7 +275,22 @@ public class GoTool {
         // write CSV header
         writer.println("file,weights,visits,correct,solved,moves");
 
-        solveSgfFile(props, sgfPath, brain, writer);
+        if (f.isFile()) {
+            solveSgfFile(props, sgfPath, brain, writer);
+        } else {
+            // it's a directory
+            File[] files = f.listFiles();
+            if (files == null) {
+                throw new RuntimeException("no files in directory: " + sgfPath);
+            }
+            for (File file : files) {
+                if (file.isFile()) {
+                    solveSgfFile(props, file.getAbsolutePath(), brain, writer);
+                }
+            }
+        }
+
+        brain.stopKataBrain();
 
         writer.flush();
         writer.close();
@@ -364,6 +379,7 @@ public class GoTool {
         writer.print(solved ? "solved" : "failed");
         writer.print(",");
         writer.print(moveSequence);
+        writer.println();
 
         System.out.println("final sequence: " + moveSequence);
     }

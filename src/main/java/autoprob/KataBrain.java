@@ -1,9 +1,6 @@
 package autoprob;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.text.DecimalFormat;
 import java.util.Hashtable;
 import java.util.Map;
@@ -24,6 +21,7 @@ public class KataBrain {
 	private Map<String, KataAnalysisResult> results = new Hashtable<>();
 	private static final DecimalFormat df = new DecimalFormat("0.00");
 	public String modelPath;
+	private Thread thread;
 
 	public KataBrain(Properties props) throws Exception {
 		this.props = props;
@@ -42,13 +40,20 @@ public class KataBrain {
 			reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
 			
 			try {
-				Thread thread = new Thread() {
+				thread = new Thread() {
 					public void run() {
 						System.out.println("katabrain Thread Running");
 						try {
 							KataBrain.this.processKataResponses();
+						} catch (InterruptedIOException e) {
+							System.out.println("Thread was interrupted during I/O");
+							Thread.currentThread().interrupt(); // Optional: re-interrupt the thread
 						} catch (JsonSyntaxException | IOException e) {
 							e.printStackTrace();
+						} finally {
+							if (process != null) {
+								process.destroy(); // Ensure process is terminated when done
+							}
 						}
 					}
 				};
@@ -63,6 +68,29 @@ public class KataBrain {
 					(err == null) ? "(No message)" : err);
 			System.out.println(message);
 			throw e;
+		}
+	}
+
+	public void stopKataBrain() {
+		if (thread != null) {
+			thread.interrupt(); // Interrupt the thread, causing blocking I/O to throw an exception
+		}
+		if (process != null) {
+			try {
+				process.destroy(); // Attempt to terminate the process
+				process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS); // Wait for the process to terminate
+				process.destroyForcibly(); // Force termination if not already done
+			} catch (InterruptedException e) {
+				System.out.println("Failed to terminate the process cleanly");
+			}
+		}
+		if (reader != null) {
+			try {
+				reader.close(); // Close the reader to release any blocked I/O
+			} catch (IOException e) {
+				System.out.println("Failed to close the reader properly");
+				e.printStackTrace();
+			}
 		}
 	}
 

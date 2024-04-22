@@ -270,27 +270,57 @@ public class GoTool {
         File f = new File(sgfPath);
         System.out.println("reading from: " + sgfPath + ", is file: " + f.isFile());
 
-        KataBrain brain = new KataBrain(props);
-
         // write CSV header
         writer.println("file,weights,visits,correct,solved,moves");
 
-        if (f.isFile()) {
-            solveSgfFile(props, sgfPath, brain, writer);
-        } else {
-            // it's a directory
-            File[] files = f.listFiles();
-            if (files == null) {
-                throw new RuntimeException("no files in directory: " + sgfPath);
+        // get weights
+        String modelDir = props.getProperty("kata.model_dir");
+        ArrayList<String> weights = new ArrayList<>();
+        if (modelDir != null) {
+            // iterate this directory, add all weight files to array
+            File wdir = new File(modelDir);
+            if (!wdir.exists()) {
+                throw new RuntimeException("no such directory: " + modelDir);
             }
-            for (File file : files) {
-                if (file.isFile()) {
-                    solveSgfFile(props, file.getAbsolutePath(), brain, writer);
+            File[] wfiles = wdir.listFiles();
+            if (wfiles == null) {
+                throw new RuntimeException("no files in directory: " + modelDir);
+            }
+            for (File wfile : wfiles) {
+                if (wfile.isFile()) {
+                    weights.add(wfile.getAbsolutePath());
                 }
             }
         }
+        if (weights.isEmpty()) {
+            weights.add(null); // will use default
+        }
 
-        brain.stopKataBrain();
+        // iterate for all weight files
+        for (String modelFile : weights) {
+            if (modelFile != null) {
+                System.out.println(">>> using weights: " + modelFile);
+            } else {
+                System.out.println(">>> using default weights");
+            }
+            KataBrain brain = new KataBrain(props, modelFile);
+            if (f.isFile()) {
+                solveSgfFile(props, sgfPath, brain, writer);
+            } else {
+                // it's a directory
+                File[] files = f.listFiles();
+                if (files == null) {
+                    throw new RuntimeException("no files in directory: " + sgfPath);
+                }
+                for (File file : files) {
+                    if (file.isFile()) {
+                        solveSgfFile(props, file.getAbsolutePath(), brain, writer);
+                    }
+                }
+            }
+
+            brain.stopKataBrain();
+        }
 
         writer.flush();
         writer.close();

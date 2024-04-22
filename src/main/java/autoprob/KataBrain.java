@@ -24,10 +24,17 @@ public class KataBrain {
 	private Thread thread;
 
 	public KataBrain(Properties props) throws Exception {
+		this(props, null);
+	}
+
+	public KataBrain(Properties props, String modelPathOverride) throws Exception {
 		this.props = props;
 		String kataPath = props.getProperty("katago").trim();
 		String configPath = props.getProperty("kata.config").trim();
 		modelPath = props.getProperty("kata.model").trim();
+		if (modelPathOverride != null) {
+			modelPath = modelPathOverride;
+		}
 		debugPrintKatago = Boolean.parseBoolean(props.getProperty("kata.debug_print", "false"));
 
 		// create a native katago process

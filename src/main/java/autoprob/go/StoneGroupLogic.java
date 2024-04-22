@@ -208,6 +208,42 @@ public class StoneGroupLogic {
         paintCheckerboard(board, opposite, 0, 0, 18, top - gap - 1); // top
         paintCheckerboard(board, opposite, 0, 0, left - gap - 1, 18); // left
         paintCheckerboard(board, opposite, 18 - right + gap + 1, 0, 18, 18); // right
+
+        // find the side most open
+        // which is largest value in first 4 elements of extents array?
+        int max = 0;
+        int maxIndex = 0;
+        for (int i = 0; i < 4; i++) {
+            if (extents[i] > max) {
+                max = extents[i];
+                maxIndex = i;
+            }
+        }
+
+        // put a box on the most open side
+        if (maxIndex == 3) { // bottom
+            int y = 18 - bottom + gap + 3;
+            checkboardBoxWithBorder(board, stone, opposite, -1, y, 19, 19);
+        } else if (maxIndex == 1) { // top
+            int y = top - gap - 3;
+            checkboardBoxWithBorder(board, stone, opposite, -1, 0, 19, y);
+        } else if (maxIndex == 2) { // left
+            int x = left - gap - 3;
+            checkboardBoxWithBorder(board, stone, opposite, 0, -1, x, 19);
+        } else if (maxIndex == 0) { // right
+            int x = 18 - right + gap + 3;
+            checkboardBoxWithBorder(board, stone, opposite, x, -1, 19, 19);
+        }
+    }
+
+    private void checkboardBoxWithBorder(Board board, int stone, int opposite, int startx, int starty, int endx, int endy) {
+        eraseBoard(board, startx, starty, endx, endy);
+        drawWall(board, startx, starty, endx, starty, stone); // top
+        drawWall(board, startx, starty - 1, endx, starty - 1, opposite); // top
+        drawWall(board, startx, starty, startx, endy, stone); // left
+        drawWall(board, startx - 1, starty, startx - 1, endy, opposite); // left
+
+        paintCheckerboard(board, stone, startx, starty, endx, endy);
     }
 
     private void paintCheckerboard(Board board, int stone, int startx, int starty, int endx, int endy) {
@@ -217,6 +253,16 @@ public class StoneGroupLogic {
                     if (isOnboard(x, y)) {
                         board.board[x][y].stone = stone;
                     }
+                }
+            }
+        }
+    }
+
+    private void eraseBoard(Board board, int startx, int starty, int endx, int endy) {
+        for (int x = startx; x <= endx; x++) {
+            for (int y = starty; y <= endy; y++) {
+                if (isOnboard(x, y)) {
+                    board.board[x][y].stone = Intersection.EMPTY;
                 }
             }
         }

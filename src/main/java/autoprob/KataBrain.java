@@ -150,7 +150,7 @@ public class KataBrain {
 	public void doQuery(KataQuery query) throws Exception {
 		Gson gson = new Gson();
 		String qjson = gson.toJson(query, KataQuery.class);
-//		System.out.println("KENG (" + lm + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
+//		System.out.println("KENG (" + "x" + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
 		
 		PrintWriter pw = new PrintWriter(process.getOutputStream());
 		pw.println(qjson);

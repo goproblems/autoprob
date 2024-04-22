@@ -155,6 +155,7 @@ public class GoTool {
             gap = Integer.parseInt(props.getProperty("gap"));
         }
         sgl.buildFortress(node.board, gap);
+        System.out.println("(" + node.outputSGF(true) + ")");
     }
 
     private void runShowPolicyCommand(Properties props) throws Exception {
@@ -178,7 +179,7 @@ public class GoTool {
         KataAnalysisResult kres = brain.getResult(query.id, 0);
         System.out.println("parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", ");
 
-        kres.drawPolicy(node);
+        kres.drawPolicy(node); // black is X, white @
 
         // get top policy from result
         var solMoves = getSolutionMoves(node);
@@ -308,6 +309,7 @@ public class GoTool {
                 solveSgfFile(props, sgfPath, brain, writer);
             } else {
                 // it's a directory
+                int count = 0;
                 File[] files = f.listFiles();
                 if (files == null) {
                     throw new RuntimeException("no files in directory: " + sgfPath);
@@ -315,11 +317,14 @@ public class GoTool {
                 for (File file : files) {
                     if (file.isFile()) {
                         solveSgfFile(props, file.getAbsolutePath(), brain, writer);
+                        count++;
                     }
                 }
+                System.out.println("solved " + count + " files");
             }
 
             brain.stopKataBrain();
+            writer.flush();
         }
 
         writer.flush();

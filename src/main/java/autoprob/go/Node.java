@@ -527,6 +527,8 @@ public class Node {
         }
         for (Enumeration e = acts.elements(); e.hasMoreElements();) {
             Action a = (Action) e.nextElement();
+            if (createSetup && (a instanceof SetupAction))
+                continue; // skip moves if we're creating a setup
             s += a.outputSGF();
             // we have to do special stuff for comment node
             if (comXtra != null && (a instanceof CommentAction)) {

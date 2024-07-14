@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Scanner;
 
+// KataRunner is a class that runs the KataGo engine to analyze Go games. the main function is estimating problem difficulty.
 public class GoTool {
     private static final DecimalFormat df = new DecimalFormat("0.00");
     private static final DecimalFormat dfp = new DecimalFormat("0.000");
@@ -155,7 +156,7 @@ public class GoTool {
             gap = Integer.parseInt(props.getProperty("gap"));
         }
         sgl.buildFortress(node.board, gap);
-        System.out.println("(" + node.outputSGF(true) + ")");
+//        System.out.println("(" + node.outputSGF(true) + ")");
     }
 
     private void runShowPolicyCommand(Properties props) throws Exception {
@@ -316,6 +317,7 @@ public class GoTool {
                 }
                 for (File file : files) {
                     if (file.isFile()) {
+                        System.out.println("> solving: " + file);
                         solveSgfFile(props, file.getAbsolutePath(), brain, writer);
                         count++;
                     }
@@ -340,7 +342,7 @@ public class GoTool {
         var parser = new Parser();
         Node root = parser.parse(sgf);
 
-        Node node = root;
+        Node node = root.advance2move();
         int correctCount = 0;
         String moveSequence = "";
         boolean solved = false;

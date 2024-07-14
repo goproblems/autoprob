@@ -431,6 +431,15 @@ public class Node {
         }
     }
 
+    // go to end of babies
+    public Node advance2end() {
+        Node node = this;
+        while (node.babies.size() > 0) {
+            node = (Node) node.babies.firstElement();
+        }
+        return node;
+    }
+
     // find node closest to where we just clicked
     class DepthCalcRecurser extends NodeRecurser {
         public DepthCalcRecurser() {

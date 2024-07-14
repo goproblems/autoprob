@@ -174,6 +174,7 @@ public class StoneGroupLogic {
         int dx = endx - startx;
         int dy = endy - starty;
         int steps = Math.max(Math.abs(dx), Math.abs(dy));
+        if (steps == 0) return;
         for (int i = 0; i <= steps; i++) {
             int x = startx + i * dx / steps;
             int y = starty + i * dy / steps;

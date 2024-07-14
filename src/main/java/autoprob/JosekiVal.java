@@ -1,10 +1,12 @@
 package autoprob;
 
+import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.parse.Parser;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.awt.Point;
 import java.text.DecimalFormat;
 import java.util.Properties;
 
@@ -51,6 +53,21 @@ public class JosekiVal {
 
         System.out.println(node.board);
 
+        Node n = addPath(node, path);
+        System.out.println();
+        System.out.println(n.board);
+
+        return node;
+    }
+
+    // adds moves from path to the end of node
+    private Node addPath(Node node, String path) throws Exception {
+        // path is a comma separated list of moves like "C4,D19,E4"
+        String[] moves = path.split(",");
+        for (String move : moves) {
+            Point p = Intersection.gtp2point(move);
+            node = node.addBasicMove(p.x, p.y);
+        }
         return node;
     }
 }

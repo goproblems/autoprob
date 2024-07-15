@@ -42,7 +42,14 @@ public class KataAnalysisResult {
 		public int x;
         public int y;
 	}
-	
+
+	public double blackScore() {
+		double score = rootInfo.scoreLead;
+		if (rootInfo.currentPlayer.equals("B"))
+			score = -score;
+		return score;
+	}
+
 	public String printMoves(int max) {
 		StringBuilder sb = new StringBuilder();
 		int cnt = 0;

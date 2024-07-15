@@ -3,6 +3,8 @@ package autoprob;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.parse.Parser;
+import autoprob.katastruct.KataAnalysisResult;
+import autoprob.katastruct.KataQuery;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,11 +55,44 @@ public class JosekiVal {
 
         System.out.println(node.board);
 
-        Node n = addPath(node, path);
+        Node endNode = addPath(node, path);
         System.out.println();
-        System.out.println(n.board);
+        System.out.println(endNode.board);
+
+        KataBrain brain = new KataBrain(props);
+
+        // step one: calculate the value of this move locally. is it the best local move?
+        // evaluate katago for this move in particular
+        // eval again for all possible local moves except this one
+        // calc the delta
+        // we also want to remember the absolute value here. a little tricky because not playing the more empty corner loses points.
+
+        var kres = queryNode(brain, endNode);
+        System.out.println("move score: " + df.format(kres.blackScore()));
+        System.out.println(kres.printMoves(1));
+
+        var kresParent = queryNode(brain, endNode.mom);
+        System.out.println("parent score: " + df.format(kresParent.blackScore()));
+        System.out.println(kresParent.printMoves(1));
+
+        // step two: calculate the value of playing here vs a tenuki to a different corner
+        // this gives us urgency
+
+        brain.stopKataBrain();
 
         return node;
+    }
+
+    private KataAnalysisResult queryNode(KataBrain brain, Node n) throws Exception {
+        QueryBuilder qb = new QueryBuilder();
+        KataQuery query = qb.buildQuery(n);
+        query.id = "auto:x";
+        query.includePolicy = true;
+        query.analyzeTurns.clear();
+        query.analyzeTurns.add(0);
+        brain.doQuery(query); // kick off katago
+        KataAnalysisResult kres = brain.getResult(query.id, 0);
+        return kres;
     }
 
     // adds moves from path to the end of node

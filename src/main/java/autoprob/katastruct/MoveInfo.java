@@ -47,6 +47,9 @@ public class MoveInfo {
 	@SerializedName("winrate")
 	@Expose
 	public Double winrate;
+	@SerializedName("weight")
+	@Expose
+	public Double weight;
 
 	@Override
 	public String toString() {

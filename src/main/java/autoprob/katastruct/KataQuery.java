@@ -57,6 +57,18 @@ public class KataQuery {
 	@Expose
 	public List<AllowMove> allowMoves = null;
 
+	// overrideSettings (object): Optional. Specify any number of "paramName":value entries in this object to override those params from command line CONFIG_FILE for this query. Most search parameters can be overriden: cpuctExploration, winLossUtilityFactor, etc.
+	// just support: humanSLProfile (string). Set the human-like play that KataGo should imitate.
+	@SerializedName("overrideSettings")
+	@Expose
+	public OverrideSettings overrideSettings;
+
+	public static class OverrideSettings {
+		@SerializedName("humanSLProfile")
+		@Expose
+		public String humanSLProfile;
+	}
+
     public Node generateNode() {
 		Node n = new Node(null);
 		// set board from initialStones
@@ -96,5 +108,12 @@ public class KataQuery {
 			}
 		}
 		return s;
+	}
+
+	public void setHumanSLrank(String rank) {
+		if (overrideSettings == null) {
+			overrideSettings = new OverrideSettings();
+		}
+		overrideSettings.humanSLProfile = "preaz_" + rank;
 	}
 }

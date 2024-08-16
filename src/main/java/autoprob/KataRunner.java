@@ -156,6 +156,7 @@ public class KataRunner {
 		query.id = "auto:" + fileName;
 		query.maxVisits = maxVisits;
 		query.includePolicy = true;
+		query.setHumanSLrank("10k"); // default rank
 		// reduce search?
 		if (onlySearchTurn > 0) {
 			query.analyzeTurns.clear();

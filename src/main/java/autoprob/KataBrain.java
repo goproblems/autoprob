@@ -32,6 +32,7 @@ public class KataBrain {
 		String kataPath = props.getProperty("katago").trim();
 		String configPath = props.getProperty("kata.config").trim();
 		modelPath = props.getProperty("kata.model").trim();
+		String humanModelPath = props.getProperty("kata.human_model").trim();
 		if (modelPathOverride != null) {
 			modelPath = modelPathOverride;
 		}
@@ -41,7 +42,12 @@ public class KataBrain {
 		ProcessBuilder processBuilder = new ProcessBuilder();
 		processBuilder.redirectErrorStream(true);
 		try {
-			processBuilder.command(kataPath, "analysis", "-config", configPath, "-model", modelPath);
+			// pass in human model if we have it
+			if (!humanModelPath.isEmpty()) {
+				processBuilder.command(kataPath, "analysis", "-config", configPath, "-model", modelPath, "-human-model", humanModelPath);
+			} else {
+				processBuilder.command(kataPath, "analysis", "-config", configPath, "-model", modelPath);
+			}
 			process = processBuilder.start();
 			
 			reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -55,7 +61,7 @@ public class KataBrain {
 						} catch (InterruptedIOException e) {
 							System.out.println("Thread was interrupted during I/O");
 							Thread.currentThread().interrupt(); // Optional: re-interrupt the thread
-						} catch (JsonSyntaxException | IOException e) {
+						} catch (Exception e) {
 							e.printStackTrace();
 						} finally {
 							if (process != null) {
@@ -101,7 +107,7 @@ public class KataBrain {
 		}
 	}
 
-	protected void processKataResponses() throws JsonSyntaxException, IOException {
+	protected void processKataResponses() throws Exception {
 		boolean printSummary = Boolean.parseBoolean(props.getProperty("kata.print_summary_result", "false"));
 		Gson gson = new Gson();
 		String line;
@@ -113,6 +119,10 @@ public class KataBrain {
 				System.out.println("bad analysis: " + line);
 				//TODO: process error
 				continue;
+			}
+			if (line.startsWith("Uncaught exception")) {
+				System.out.println("fatal error: " + line);
+				throw new RuntimeException("fatal error: " + line);
 			}
 			if (line.contains("terminating with"))
 				throw new RuntimeException("ending on katago error: " + line);

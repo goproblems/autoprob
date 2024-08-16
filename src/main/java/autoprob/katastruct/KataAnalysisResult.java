@@ -36,6 +36,7 @@ public class KataAnalysisResult {
 	public List<Double> ownership = null;
 	public List<Double> ownershipStdev = null;
 	public List<Double> policy = null;
+	public List<Double> humanPolicy = null;
 
 	public static class Policy {
 		public double policy;

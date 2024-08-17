@@ -25,9 +25,16 @@ public class ShapeProblemDetector extends ProblemDetector {
     public void detectProblem(KataBrain brain, boolean forceDetect) throws Exception {
         validProblem = false;
         this.brain = brain;
+
+        if (prev.turnNumber < Integer.parseInt(props.getProperty("shape.min_turn", "10"))) {
+            return;
+        }
+
         makeProblem();
 
-        System.out.println("validating shape problem...");
+        System.out.println();
+        System.out.println("validating shape problem... " + prev.moveInfos.get(0).extString());
+        System.out.println("human: " + prev.printTopPolicy(3, prev.humanPolicy));
         // max policy
         if (calcHighestPrior(prev) > MAX_POLICY) {
             System.out.println("too high policy: " + calcHighestPrior(prev));
@@ -67,6 +74,11 @@ public class ShapeProblemDetector extends ProblemDetector {
         double minBadMovePolicy = Double.parseDouble(props.getProperty("shape.min_bad_move_policy", "0.02"));
         if (!tryMovesWithMinPolicy(topMove, na, rootAnalysis, minBadMovePolicy, rootGroups)) {
             System.out.println("exiting problem, a mistake isn't bad enough");
+            if (!forceDetect)
+                return;
+        }
+        if (!tryMovesFromHumanSL(topMove, na, rootAnalysis, minBadMovePolicy, rootGroups)) {
+            System.out.println("exiting problem, a humanSL mistake isn't bad enough");
             if (!forceDetect)
                 return;
         }
@@ -235,6 +247,15 @@ public class ShapeProblemDetector extends ProblemDetector {
             System.out.println("second move: " + secondMove.extString());
             double deltaScore = topMove.scoreLead - secondMove.scoreLead;
             System.out.println("delta score: " + df.format(deltaScore));
+
+            // let's make sure this is near the problem though, otherwise not relevant
+            Point p = Intersection.gtp2point(secondMove.move);
+            double distanceToBoard = nearestBoardDistance(new Point(p.x, p.y), problem.board.board);
+            if (distanceToBoard > MAX_RELEVANCE_DISTANCE) {
+                System.out.println("second move too far from problem: " + distanceToBoard);
+                return true;
+            }
+
             if (deltaScore < minTopMoveScoreMargin) {
                 System.out.println("not a good shape problem, second move too good");
                 return false;
@@ -274,9 +295,7 @@ public class ShapeProblemDetector extends ProblemDetector {
     // returns false if a move is discoved with too low a delta
     private boolean tryMovesWithMinPolicy(MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot, double minPolicy, List<StoneGroup> rootGroups) throws Exception {
         // evaluate nearby possible moves
-        int maxDist = 1;
         Point p = Intersection.gtp2point(topMove.move);
-        int minDistanceFromEdge = 1;
         int visits = Integer.parseInt(props.getProperty("paths.visits"));
         for (int x = 0; x < 19; x++) {
             for (int y = 0; y < 19; y++) {
@@ -298,6 +317,35 @@ public class ShapeProblemDetector extends ProblemDetector {
                     System.out.println("score delta too low: " + scoreDelta);
                     return false;
                 }
+            }
+        }
+        return true;
+    }
+
+    // returns false if a move is discoved with too low a delta
+    private boolean tryMovesFromHumanSL(MoveInfo topMove, NodeAnalyzer na, KataAnalysisResult karRoot, double minPolicy, List<StoneGroup> rootGroups) throws Exception {
+        Point p = Intersection.gtp2point(topMove.move);
+        int visits = Integer.parseInt(props.getProperty("paths.visits"));
+
+        List<KataAnalysisResult.Policy> top = karRoot.getTopPolicy(3, karRoot.humanPolicy);
+
+        for (KataAnalysisResult.Policy pol: top) {
+            if (pol.x == p.x && pol.y == p.y) continue; // same as top move
+            if (!node.board.board[pol.x][pol.y].isEmpty()) continue;
+
+            if (pol.policy < minPolicy) continue;
+
+            // make sure this move is near other stones
+            double distanceToBoard = nearestBoardDistance(new Point(pol.x, pol.y), problem.board.board);
+            if (distanceToBoard > 1.7) continue;
+
+            double scoreDelta = tryMove(topMove, na, pol.x, pol.y, visits, karRoot, rootGroups);
+
+            // fail if scoreDelta is too low
+            double minDelta = Double.parseDouble(props.getProperty("shape.min_mistake_score_delta", "6.0"));
+            if (Math.abs(scoreDelta) < minDelta) {
+                System.out.println("humanSL score delta too low: " + scoreDelta);
+                return false;
             }
         }
         return true;

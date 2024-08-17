@@ -180,6 +180,34 @@ public class KataAnalysisResult {
 		return top;
 	}
 
+	// returns top num policy moves with their board locations
+	public List<Policy> getTopPolicy(int num, List<Double> policy) {
+		List<Policy> top = new ArrayList<>();
+		// add all policy locations to list, then sort
+		for (int y = 0; y < 19; y++) {
+			for (int x = 0; x < 19; x++) {
+				Policy p = new Policy();
+				p.policy = policy.get(x + y * 19);
+				p.x = x;
+				p.y = y;
+				top.add(p);
+			}
+		}
+		top.sort((a, b) -> Double.compare(b.policy, a.policy));
+		// truncate to num
+		if (top.size() > num) top = top.subList(0, num);
+		return top;
+	}
+
+	public String printTopPolicy(int num, List<Double> policy) {
+		StringBuilder sb = new StringBuilder();
+		List<Policy> top = getTopPolicy(num, policy);
+		for (Policy p: top) {
+			sb.append(df.format(p.policy * 1000.0)).append(" at ").append(Intersection.toGTPloc(p.x, p.y, 19)).append(", ");
+		}
+		return sb.toString();
+	}
+
 	public MoveInfo getMoveInfo(String loc) {
 		for (MoveInfo mi: moveInfos) {
 			if (mi.move.equals(loc)) return mi;

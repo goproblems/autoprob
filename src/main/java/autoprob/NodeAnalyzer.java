@@ -47,6 +47,7 @@ public class NodeAnalyzer {
 		query.id = "keng" + node.depth + "_" + Math.random();
 		query.maxVisits = visits;
 		query.includePolicy = true;
+		query.setHumanSLrank("10k"); // default rank
 		// required moves set?
 		if (moves != null && moves.size() > 0) {
 			var am = new AllowMove();

@@ -240,7 +240,6 @@ public class ProblemDetector {
 				}
 		}
 		else {
-
 			StoneConnect scon = new StoneConnect();
 			// copy ownership change stones
 			for (Point p : ownershipChanges) {

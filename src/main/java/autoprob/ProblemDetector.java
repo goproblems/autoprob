@@ -227,8 +227,6 @@ public class ProblemDetector {
 		problem.addXtraTag("PL", problem.defaultToMoveColor == Intersection.BLACK ? "B" : "W");
 		
 		makeProblemStones();
-
-		problem.addXtraTag("GPKEY", "local choice");
 	}
 
 	// figure out what stones should be on our problem board

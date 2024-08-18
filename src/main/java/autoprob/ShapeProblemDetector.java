@@ -31,6 +31,8 @@ public class ShapeProblemDetector extends ProblemDetector {
         }
 
         makeProblem();
+        problem.addXtraTag("GPKEY", "local choice");
+
         var sgl = new StoneGroupLogic();
         int totalStoneCount = sgl.countStones(problem.board);
         if (totalStoneCount < Integer.parseInt(props.getProperty("shape.min_stones", "10"))) {

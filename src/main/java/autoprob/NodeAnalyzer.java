@@ -30,6 +30,10 @@ public class NodeAnalyzer {
 	}
 
 	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, ArrayList<String> moves) throws Exception {
+		return analyzeNode(brain, node, visits, moves, "10k");
+	}
+
+	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, ArrayList<String> moves, String humanSLrank) throws Exception {
 		Gson gson = new Gson();
 
 		QueryBuilder qb = new QueryBuilder();
@@ -47,7 +51,7 @@ public class NodeAnalyzer {
 		query.id = "keng" + node.depth + "_" + Math.random();
 		query.maxVisits = visits;
 		query.includePolicy = true;
-		query.setHumanSLrank("10k"); // default rank
+		query.setHumanSLrank(humanSLrank); // default rank
 		// required moves set?
 		if (moves != null && moves.size() > 0) {
 			var am = new AllowMove();

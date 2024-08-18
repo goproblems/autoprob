@@ -31,6 +31,11 @@ public class ShapeProblemDetector extends ProblemDetector {
         }
 
         makeProblem();
+        var sgl = new StoneGroupLogic();
+        int totalStoneCount = sgl.countStones(problem.board);
+        if (totalStoneCount < Integer.parseInt(props.getProperty("shape.min_stones", "10"))) {
+            return;
+        }
 
         System.out.println();
         System.out.println("validating shape problem... " + prev.moveInfos.get(0).extString());
@@ -96,6 +101,42 @@ public class ShapeProblemDetector extends ProblemDetector {
         labelProblemChoices();
         problem.forceMove = true;
         validProblem = true;
+
+        estimateDifficulty();
+
+        System.out.println("END shape problem detect");
+    }
+
+    private void estimateDifficulty() {
+        // estimate difficulty by running katago humanSL mode at each human level
+        // get correct move for problem
+        String correctMove = prev.moveInfos.get(0).move;
+        StringBuilder sb = new StringBuilder();
+        boolean solved = false;
+        for (int level = 20; level >= -8; level -= 1) {
+            var na = new NodeAnalyzer(props);
+            String rank = (level > 0) ? level + "k" : (-level + 1) + "d";
+            KataAnalysisResult kar = null;
+            try {
+                kar = na.analyzeNode(brain, problem, 1, null, rank);
+                List<KataAnalysisResult.Policy> top = kar.getTopPolicy(1, kar.humanPolicy);
+                var topMove = top.get(0);
+                String mv = Intersection.toGTPloc(topMove.x, topMove.y);
+                System.out.println("top human move at " + rank + ": " + mv + ", vs correct: " + correctMove);
+                if (mv.equals(correctMove)) {
+                    if (!solved) {
+                        solved = true;
+                        problem.addXtraTag("DIFF", rank);
+                    }
+                    sb.append("+");
+                } else {
+                    sb.append("-");
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        problem.addXtraTag("HSL", sb.toString());
     }
 
     // set a good readable comment for the solution
@@ -332,6 +373,8 @@ public class ShapeProblemDetector extends ProblemDetector {
         for (KataAnalysisResult.Policy pol: top) {
             if (pol.x == p.x && pol.y == p.y) continue; // same as top move
             if (!node.board.board[pol.x][pol.y].isEmpty()) continue;
+            // make sure we haven't added this move already
+            if (problem.babies.stream().anyMatch(n -> ((Node) n).findMove().equals(new Point(pol.x, pol.y)))) continue;
 
             if (pol.policy < minPolicy) continue;
 

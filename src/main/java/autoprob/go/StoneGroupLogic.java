@@ -29,6 +29,16 @@ public class StoneGroupLogic {
         }
     }
 
+    public int countStones(Board board) {
+        int count = 0;
+        for (int x = 0; x < 19; x++) {
+            for (int y = 0; y < 19; y++) {
+                if (board.board[x][y].stone != Intersection.EMPTY) count++;
+            }
+        }
+        return count;
+    }
+
     // create a list of all separate groups on the board, along with ownership
     public List<StoneGroup> groupStones(Board board, KataAnalysisResult kar) {
         // make a 2d array of locations we've checked

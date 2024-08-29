@@ -139,7 +139,7 @@ public class ShapeProblemDetector extends ProblemDetector {
                     // see if the correct move is the top human moves out of the multiple choice
                     List<KataAnalysisResult.Policy> top = kar.getTopPolicy(0, kar.humanPolicy); // gets all, sorted
                     // run through these in order. look at the first one that matches one of the paths in the tree
-                    for (var pol : top) {
+                    humanmoves: for (var pol : top) {
                         String mv = Intersection.toGTPloc(pol.x, pol.y);
                         // run through problem.babies
                         for (var child : problem.babies) {
@@ -147,8 +147,8 @@ public class ShapeProblemDetector extends ProblemDetector {
                             String childMove = Intersection.toGTPloc(p.x, p.y);
                             if (childMove.equals(mv)) {
                                 didSolve = child.searchForTheTruth();
-                                System.out.println("found tree move at " + rank + ": " + mv + ", vs correct: " + correctMove);
-                                break;
+                                System.out.println((didSolve ? "+" : "-") + " found tree move at " + rank + ": " + mv + ", vs correct: " + correctMove + ", child move: " + childMove + ", policy: " + pol.policy);
+                                break humanmoves;
                             }
                         }
                     }
@@ -323,7 +323,7 @@ public class ShapeProblemDetector extends ProblemDetector {
         if (kar.moveInfos.size() > 1) {
             MoveInfo secondMove = kar.moveInfos.get(1);
             System.out.println("second move: " + secondMove.extString());
-            double deltaScore = topMove.scoreLead - secondMove.scoreLead;
+            double deltaScore = Math.abs(topMove.scoreLead - secondMove.scoreLead); // must abs because could be for B or W
             System.out.println("delta score: " + df.format(deltaScore));
 
             // let's make sure this is near the problem though, otherwise not relevant
@@ -452,22 +452,23 @@ public class ShapeProblemDetector extends ProblemDetector {
 //    }
 
     private double tryMove(MoveInfo topMove, NodeAnalyzer na, int x, int y, int visits, KataAnalysisResult karRoot, List<StoneGroup> rootGroups) throws Exception {
+        System.out.println("====================================================");
         // run katago on this move, forcing it only to consider this option
         String moveVar = Intersection.toGTPloc(x, y);
+        System.out.println("trying move: " + moveVar);
         ArrayList<String> analyzeMoves = new ArrayList<>();
         analyzeMoves.add(moveVar);
         KataAnalysisResult karMistake = na.analyzeNode(brain, problem, visits, analyzeMoves);
 
         MoveInfo varMove = karMistake.moveInfos.get(0);
-        System.out.println("====================================================");
-        System.out.println("var move: " + varMove.extString());
-        double deltaScore = varMove.scoreLead - topMove.scoreLead;
+        System.out.println("var move: " + varMove.extString() + " for " + karMistake.rootInfo.currentPlayer);
+        double deltaScore = Math.abs(varMove.scoreLead - topMove.scoreLead); // must abs because could be for B or W
         System.out.println("delta score: " + deltaScore);
 
         // add to problem paths
         Point varPoint = Intersection.gtp2point(varMove.move);
         Node mistake = problem.addBasicMove(varPoint.x, varPoint.y);
-        String comment = "This loses " + humanScoreDifference(-deltaScore) + " points. ";
+        String comment = "This loses " + humanScoreDifference(deltaScore) + " points. ";
         Node feedbackNode = mistake; // the node where we give user feedback. may change if we add a response
 
         // check ownership changes for smart comments

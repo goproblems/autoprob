@@ -77,7 +77,7 @@ public class NodeAnalyzer {
 		KataAnalysisResult kres = brain.getResult(query.id, query.analyzeTurns.get(0));
 
 		if (dbgNal)
-			System.out.println("> NAL parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead));
+			System.out.println("> NAL parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", for " + kres.rootInfo.currentPlayer);
 				
 		if (debugOwnership) {
 			System.out.println("Ownership after move " + lm + " depth: " + node.depth + ":");

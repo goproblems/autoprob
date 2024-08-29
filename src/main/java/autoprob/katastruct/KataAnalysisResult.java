@@ -194,8 +194,10 @@ public class KataAnalysisResult {
 			}
 		}
 		top.sort((a, b) -> Double.compare(b.policy, a.policy));
-		// truncate to num
-		if (top.size() > num) top = top.subList(0, num);
+		if (num > 0) {
+			// truncate to num
+			if (top.size() > num) top = top.subList(0, num);
+		}
 		return top;
 	}
 
@@ -203,7 +205,7 @@ public class KataAnalysisResult {
 		StringBuilder sb = new StringBuilder();
 		List<Policy> top = getTopPolicy(num, policy);
 		for (Policy p: top) {
-			sb.append(df.format(p.policy * 1000.0)).append(" at ").append(Intersection.toGTPloc(p.x, p.y, 19)).append(", ");
+			sb.append((int)(p.policy * 1000.0)).append(" at ").append(Intersection.toGTPloc(p.x, p.y, 19)).append(", ");
 		}
 		return sb.toString();
 	}

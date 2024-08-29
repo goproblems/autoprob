@@ -178,7 +178,7 @@ public class GoTool {
         brain.doQuery(query); // kick off katago
 
         KataAnalysisResult kres = brain.getResult(query.id, 0);
-        System.out.println("parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", ");
+        System.out.println("=> turn: " + kres.turnNumber + ", id: " + kres.id + ", score: " + df.format(kres.rootInfo.scoreLead) + ", ");
 
         kres.drawPolicy(node); // black is X, white @
 

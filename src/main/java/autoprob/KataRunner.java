@@ -180,7 +180,7 @@ public class KataRunner {
         KataAnalysisResult kprev = null;
         for (int resultsProcessed = 0; resultsProcessed < query.analyzeTurns.size(); resultsProcessed++) {
         	KataAnalysisResult kres = brain.getResult(query.id, targetTurn);
-        	System.out.println("parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", " + resultsProcessed);
+        	System.out.println("=> turn: " + kres.turnNumber + ", id: " + kres.id + ", score: " + df.format(kres.rootInfo.scoreLead) + ", " + resultsProcessed);
         	if (kres.turnNumber > 0)
         		System.out.println(query.moves.get(kres.turnNumber - 1));
 				

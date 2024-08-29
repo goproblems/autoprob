@@ -40,11 +40,11 @@ public class ShapeProblemDetector extends ProblemDetector {
         }
 
         System.out.println();
-        System.out.println("validating shape problem... " + prev.moveInfos.get(0).extString());
-        System.out.println("human: " + prev.printTopPolicy(3, prev.humanPolicy));
+        System.out.println("evaluating shape problem... best move is " + prev.moveInfos.get(0).extString());
+        System.out.println("human top: " + prev.printTopPolicy(3, prev.humanPolicy));
         // max policy
         if (calcHighestPrior(prev) > MAX_POLICY) {
-            System.out.println("too high policy: " + calcHighestPrior(prev));
+            System.out.println("too high policy: " + calcHighestPrior(prev) + " (max " + MAX_POLICY + ")");
             if (!forceDetect) return;
         }
 
@@ -56,14 +56,23 @@ public class ShapeProblemDetector extends ProblemDetector {
                 return;
         }
 
-        // run katago with this new problem, make sure we really want to play here still
+        // run katago (more in depth) with this new problem, make sure we really want to play here still
         boolean dbgOwn = Boolean.parseBoolean(props.getProperty("search.debug_pass_ownership", "false"));
         int rootVisits = Integer.parseInt(props.getProperty("search.root_visits"));
+        System.out.println("running in depth visits: " + rootVisits);
         var na = new NodeAnalyzer(props, dbgOwn);
         rootAnalysis = na.analyzeNode(brain, problem, rootVisits);
 
         MoveInfo topMove = rootAnalysis.moveInfos.get(0);
-        System.out.println("top move: " + topMove.extString());
+        System.out.println("in depth top move: " + topMove.extString());
+
+        // make sure this is near the problem though, otherwise it's a bad problem
+        double distanceToBoard = nearestBoardDistance(Intersection.gtp2point(topMove.move), problem.board.board);
+        if (distanceToBoard > MAX_RELEVANCE_DISTANCE) {
+            System.out.println("in depth solution is too far from problem: " + distanceToBoard);
+            if (!forceDetect)
+                return;
+        }
 
         // check there is only one good top move
         if (!validateTopMoveMargin(rootAnalysis)) {
@@ -111,6 +120,7 @@ public class ShapeProblemDetector extends ProblemDetector {
 
     private void estimateDifficulty() {
         // estimate difficulty by running katago humanSL mode at each human level
+        // basically the first level solved is considered the difficulty
         // get correct move for problem
         String correctMove = prev.moveInfos.get(0).move;
         StringBuilder sb = new StringBuilder();
@@ -121,11 +131,36 @@ public class ShapeProblemDetector extends ProblemDetector {
             KataAnalysisResult kar = null;
             try {
                 kar = na.analyzeNode(brain, problem, 1, null, rank);
-                List<KataAnalysisResult.Policy> top = kar.getTopPolicy(1, kar.humanPolicy);
-                var topMove = top.get(0);
-                String mv = Intersection.toGTPloc(topMove.x, topMove.y);
-                System.out.println("top human move at " + rank + ": " + mv + ", vs correct: " + correctMove);
-                if (mv.equals(correctMove)) {
+                // one possibility is to see if the top human move is the correct move
+                // the other is to see if the correct move is the top human moves out of the multiple choice
+                boolean didSolve = false;
+                boolean chooseFromMultiple = true;
+                if (chooseFromMultiple) {
+                    // see if the correct move is the top human moves out of the multiple choice
+                    List<KataAnalysisResult.Policy> top = kar.getTopPolicy(0, kar.humanPolicy); // gets all, sorted
+                    // run through these in order. look at the first one that matches one of the paths in the tree
+                    for (var pol : top) {
+                        String mv = Intersection.toGTPloc(pol.x, pol.y);
+                        // run through problem.babies
+                        for (var child : problem.babies) {
+                            Point p = child.findMove();
+                            String childMove = Intersection.toGTPloc(p.x, p.y);
+                            if (childMove.equals(mv)) {
+                                didSolve = child.searchForTheTruth();
+                                System.out.println("found tree move at " + rank + ": " + mv + ", vs correct: " + correctMove);
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // just look if top human move is correct
+                    List<KataAnalysisResult.Policy> top = kar.getTopPolicy(1, kar.humanPolicy);
+                    var topMove = top.get(0);
+                    String mv = Intersection.toGTPloc(topMove.x, topMove.y);
+                    System.out.println("top human move at " + rank + ": " + mv + ", vs correct: " + correctMove);
+                    didSolve = mv.equals(correctMove);
+                }
+                if (didSolve) {
                     if (!solved) {
                         solved = true;
                         problem.addXtraTag("DIFF", rank);
@@ -295,7 +330,7 @@ public class ShapeProblemDetector extends ProblemDetector {
             Point p = Intersection.gtp2point(secondMove.move);
             double distanceToBoard = nearestBoardDistance(new Point(p.x, p.y), problem.board.board);
             if (distanceToBoard > MAX_RELEVANCE_DISTANCE) {
-                System.out.println("second move too far from problem: " + distanceToBoard);
+                System.out.println("good, second move is far from problem: " + distanceToBoard);
                 return true;
             }
 

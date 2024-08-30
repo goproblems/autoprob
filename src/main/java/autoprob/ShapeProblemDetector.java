@@ -245,17 +245,22 @@ public class ShapeProblemDetector extends ProblemDetector {
 
         String opponentColor = Intersection.color2name(tenukiNode.getToMove() == Intersection.BLACK ? Intersection.BLACK : Intersection.WHITE);
         String opponentColorCaps = Intersection.color2name(tenukiNode.getToMove() == Intersection.BLACK ? Intersection.BLACK : Intersection.WHITE, true);
-        boolean sameMove = topMove.move.equals(rootAnalysis.moveInfos.get(0).move);
-        sb.append(opponentColorCaps).append(" would have played at ");
-        if (sameMove) {
-            sb.append("the same place");
-        } else {
-            Point p = Intersection.gtp2point(topMove.move);
-            solution.addAct(new LabelAction("A", p.x, p.y));
-            sb.append("A");
-//            sb.append(topMove.move);
+
+        // make sure this is near the problem though, otherwise not relevant
+        double distanceToBoard = nearestBoardDistance(Intersection.gtp2point(topMove.move), problem.board.board);
+        if (distanceToBoard <= MAX_RELEVANCE_DISTANCE) {
+            boolean sameMove = topMove.move.equals(rootAnalysis.moveInfos.get(0).move);
+            sb.append(opponentColorCaps).append(" would have played at ");
+            if (sameMove) {
+                sb.append("the same place");
+            } else {
+                Point p = Intersection.gtp2point(topMove.move);
+                solution.addAct(new LabelAction("A", p.x, p.y));
+                sb.append("A");
+    //            sb.append(topMove.move);
+            }
+            sb.append(" if you played away. ");
         }
-        sb.append(" if you played away. ");
 
         if (initialPointCount == null && pointCount == null) {
         }

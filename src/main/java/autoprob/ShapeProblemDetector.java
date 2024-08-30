@@ -16,6 +16,7 @@ public class ShapeProblemDetector extends ProblemDetector {
     private static final double MAX_RELEVANCE_DISTANCE = 2.5;
     private KataAnalysisResult rootAnalysis;
     private KataBrain brain;
+    private String difficultyRank = "";
 
     // prev is the problem position. kar is the mistake position. node represents prev.
     public ShapeProblemDetector(KataAnalysisResult prev, KataAnalysisResult mistake, Node node, Properties props) throws Exception {
@@ -36,6 +37,12 @@ public class ShapeProblemDetector extends ProblemDetector {
         var sgl = new StoneGroupLogic();
         int totalStoneCount = sgl.countStones(problem.board);
         if (totalStoneCount < Integer.parseInt(props.getProperty("shape.min_stones", "10"))) {
+            System.out.println("too few stones: " + totalStoneCount);
+            return;
+        }
+        // too many?
+        if (totalStoneCount > Integer.parseInt(props.getProperty("shape.max_stones", "30"))) {
+            System.out.println("too many stones: " + totalStoneCount);
             return;
         }
 
@@ -47,6 +54,14 @@ public class ShapeProblemDetector extends ProblemDetector {
             System.out.println("too high policy: " + calcHighestPrior(prev) + " (max " + MAX_POLICY + ")");
             if (!forceDetect) return;
         }
+        // max human policy check
+        double maxHumanPolicy = Double.parseDouble(props.getProperty("shape.max_human_policy", "0.9"));
+        double humanSolvePolicy = prev.getTopPolicy(1, prev.humanPolicy).get(0).policy;
+        if (humanSolvePolicy > maxHumanPolicy) {
+            System.out.println("too high human policy: " + humanSolvePolicy + " (max " + maxHumanPolicy + ")");
+            if (!forceDetect) return;
+        }
+        System.out.println("human policy: " + humanSolvePolicy);
 
         // we basically ignore the mistake part, just go off node/prev
 
@@ -125,6 +140,7 @@ public class ShapeProblemDetector extends ProblemDetector {
         String correctMove = prev.moveInfos.get(0).move;
         StringBuilder sb = new StringBuilder();
         boolean solved = false;
+        String diffRank = "";
         for (int level = 20; level >= -8; level -= 1) {
             var na = new NodeAnalyzer(props);
             String rank = (level > 0) ? level + "k" : (-level + 1) + "d";
@@ -163,17 +179,25 @@ public class ShapeProblemDetector extends ProblemDetector {
                 if (didSolve) {
                     if (!solved) {
                         solved = true;
-                        problem.addXtraTag("DIFF", rank);
+                        diffRank = rank;
                     }
                     sb.append("+");
                 } else {
                     sb.append("-");
+                    diffRank = rank;
+                    solved = false;
                 }
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
+        problem.addXtraTag("DIFF", diffRank);
+        difficultyRank = diffRank;
         problem.addXtraTag("HSL", sb.toString());
+    }
+
+    public String getFileNameExtras() {
+        return "_p" + prev.turnNumber + "_" + difficultyRank;
     }
 
     // set a good readable comment for the solution
@@ -352,7 +376,7 @@ public class ShapeProblemDetector extends ProblemDetector {
             Point p = Intersection.gtp2point(secondMove.move);
             double distanceToBoard = nearestBoardDistance(new Point(p.x, p.y), problem.board.board);
             if (distanceToBoard > MAX_RELEVANCE_DISTANCE) {
-                System.out.println("good, second move is far from problem: " + distanceToBoard);
+                System.out.println("good, second move is far from problem: " + df.format(distanceToBoard));
                 return true;
             }
 

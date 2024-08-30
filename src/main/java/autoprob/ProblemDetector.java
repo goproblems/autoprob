@@ -428,4 +428,8 @@ public class ProblemDetector {
 		}
 		return count;
 	}
+
+	public String getFileNameExtras() {
+		return "_p" + prev.turnNumber;
+	}
 }

@@ -5,6 +5,10 @@ import autoprob.katastruct.MoveInfo;
 import autoprob.vis.PosFrame;
 
 import java.awt.*;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.util.Properties;
 
@@ -41,6 +45,19 @@ public class VisDetector {
 
         prevDetection = det;
 
+        boolean saveToOutput = Boolean.parseBoolean(props.getProperty("output.save2dir", "false"));
+
+        if (saveToOutput) {
+            // save to output dir
+            String outDir = props.getProperty("output.dir", "output");
+            String outPath = outDir + "/" + fileName + det.getFileNameExtras() + ".sgf";
+            System.out.println("saving to: " + outPath);
+            saveToFile(det, outPath);
+            if (Boolean.parseBoolean(props.getProperty("output.no_gui", "false"))) {
+                return true;
+            }
+        }
+
         double baseScore = det.prev.rootInfo.scoreLead; // represents best
         // decorate source board
         // put other best moves on the board
@@ -70,5 +87,18 @@ public class VisDetector {
         pf.addSourceInfoPanelEntry("w chng: ", String.valueOf(det.ownDeltaW));
         pf.addSourceInfoPanelEntry("#sols: ", det.numSols + ", " + det.solString);
         return true;
+    }
+
+    private void saveToFile(ProblemDetector det, String outPath) {
+        String sgf = ("(" + det.problem.outputSGF(true) + ")");
+        Path path = Paths.get(outPath);
+        byte[] strToBytes = sgf.getBytes();
+
+        try {
+            Files.write(path, strToBytes);
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
+        System.out.println("wrote problem at: " + outPath);
     }
 }

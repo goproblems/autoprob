@@ -247,7 +247,29 @@ public class ShapeProblemDetector extends ProblemDetector {
         // remove tenuki node since it was only for analysis
         problem.babies.remove(tenukiNode);
 
+        // talk about where the opponent would play next
+        String opponentResponseText = findOpponentResponseText(solution, na, opponentColorCaps);
+        sb.append(opponentResponseText);
+
         solution.addAct(new CommentAction(sb.toString()));
+    }
+
+    // find the best move for the opponent in response to the solution
+    // if it's relevant, add an indicator to the board and return the text
+    private String findOpponentResponseText(Node solution, NodeAnalyzer na, String opponentColorCaps) throws Exception {
+        int visits = Integer.parseInt(props.getProperty("paths.visits"));
+        KataAnalysisResult karResponse = na.analyzeNode(brain, solution, visits);
+        MoveInfo varResponse = karResponse.moveInfos.get(0);
+
+        // see if it's near the problem
+        double distanceToBoard = nearestBoardDistance(Intersection.gtp2point(varResponse.move), solution.board.board);
+        if (distanceToBoard > MAX_RELEVANCE_DISTANCE) {
+            return opponentColorCaps + " would likely play away next. ";
+        } else {
+            Point p = Intersection.gtp2point(varResponse.move);
+            solution.addAct(new LabelAction("B", p.x, p.y));
+            return opponentColorCaps + " would likely play at B next. ";
+        }
     }
 
     // any comment for group changes playing the solution

@@ -1,4 +1,4 @@
 package autoprob.joseki;
 
-public record JNodeVal(double parentScore, double score) {
+public record JNodeVal(double parentScore, double score, double urgency) {
 }

@@ -32,7 +32,7 @@ public class KataBrain {
 		String kataPath = props.getProperty("katago").trim();
 		String configPath = props.getProperty("kata.config").trim();
 		modelPath = props.getProperty("kata.model").trim();
-		String humanModelPath = props.getProperty("kata.human_model").trim();
+		String humanModelPath = props.getProperty("kata.human_model");
 		if (modelPathOverride != null) {
 			modelPath = modelPathOverride;
 		}
@@ -43,7 +43,7 @@ public class KataBrain {
 		processBuilder.redirectErrorStream(true);
 		try {
 			// pass in human model if we have it
-			if (!humanModelPath.isEmpty()) {
+			if (humanModelPath != null && !humanModelPath.isEmpty()) {
 				processBuilder.command(kataPath, "analysis", "-config", configPath, "-model", modelPath, "-human-model", humanModelPath);
 			} else {
 				processBuilder.command(kataPath, "analysis", "-config", configPath, "-model", modelPath);

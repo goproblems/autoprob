@@ -45,7 +45,14 @@ public class JosekiVal {
     }
 
     private Node loadBasePosition(Properties props) throws Exception {
-        String sgf = "(;GM[1]FF[4]CA[UTF-8]SZ[19]KM[7.5];B[dc]SBKV[43.6]OGSC[-0.7];W[cq]SBKV[44.7]OGSC[-0.5];B[qp]SBKV[44.5]OGSC[-0.5];W[ce]SBKV[48.7]OGSC[0.1];B[dp]SBKV[46.1]OGSC[-0.2];W[dq]SBKV[46.0]OGSC[-0.3];B[ep]SBKV[46.0]OGSC[-0.3];W[cp]SBKV[47.0]OGSC[-0.1];B[co]SBKV[40.2]OGSC[-1.2];W[bo]SBKV[40.2]OGSC[-1.2];B[cn]SBKV[40.2]OGSC[-1.2];W[bn]SBKV[40.0]OGSC[-1.2];B[cm]SBKV[40.9]OGSC[-1.1];W[eq]SBKV[47.4]OGSC[-0.1];B[fp]SBKV[40.4]OGSC[-1.1];W[dd]SBKV[50.7]OGSC[0.4];B[cc]SBKV[50.6]OGSC[0.4];W[cg]SBKV[57.9]OGSC[1.6];B[bc]SBKV[25.1]OGSC[-3.9];W[bh]SBKV[46.9]OGSC[-0.2];B[bd]SBKV[9.1]OGSC[-9.1];W[df]SBKV[39.8]OGSC[-1.3])";
+        String sgfPath = props.getProperty("joseki.base_sgf");
+        if (sgfPath == null) {
+            // make empty base node
+            return new Node(null);
+        }
+
+        // read file contents
+        String sgf = Files.readString(Path.of(sgfPath));
 
         // load SGF
         var parser = new Parser();
@@ -61,8 +68,11 @@ public class JosekiVal {
     // return only the followups that have good enough score, in the right corner
     private ArrayList<MoveInfo> getGoodFollowups(Properties props, KataAnalysisResult kres) {
         var moves = new ArrayList<MoveInfo>();
-//        double minVisits =
+        int minVisits = 5;
         for (MoveInfo mi: kres.moveInfos) {
+            if (mi.visits < minVisits) {
+                continue;
+            }
             StringBuilder sb = new StringBuilder();
             sb.append("kar move: ").append(mi.move).append(", visits: ").append(mi.visits).append(", score: ").
                     append(df.format(mi.scoreLead)).append(", policy: ").append(df.format(mi.prior * 1000.0)).
@@ -94,7 +104,7 @@ public class JosekiVal {
         return baseNode;
     }
 
-    private JNodeVal evalNode(Properties props, Node endNode, KataBrain brain) throws Exception {
+    private JNodeVal evalNode(Properties props, Node node, KataBrain brain) throws Exception {
 
         // step one: calculate the value of this move locally. is it the best local move?
         // evaluate katago for this move in particular
@@ -102,11 +112,11 @@ public class JosekiVal {
         // calc the delta
         // we also want to remember the absolute value here. a little tricky because not playing the more empty corner loses points.
 
-        var kresParent = queryNode(brain, endNode.mom);
+        var kresParent = queryNode(brain, node.mom, props);
         System.out.println("parent score: " + df.format(kresParent.blackScore()));
         System.out.println(kresParent.printMoves(1));
 
-        var kres = queryNode(brain, endNode);
+        var kres = queryNode(brain, node, props);
         System.out.println("move score: " + df.format(kres.blackScore()));
         System.out.println(kres.printMoves(1));
         var followUps = getGoodFollowups(props, kres);
@@ -114,16 +124,33 @@ public class JosekiVal {
         // step two: calculate the value of playing here vs a tenuki to a different corner
         // this gives us urgency
 
-        return new JNodeVal(kresParent.blackScore(), kres.blackScore());
+        double urgency = calcPassValue(brain, node, kres, props);
+
+        return new JNodeVal(kresParent.blackScore(), kres.blackScore(), urgency);
     }
 
-    private KataAnalysisResult queryNode(KataBrain brain, Node n) throws Exception {
+    private double calcPassValue(KataBrain brain, Node node, KataAnalysisResult kres, Properties props) throws Exception {
+        // first, pass
+        Node passNode = node.addBasicMove(19, 19);
+        KataAnalysisResult karPass = queryNode(brain, passNode, props);
+
+        // clean up
+        node.removeChildNode(passNode);
+
+        MoveInfo mi = karPass.moveInfos.get(0);
+        System.out.println("pass move: " + mi.move + ", visits: " + mi.visits + ", score: " + df.format(mi.scoreLead) + ", policy: " + df.format(mi.prior * 1000.0));
+
+        return kres.blackScore() - karPass.blackScore();
+    }
+
+    private KataAnalysisResult queryNode(KataBrain brain, Node n, Properties props) throws Exception {
         QueryBuilder qb = new QueryBuilder();
         KataQuery query = qb.buildQuery(n);
         query.id = "auto:x";
         query.includePolicy = true;
         query.analyzeTurns.clear();
         query.analyzeTurns.add(0);
+        query.maxVisits = Integer.parseInt(props.getProperty("joseki.visits", "1000"));
 
         restrictToCornerMoves(n, query);
 

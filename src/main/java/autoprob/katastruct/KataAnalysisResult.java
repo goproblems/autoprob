@@ -46,8 +46,9 @@ public class KataAnalysisResult {
 
 	public double blackScore() {
 		double score = rootInfo.scoreLead;
-		if (rootInfo.currentPlayer.equals("B"))
-			score = -score;
+		//NOTE!! we assume reportAnalysisWinratesAs = BLACK in the config now
+//		if (rootInfo.currentPlayer.equals("B"))
+//			score = -score;
 		return score;
 	}
 

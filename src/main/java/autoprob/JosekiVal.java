@@ -2,6 +2,8 @@ package autoprob;
 
 import autoprob.go.Intersection;
 import autoprob.go.Node;
+import autoprob.go.action.CommentAction;
+import autoprob.go.action.SizeAction;
 import autoprob.go.parse.Parser;
 import autoprob.joseki.JNodeVal;
 import autoprob.katastruct.AllowMove;
@@ -12,6 +14,7 @@ import autoprob.katastruct.MoveInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.awt.Point;
+import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Properties;
@@ -98,10 +101,32 @@ public class JosekiVal {
 
         JNodeVal jval = evalNode(props, endNode, brain);
         System.out.println(jval);
+        eval2comment(props, endNode, jval);
 
         brain.stopKataBrain();
 
+        // output the sgf
+        baseNode.addAct(new SizeAction(19));
+        String sgf = "(" + baseNode.outputSGF(true) + ")";
+        System.out.println(sgf);
+
+        String pathString = props.getProperty("joseki.output_sgf");
+        if (pathString != null) {
+            Path out_path = Paths.get(pathString);
+            byte[] strToBytes = sgf.getBytes();
+            Files.write(out_path, strToBytes);
+        }
+
         return baseNode;
+    }
+
+    // inserts eval as human readable text on the node
+    private void eval2comment(Properties props, Node n, JNodeVal jval) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(df.format(jval.score()));
+        sb.append("\n");
+        sb.append("parent: " + df.format(jval.parentScore()) + ", urgency: " + df.format(jval.urgency()));
+        n.addAct(new CommentAction(sb.toString()));
     }
 
     private JNodeVal evalNode(Properties props, Node node, KataBrain brain) throws Exception {

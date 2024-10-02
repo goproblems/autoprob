@@ -5,6 +5,7 @@ import autoprob.go.Node;
 import autoprob.go.action.CommentAction;
 import autoprob.go.action.SizeAction;
 import autoprob.go.parse.Parser;
+import autoprob.joseki.JMove;
 import autoprob.joseki.JNodeVal;
 import autoprob.katastruct.AllowMove;
 import autoprob.katastruct.KataAnalysisResult;
@@ -18,6 +19,7 @@ import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Properties;
+import java.util.Stack;
 
 public class JosekiVal {
     private static final DecimalFormat df = new DecimalFormat("0.00");
@@ -42,6 +44,8 @@ public class JosekiVal {
         }
         if (command.equals("singlepos")) {
             runSinglePosCommand(props);
+        } else if (command.equals("recurse")) {
+            runRecurseCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -82,11 +86,21 @@ public class JosekiVal {
                     append(", order: ").append(mi.order).append(", weight: ").append(mi.weight);
 
             System.out.println(sb);
+            moves.add(mi);
         }
         return moves;
     }
 
     private Node runSinglePosCommand(Properties props) throws Exception {
+        return exploreJoseki(props, 1);
+    }
+
+    private Node runRecurseCommand(Properties props) throws Exception {
+        int nodeLimit = Integer.parseInt(props.getProperty("joseki.explore_limit", "100"));
+        return exploreJoseki(props, nodeLimit);
+    }
+
+    private Node exploreJoseki(Properties props, int nodeLimit) throws Exception {
         String path = props.getProperty("path");
         if (path == null) {
             throw new RuntimeException("you must pass in a path");
@@ -99,9 +113,7 @@ public class JosekiVal {
 
         KataBrain brain = new KataBrain(props);
 
-        JNodeVal jval = evalNode(props, endNode, brain);
-        System.out.println(jval);
-        eval2comment(props, endNode, jval);
+        evalToLimit(props, endNode, brain, nodeLimit);
 
         brain.stopKataBrain();
 
@@ -120,12 +132,50 @@ public class JosekiVal {
         return baseNode;
     }
 
+    // recurse to limit, evaluating each node
+    private void evalToLimit(Properties props, Node startNode, KataBrain brain, int nodeLimit) throws Exception {
+        // create stack of moves to consider
+        Stack<Node> nodes = new Stack<>();
+        nodes.push(startNode);
+        int evalCount = 0;
+        while (!nodes.isEmpty()) {
+            Node n = nodes.pop();
+            JNodeVal jval = evalNode(props, n, brain);
+            System.out.println(jval);
+            eval2comment(props, n, jval);
+
+            if (++evalCount > nodeLimit) {
+                break;
+            }
+
+            // add moves from jval to stack
+            for (JMove move: jval.moves()) {
+                Point mv = Intersection.gtp2point(move.move());
+                Node nextNode = n.addBasicMove(mv.x, mv.y);
+                nodes.push(nextNode);
+            }
+        }
+
+        // any node we didn't get to due to limit, remove
+        while (!nodes.isEmpty()) {
+            Node n = nodes.pop();
+            n.mom.removeChildNode(n);
+        }
+    }
+
     // inserts eval as human readable text on the node
     private void eval2comment(Properties props, Node n, JNodeVal jval) {
         StringBuilder sb = new StringBuilder();
         sb.append(df.format(jval.score()));
-        sb.append("\n");
+        sb.append('\n');
         sb.append("parent: " + df.format(jval.parentScore()) + ", urgency: " + df.format(jval.urgency()));
+        // add moves
+        sb.append('\n');
+        sb.append("Followups: ");
+        for (JMove move: jval.moves()) {
+            sb.append(move.move());
+            sb.append(",");
+        }
         n.addAct(new CommentAction(sb.toString()));
     }
 
@@ -151,7 +201,13 @@ public class JosekiVal {
 
         double urgency = calcPassValue(brain, node, kres, props);
 
-        return new JNodeVal(kresParent.blackScore(), kres.blackScore(), urgency);
+        var moves = new ArrayList<JMove>();
+        // create move options from followups
+        for (MoveInfo mi: followUps) {
+            moves.add(new JMove(mi.move));
+        }
+
+        return new JNodeVal(kresParent.blackScore(), kres.blackScore(), urgency, moves);
     }
 
     private double calcPassValue(KataBrain brain, Node node, KataAnalysisResult kres, Properties props) throws Exception {

@@ -1,4 +1,6 @@
 package autoprob.joseki;
 
-public record JNodeVal(double parentScore, double score, double urgency) {
+import java.util.ArrayList;
+
+public record JNodeVal(double parentScore, double score, double urgency, ArrayList<JMove> moves) {
 }

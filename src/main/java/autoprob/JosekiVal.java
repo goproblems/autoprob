@@ -120,7 +120,10 @@ public class JosekiVal {
         // output the sgf
         baseNode.addAct(new SizeAction(19));
         String sgf = "(" + baseNode.outputSGF(true) + ")";
-        System.out.println(sgf);
+        boolean printSgf = Boolean.parseBoolean(props.getProperty("joseki.print_sgf", "true"));
+        if (printSgf) {
+            System.out.println(sgf);
+        }
 
         String pathString = props.getProperty("joseki.output_sgf");
         if (pathString != null) {
@@ -134,6 +137,9 @@ public class JosekiVal {
 
     // recurse to limit, evaluating each node
     private void evalToLimit(Properties props, Node startNode, KataBrain brain, int nodeLimit) throws Exception {
+        double minJosekiUrgency = Double.parseDouble(props.getProperty("joseki.min_urgency", "13.0"));
+        double maxMistake = Double.parseDouble(props.getProperty("joseki.max_mistake", "0.5"));
+        boolean refuteMistakes = Boolean.parseBoolean(props.getProperty("joseki.refute_mistakes", "true"));
         // create stack of moves to consider
         Stack<Node> nodes = new Stack<>();
         nodes.push(startNode);
@@ -144,28 +150,59 @@ public class JosekiVal {
             System.out.println(jval);
             eval2comment(props, n, jval);
 
+            boolean isMistake = moveScoreDelta(n, jval) * -1 > maxMistake;
+            if (!refuteMistakes && isMistake && n != startNode) {
+                // remove this
+                System.out.println("removing mistake: " + n);
+                n.mom.removeChildNode(n);
+                evalCount++;
+                continue;
+            }
+
+            // some characteristics of the result will determine if we should continue
+
             if (++evalCount > nodeLimit) {
                 break;
             }
 
+            if (jval.urgency() < minJosekiUrgency) {
+                continue;
+            }
+
             // add moves from jval to stack
-            for (JMove move: jval.moves()) {
-                Point mv = Intersection.gtp2point(move.move());
+            for (int i = jval.moves().size() - 1; i >= 0; i--) {
+                Point mv = Intersection.gtp2point(jval.moves().get(i).move());
                 Node nextNode = n.addBasicMove(mv.x, mv.y);
                 nodes.push(nextNode);
             }
         }
 
         // any node we didn't get to due to limit, remove
+        if (nodes.size() > 0) {
+            System.out.println("removing " + nodes.size() + " nodes due to limit");
+        } else {
+            System.out.println("all nodes evaluated");
+        }
         while (!nodes.isEmpty()) {
             Node n = nodes.pop();
             n.mom.removeChildNode(n);
         }
     }
 
+    // how good this move was, in perspective of player who played it
+    private double moveScoreDelta(Node n, JNodeVal jval) {
+        double score = jval.score() - jval.parentScore();
+        if (n.getToMove() == Intersection.BLACK) {
+            score = -score;
+        }
+        return score;
+    }
+
     // inserts eval as human readable text on the node
     private void eval2comment(Properties props, Node n, JNodeVal jval) {
         StringBuilder sb = new StringBuilder();
+        sb.append(df.format(moveScoreDelta(n, jval)));
+        sb.append(" black: ");
         sb.append(df.format(jval.score()));
         sb.append('\n');
         sb.append("parent: " + df.format(jval.parentScore()) + ", urgency: " + df.format(jval.urgency()));
@@ -221,7 +258,7 @@ public class JosekiVal {
         MoveInfo mi = karPass.moveInfos.get(0);
         System.out.println("pass move: " + mi.move + ", visits: " + mi.visits + ", score: " + df.format(mi.scoreLead) + ", policy: " + df.format(mi.prior * 1000.0));
 
-        return kres.blackScore() - karPass.blackScore();
+        return Math.abs(kres.blackScore() - karPass.blackScore());
     }
 
     private KataAnalysisResult queryNode(KataBrain brain, Node n, Properties props) throws Exception {

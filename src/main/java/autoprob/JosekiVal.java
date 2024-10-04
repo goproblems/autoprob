@@ -270,7 +270,7 @@ public class JosekiVal {
         query.analyzeTurns.add(0);
         query.maxVisits = Integer.parseInt(props.getProperty("joseki.visits", "1000"));
 
-        restrictToCornerMoves(n, query);
+        restrictToNearbyMoves(n, query, 3);
 
         brain.doQuery(query); // kick off katago
         KataAnalysisResult kres = brain.getResult(query.id, 0);
@@ -288,6 +288,41 @@ public class JosekiVal {
         for (int x = 18; x > 18 - distance; x--)
             for (int y = 0; y < distance; y++) {
                 moves.add(Intersection.toGTPloc(x, y, 19));
+            }
+
+        am.moves = moves;
+        query.allowMoves = new ArrayList<>();
+        query.allowMoves.add(am);
+    }
+
+    private void restrictToNearbyMoves(Node n, KataQuery query, int distance) {
+        boolean[][] allowSpots = new boolean[19][19];
+        // look for stones on the board and extend from them
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                if (n.board.board[x][y].stone != Intersection.EMPTY) {
+                    for (int dx = -distance; dx <= distance; dx++)
+                        for (int dy = -distance; dy <= distance; dy++) {
+                            int nx = x + dx;
+                            int ny = y + dy;
+                            if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19) {
+                                allowSpots[nx][ny] = true;
+                            }
+                        }
+                }
+            }
+
+        var am = new AllowMove();
+        am.player = Intersection.color2katagoname(n.getToMove());
+        am.untilDepth = 1;
+        ArrayList<String> moves = new ArrayList<>();
+
+        // add spots from allowSpots to the list, exclude intersections that are occupied
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                if (allowSpots[x][y] && n.board.board[x][y].stone == Intersection.EMPTY) {
+                    moves.add(Intersection.toGTPloc(x, y, 19));
+                }
             }
 
         am.moves = moves;

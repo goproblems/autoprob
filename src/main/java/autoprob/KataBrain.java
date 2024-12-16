@@ -109,6 +109,7 @@ public class KataBrain {
 
 	protected void processKataResponses() throws Exception {
 		boolean printSummary = Boolean.parseBoolean(props.getProperty("kata.print_summary_result", "false"));
+		boolean printWarnings = Boolean.parseBoolean(props.getProperty("kata.print_warnings", "true"));
 		Gson gson = new Gson();
 		String line;
 		long startTime = 0;
@@ -120,7 +121,7 @@ public class KataBrain {
 				//TODO: process error
 				continue;
 			}
-			if (line.startsWith("Uncaught exception")) {
+			if (line.contains("Uncaught exception")) {
 				System.out.println("fatal error: " + line);
 				throw new RuntimeException("fatal error: " + line);
 			}
@@ -128,8 +129,11 @@ public class KataBrain {
 				throw new RuntimeException("ending on katago error: " + line);
 			
 			// print to debug
-			if (debugPrintKatago)
+			if (debugPrintKatago) {
 				System.out.println("kata: " + line);
+			} else if (printWarnings && line.contains("Warning:")) {
+				System.out.println("kata: " + line);
+			}
 
 			if (line.startsWith("{")) {
 				KataAnalysisResult kres = gson.fromJson(line, KataAnalysisResult.class);

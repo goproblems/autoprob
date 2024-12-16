@@ -12,14 +12,14 @@ import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.awt.Point;
 import java.nio.file.Paths;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Properties;
-import java.util.Stack;
+import java.util.*;
+import java.util.ArrayDeque;
 
 public class JosekiVal {
     private static final DecimalFormat df = new DecimalFormat("0.00");
@@ -106,6 +106,7 @@ public class JosekiVal {
             throw new RuntimeException("you must pass in a path");
         }
         Node baseNode = loadBasePosition(props);
+        baseNode.addAct(new SizeAction(19));
 
         System.out.println("board afer " + path + ":");
         Node endNode = addPath(baseNode, path);
@@ -118,7 +119,14 @@ public class JosekiVal {
         brain.stopKataBrain();
 
         // output the sgf
-        baseNode.addAct(new SizeAction(19));
+        writeSgf(props, baseNode);
+
+        return baseNode;
+    }
+
+    private static void writeSgf(Properties props, Node baseNode) throws IOException {
+        // set default komi
+        baseNode.addXtraTag("KM", "6.5");
         String sgf = "(" + baseNode.outputSGF(true) + ")";
         boolean printSgf = Boolean.parseBoolean(props.getProperty("joseki.print_sgf", "true"));
         if (printSgf) {
@@ -130,9 +138,8 @@ public class JosekiVal {
             Path out_path = Paths.get(pathString);
             byte[] strToBytes = sgf.getBytes();
             Files.write(out_path, strToBytes);
+            System.out.println("wrote sgf to " + out_path);
         }
-
-        return baseNode;
     }
 
     // recurse to limit, evaluating each node
@@ -140,12 +147,21 @@ public class JosekiVal {
         double minJosekiUrgency = Double.parseDouble(props.getProperty("joseki.min_urgency", "13.0"));
         double maxMistake = Double.parseDouble(props.getProperty("joseki.max_mistake", "0.5"));
         boolean refuteMistakes = Boolean.parseBoolean(props.getProperty("joseki.refute_mistakes", "true"));
+        boolean depthFirst = Boolean.parseBoolean(props.getProperty("joseki.depth_first", "false"));
+        int writeEvery = Integer.parseInt(props.getProperty("joseki.write_sgf_freq", "100"));
+        String urgencyLevels = props.getProperty("joseki.urgency_levels");
+
         // create stack of moves to consider
-        Stack<Node> nodes = new Stack<>();
+        Deque<Node> nodes = new ArrayDeque<>();
         nodes.push(startNode);
         int evalCount = 0;
         while (!nodes.isEmpty()) {
-            Node n = nodes.pop();
+            if (evalCount > 0 && writeEvery > 0 && evalCount % writeEvery == 0) {
+                writeSgf(props, startNode.getRoot());
+            }
+
+            Node n = depthFirst ? nodes.removeLast() : nodes.pop();
+            System.out.println("eval node: " + n.printPath2Here());
             JNodeVal jval = evalNode(props, n, brain);
             System.out.println(jval);
             eval2comment(props, n, jval);
@@ -161,13 +177,17 @@ public class JosekiVal {
 
             // some characteristics of the result will determine if we should continue
 
-            if (++evalCount > nodeLimit) {
+            if (++evalCount >= nodeLimit) {
                 break;
             }
 
-            if (jval.urgency() < minJosekiUrgency) {
+            if (notSufficentlyUrgent(jval.urgency(), urgencyLevels, n)) {
                 continue;
             }
+
+//            if (jval.urgency() < minJosekiUrgency) {
+//                continue;
+//            }
 
             // add moves from jval to stack
             for (int i = jval.moves().size() - 1; i >= 0; i--) {
@@ -187,6 +207,30 @@ public class JosekiVal {
             Node n = nodes.pop();
             n.mom.removeChildNode(n);
         }
+    }
+
+    private boolean notSufficentlyUrgent(double urgency, String urgencyLevels, Node n) {
+        if (urgencyLevels == null) {
+            return false;
+        }
+
+        // looks like: 3=12.0,15=13.2,0=15.0
+        String[] levels = urgencyLevels.split(",");
+        for (String level: levels) {
+            String[] parts = level.split("=");
+            int depth = Integer.parseInt(parts[0]);
+            double urgencyLevel = Double.parseDouble(parts[1]);
+            if (n.depth < depth || depth == 0) {
+                if (urgency < urgencyLevel) {
+                    System.out.println("urgency too low: " + urgency + " < " + urgencyLevel + " at depth " + n.depth);
+                    return true;
+                }
+                System.out.println("urgency ok: " + urgency + " >= " + urgencyLevel + " at depth " + n.depth);
+                return false;
+            }
+        }
+
+        return false;
     }
 
     // how good this move was, in perspective of player who played it
@@ -213,6 +257,18 @@ public class JosekiVal {
             sb.append(move.move());
             sb.append(",");
         }
+
+        var kres = jval.kres();
+        List<KataAnalysisResult.Policy> top = kres.getTopPolicy(3, kres.humanPolicy);
+        sb.append('\n');
+        sb.append("human: ");
+        for (KataAnalysisResult.Policy pol: top) {
+            sb.append(pol.policy);
+            sb.append(" at ");
+            sb.append(Intersection.toGTPloc(pol.x, pol.y, 19));
+            sb.append('\n');
+        }
+
         n.addAct(new CommentAction(sb.toString()));
     }
 
@@ -244,7 +300,7 @@ public class JosekiVal {
             moves.add(new JMove(mi.move));
         }
 
-        return new JNodeVal(kresParent.blackScore(), kres.blackScore(), urgency, moves);
+        return new JNodeVal(kresParent.blackScore(), kres.blackScore(), urgency, moves, kres);
     }
 
     private double calcPassValue(KataBrain brain, Node node, KataAnalysisResult kres, Properties props) throws Exception {
@@ -269,8 +325,10 @@ public class JosekiVal {
         query.analyzeTurns.clear();
         query.analyzeTurns.add(0);
         query.maxVisits = Integer.parseInt(props.getProperty("joseki.visits", "1000"));
+        query.setHumanSLrank("3d"); // default rank
 
-        restrictToNearbyMoves(n, query, 3);
+        int maxMoveDistance = Integer.parseInt(props.getProperty("joseki.max_move_distance", "4"));
+        restrictToNearbyMoves(n, query, maxMoveDistance);
 
         brain.doQuery(query); // kick off katago
         KataAnalysisResult kres = brain.getResult(query.id, 0);

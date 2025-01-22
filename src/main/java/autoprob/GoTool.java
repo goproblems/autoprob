@@ -29,13 +29,15 @@ public class GoTool {
 
     private void runTool(Properties props) throws Exception {
         String command = props.getProperty("cmd");
+        System.out.println("command: " + command);
         if (command == null) {
             throw new RuntimeException("you must pass in a cmd");
         }
         if (command.equals("extents")) {
             runExtentsCommand(props);
-        }
-        else if (command.equals("fortress")) {
+        } else if (command.equals("analyze")) {
+            runAnalyzeCommand(props);
+        } else if (command.equals("fortress")) {
             runFortressCommand(props);
         } else if (command.equals("showpolicy")) {
             runShowPolicyCommand(props);
@@ -157,6 +159,89 @@ public class GoTool {
         }
         sgl.buildFortress(node.board, gap);
 //        System.out.println("(" + node.outputSGF(true) + ")");
+    }
+
+    // adds moves from path to the end of node
+    private Node addPath(Node node, String path) throws Exception {
+        // path is a comma separated list of moves like "C4,D19,E4"
+        String[] moves = path.split(",");
+        for (String move : moves) {
+            Point p = Intersection.gtp2point(move);
+            // check if node has this move already, and skip if so
+            if (node.hasMove(p)) {
+                node = node.getChildWithMove(p);
+                continue;
+            }
+            node = node.addBasicMove(p.x, p.y);
+        }
+        return node;
+    }
+
+    public void fullHumanPolicy(KataBrain brain, Properties props, Node problem) throws Exception {
+        // run katago humanSL mode at each human level
+        String diffRank = "";
+        for (int level = 20; level >= -8; level -= 1) {
+            var na = new NodeAnalyzer(props);
+            String rank = (level > 0) ? level + "k" : (-level + 1) + "d";
+            KataAnalysisResult kar = null;
+            kar = na.analyzeNode(brain, problem, 1, null, rank);
+            // see if the correct move is the top human moves out of the multiple choice
+            List<KataAnalysisResult.Policy> top = kar.getTopPolicy(5, kar.humanPolicy);
+            System.out.print(String.format("%3s", rank) + " policy: ");
+            for (KataAnalysisResult.Policy p : top) {
+                System.out.print(String.format("%3d", (int)(p.policy * 100)) + " at " + String.format("%3s", Intersection.toGTPloc(p.x, p.y, 19)) + ", ");
+//                System.out.print((int)(p.policy * 100) + " at " + Intersection.toGTPloc(p.x, p.y, 19) + ", ");
+            }
+            System.out.println();
+        }
+    }
+
+    private void runAnalyzeCommand(Properties props) throws Exception {
+        Node node = loadPassedSgf(props);
+        System.out.println("(" + node.outputSGF(true) + ")");
+
+        // optionally get starting path
+        String path = props.getProperty("analyze.starting_path");
+        if (path != null) {
+            node = addPath(node, path);
+        }
+
+        // use katago to generate policy
+        KataBrain brain = new KataBrain(props);
+
+        QueryBuilder qb = new QueryBuilder();
+        KataQuery query = qb.buildQuery(node);
+        query.id = "auto:x";
+        int visits = Integer.parseInt(props.getProperty("search.visits"));
+        query.maxVisits = visits;
+        query.includePolicy = true;
+        query.analyzeTurns.clear();
+        query.analyzeTurns.add(0);
+        brain.doQuery(query); // kick off katago
+
+        KataAnalysisResult kres = brain.getResult(query.id, 0);
+        System.out.println("=> turn: " + kres.turnNumber + ", id: " + kres.id + ", score: " + df.format(kres.rootInfo.scoreLead) + ", ");
+
+        System.out.println("policy -->");
+        kres.drawPolicy(node); // black is X, white @
+
+        System.out.println("ownership -->");
+        kres.drawOwnership(node);
+
+        // get top policy from result
+        var solMoves = getSolutionMoves(node);
+        var topSolPolicy = kres.getTopPolicy(5, solMoves, true);
+        for (KataAnalysisResult.Policy p : topSolPolicy) {
+            System.out.println("solution policy: " + df.format(p.policy) + " at " + p.x + "," + p.y + " (" + Intersection.toGTPloc(p.x, p.y, 19) + ")");
+        }
+        var topMistakePolicy = kres.getTopPolicy(5, solMoves, false);
+        for (KataAnalysisResult.Policy p : topMistakePolicy) {
+            System.out.println("mistake policy: " + df.format(p.policy) + " at " + p.x + "," + p.y + " (" + Intersection.toGTPloc(p.x, p.y, 19) + ")");
+        }
+
+        fullHumanPolicy(brain, props, node);
+
+        brain.stopKataBrain();
     }
 
     private void runShowPolicyCommand(Properties props) throws Exception {

@@ -5,6 +5,7 @@ import autoprob.go.action.*;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.MoveInfo;
 import autoprob.problem.DifficultyEstimator;
+import autoprob.problem.TreeExtender;
 
 import java.awt.*;
 import java.util.ArrayList;
@@ -128,8 +129,15 @@ public class ShapeProblemDetector extends ProblemDetector {
         labelProblemChoices();
         problem.forceMove = true;
         validProblem = true;
+        
+        // possibly extend solution
+        if (Boolean.parseBoolean(props.getProperty("shape.extend_solution", "true"))) {
+            TreeExtender te = new TreeExtender(props, solution, brain);
+            te.extendTree();
+        }
 
-        DifficultyEstimator de = new DifficultyEstimator(props, problem);
+
+        DifficultyEstimator de = new DifficultyEstimator(props, problem, brain, rootAnalysis);
         difficultyRank = de.estimateStatic();
 
         System.out.println("END shape problem detect");

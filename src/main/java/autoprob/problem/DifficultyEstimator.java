@@ -16,17 +16,20 @@ public class DifficultyEstimator {
     private final Properties props;
     private KataBrain brain;
     private Node problem;
-    private KataAnalysisResult prev;
+    private KataAnalysisResult rootAnalysis;
 
-    public DifficultyEstimator(Properties props, Node problem) {
+    public DifficultyEstimator(Properties props, Node problem, KataBrain brain, KataAnalysisResult rootAnalysis) {
         this.props = props;
+        this.problem = problem;
+        this.brain = brain;
+        this.rootAnalysis = rootAnalysis;
     }
     
     public String estimateStatic() {
         // estimate difficulty by running katago humanSL mode at each human level
         // basically the first level solved is considered the difficulty
         // get correct move for problem
-        String correctMove = prev.moveInfos.get(0).move;
+        String correctMove = rootAnalysis.moveInfos.get(0).move;
         StringBuilder sb = new StringBuilder();
         boolean solved = false;
         String diffRank = "";

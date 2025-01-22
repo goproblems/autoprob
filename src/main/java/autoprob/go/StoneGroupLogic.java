@@ -278,4 +278,16 @@ public class StoneGroupLogic {
             }
         }
     }
+
+    // return the distance to the nearest stone on the board
+    public double nearestBoardDistance(Point p, Intersection[][] board) {
+        double minDist = 100;
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                if (board[x][y].isEmpty()) continue;
+                double dist = Math.sqrt((x - p.x) * (x - p.x) + (y - p.y) * (y - p.y));
+                minDist = Math.min(minDist, dist);
+            }
+        return minDist;
+    }
 }

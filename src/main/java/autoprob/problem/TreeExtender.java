@@ -9,6 +9,7 @@ import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.MoveInfo;
 
 import java.awt.*;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Properties;
 
@@ -19,6 +20,7 @@ public class TreeExtender {
     private final int visits;
     private final StoneGroupLogic sgl = new StoneGroupLogic();
     private final double maxExtendDist;
+    protected static final DecimalFormat df = new DecimalFormat("0.00");
 
     public TreeExtender(Properties props, Node solution, KataBrain brain) {
         this.props = props;
@@ -48,19 +50,53 @@ public class TreeExtender {
     }
 
     private void evalCandidates(ArrayList<String> candidateResponses) throws Exception {
+        double minTopMoveScoreMargin = Double.parseDouble(props.getProperty("extend.min_top_move_score_margin", "3"));
+
         // for each candidate, see if the human responses are good: ie only limited number (one?) and local
         for (var candidate : candidateResponses) {
             Point p = Intersection.gtp2point(candidate);
-            Node n = solution.addBasicMove(p.x, p.y);
+            Node sol = solution.addBasicMove(p.x, p.y);
 
             // run katago on candidate
             var na = new NodeAnalyzer(props);
-            KataAnalysisResult kar = na.analyzeNode(brain, n, visits);
+            KataAnalysisResult kar = na.analyzeNode(brain, sol, visits);
 
             // ensure a) only one response, b) it is local
-
+            double margin = getTopMoveMargin(kar);
+            if (margin > minTopMoveScoreMargin && isNearBoard(candidate)) {
+                System.out.println("Candidate " + candidate + " is valid: " + df.format(margin));
+                // add this response to the tree
+                Point responsePoint = Intersection.gtp2point(kar.moveInfos.get(0).move);
+                Node response = sol.addBasicMove(responsePoint.x, responsePoint.y);
+                // move RIGHT from solution to response
+                solution.result = Intersection.INDETERMINATE;
+                response.result = Intersection.RIGHT;
+                System.out.println("Added response to tree: " + response.printPath2Here());
+            } else {
+                // remove this candidate from the tree
+                System.out.println("Candidate " + candidate + " is invalid: " + df.format(margin));
+                solution.babies.remove(sol);
+            }
         }
 
+    }
+
+    private double getTopMoveMargin(KataAnalysisResult kar) {
+        MoveInfo topMove = kar.moveInfos.get(0);
+        if (kar.moveInfos.size() > 1) {
+            MoveInfo secondMove = kar.moveInfos.get(1);
+            System.out.println("second move: " + secondMove.extString());
+            double deltaScore = Math.abs(topMove.scoreLead - secondMove.scoreLead); // must abs because could be for B or W
+            System.out.println("delta score: " + df.format(deltaScore));
+            return deltaScore;
+        }
+        return 1000;
+    }
+
+    private boolean isNearBoard(String move) {
+        Point p = Intersection.gtp2point(move);
+        double dist = sgl.nearestBoardDistance(p, solution.board.board);
+        return dist <= maxExtendDist;
     }
 
     private ArrayList<String> generateCandidateResponses() throws Exception {

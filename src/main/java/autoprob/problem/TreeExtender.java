@@ -64,6 +64,7 @@ public class TreeExtender {
         double minTopMoveScoreMargin = Double.parseDouble(props.getProperty("extend.min_top_move_score_margin", "3"));
 
         // for each candidate, see if the human responses are good: ie only limited number (one?) and local
+        // add them to the tree if good
         for (var candidate : candidateResponses) {
             Point p = Intersection.gtp2point(candidate);
             Node solTest = solution.addBasicMove(p.x, p.y);
@@ -91,6 +92,19 @@ public class TreeExtender {
                 solution.babies.remove(solTest);
             }
         }
+
+        markChoice(solution);
+    }
+
+    private void markChoice(Node solution) {
+        if (solution.babies.isEmpty()) {
+            return; // no choices
+        }
+
+        // mark all babies
+        for (var baby : solution.babies) {
+            baby.isChoice = true;
+        }
     }
 
     private void addResponseComments(Node response, KataAnalysisResult karTest, String testMove) {
@@ -105,7 +119,7 @@ public class TreeExtender {
             sb.append("Note: the ").append(clr).append(" move at ").append(testMove).append(" lost about ").append(Math.round(drop)).append(" points");
         }
 
-        if (sb.length() > 0) {
+        if (!sb.isEmpty()) {
             response.addAct(new CommentAction(sb.toString()));
         }
     }

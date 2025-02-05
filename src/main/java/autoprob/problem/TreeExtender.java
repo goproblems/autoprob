@@ -66,6 +66,7 @@ public class TreeExtender {
         // for each candidate, see if the human responses are good: ie only limited number (one?) and local
         // add them to the tree if good
         for (var candidate : candidateResponses) {
+            System.out.println("==> Evaluating candidate " + candidate);
             Point p = Intersection.gtp2point(candidate);
             Node solTest = solution.addBasicMove(p.x, p.y);
 
@@ -97,7 +98,7 @@ public class TreeExtender {
     }
 
     private void markChoice(Node solution) {
-        if (solution.babies.isEmpty()) {
+        if (solution.babies.size() < 2) {
             return; // no choices
         }
 
@@ -128,6 +129,7 @@ public class TreeExtender {
         MoveInfo topMove = kar.moveInfos.get(0);
         if (kar.moveInfos.size() > 1) {
             MoveInfo secondMove = kar.moveInfos.get(1);
+            System.out.println("first move: " + topMove.extString());
             System.out.println("second move: " + secondMove.extString());
             double deltaScore = Math.abs(topMove.scoreLead - secondMove.scoreLead); // must abs because could be for B or W
             System.out.println("delta score: " + df.format(deltaScore));
@@ -147,7 +149,6 @@ public class TreeExtender {
         // create list
         var candidates = new ArrayList<String>();
 
-
         MoveInfo topMove = kar.moveInfos.get(0);
         double dist = sgl.nearestBoardDistance(Intersection.gtp2point(topMove.move), solution.board.board);
         if (dist <= maxExtendDist) {
@@ -159,7 +160,7 @@ public class TreeExtender {
         List<KataAnalysisResult.Policy> top20k = getHumanPolicy("20k", solution, 5);
         for (KataAnalysisResult.Policy p : top20k) {
             String move = Intersection.toGTPloc(p.x, p.y);
-            System.out.println("Move " + move + " human policy: " + df.format(p.policy));
+            System.out.println("Move " + move + " human policy: " + df.format(p.policy) + (p.policy < minHumanPolicy ? "" : " x"));
             if (p.policy < minHumanPolicy) {
                 continue;
             }

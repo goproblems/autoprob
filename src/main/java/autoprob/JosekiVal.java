@@ -253,8 +253,11 @@ public class JosekiVal {
         // add moves
         sb.append('\n');
         sb.append("Followups: ");
+        int cnt = 0;
         for (JMove move: jval.moves()) {
+            cnt++;
             sb.append(move.move());
+            if (cnt > 5) break;
             sb.append(",");
         }
 
@@ -262,12 +265,15 @@ public class JosekiVal {
         List<KataAnalysisResult.Policy> top = kres.getTopPolicy(3, kres.humanPolicy);
         sb.append('\n');
         sb.append("human: ");
+        cnt = 0;
         for (KataAnalysisResult.Policy pol: top) {
-            sb.append(pol.policy);
-            sb.append(" at ");
+            sb.append(Math.round(pol.policy * 100));
+            sb.append("% at ");
             sb.append(Intersection.toGTPloc(pol.x, pol.y, 19));
-            sb.append('\n');
+            if (++cnt > 5) break;
+            sb.append(", ");
         }
+        sb.append('\n');
 
         n.addAct(new CommentAction(sb.toString()));
     }

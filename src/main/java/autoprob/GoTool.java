@@ -71,6 +71,10 @@ public class GoTool {
         if (path == null) {
             throw new RuntimeException("you must pass in a path");
         }
+        if (path.equals("empty")) {
+            return new Node(null);
+        }
+
         File f = new File(path);
         if (!f.exists()) {
             throw new RuntimeException("no such file or directory: " + path);

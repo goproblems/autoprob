@@ -23,6 +23,7 @@ public class TreeExtender {
     private final StoneGroupLogic sgl = new StoneGroupLogic();
     private final double maxExtendDist;
     private KataAnalysisResult kar;
+    private NodeAnalyzer na;
     protected static final DecimalFormat df = new DecimalFormat("0.00");
 
     public TreeExtender(Properties props, Node solution, KataBrain brain) {
@@ -32,12 +33,14 @@ public class TreeExtender {
 
         this.visits = Integer.parseInt(props.getProperty("paths.visits"));
         maxExtendDist = Double.parseDouble(props.getProperty("extract.extend_dist", "2.5"));
+
+        na = new NodeAnalyzer(props);
     }
 
     // start at correct solution (1 move from start of problem), look for potential responses that are interesting, add them to the tree
     public void extendTree() throws Exception {
         // let's read current position and generate candidate moves (candidates of computer responses to test human)
-        // candidates do not need to be the best moves, but may be
+        // candidates do not need to be the best moves, but they may be
         // find them from a combo of top strong move plus human policy
         // the moves need certain characteristics: they are forcing a local response, and not a variety of responses
 
@@ -56,7 +59,6 @@ public class TreeExtender {
 
     private void analyzeStartingPosition() throws Exception {
         // run katago on current position
-        var na = new NodeAnalyzer(props);
         kar = na.analyzeNode(brain, solution, visits);
     }
 
@@ -71,15 +73,15 @@ public class TreeExtender {
             Node solTest = solution.addBasicMove(p.x, p.y);
 
             // run katago on candidate
-            var na = new NodeAnalyzer(props);
             KataAnalysisResult karTest = na.analyzeNode(brain, solTest, visits);
 
             // ensure a) only one response, b) it is local
             double margin = getTopMoveMargin(karTest);
             if (margin > minTopMoveScoreMargin && isNearBoard(candidate)) {
+                String responseMove = karTest.moveInfos.get(0).move;
                 System.out.println("Candidate " + candidate + " is valid: " + df.format(margin));
                 // add this response to the tree
-                Point responsePoint = Intersection.gtp2point(karTest.moveInfos.get(0).move);
+                Point responsePoint = Intersection.gtp2point(responseMove);
                 Node response = solTest.addBasicMove(responsePoint.x, responsePoint.y);
                 // move RIGHT from solution to response
                 solution.result = Intersection.INDETERMINATE;
@@ -87,6 +89,9 @@ public class TreeExtender {
                 System.out.println("Added response to tree: " + response.printPath2Here());
 
                 addResponseComments(response, karTest, candidate);
+
+                // also add mistakes and their refutations
+                addCandidateResponseMistakes(karTest, solTest, responseMove);
             } else {
                 // remove this candidate from the tree
                 System.out.println("Candidate " + candidate + " is invalid: " + df.format(margin));
@@ -95,6 +100,59 @@ public class TreeExtender {
         }
 
         markChoice(solution);
+    }
+
+    // a computer has added a testing move. we want to add possible human mistakes and their refutations
+    private void addCandidateResponseMistakes(KataAnalysisResult karTest, Node solTest, String correctMove) throws Exception {
+        System.out.println("==> adding response mistakes, not correct move at " + correctMove);
+        ArrayList<String> humanOptions = generateHumanOptions(karTest, solTest);
+
+        for (var humanMistake : humanOptions) {
+            // skip if correct move
+            if (humanMistake.equals(correctMove)) {
+                continue;
+            }
+            Point p = Intersection.gtp2point(humanMistake);
+            Node mistake = solTest.addBasicMove(p.x, p.y);
+            System.out.println("Added mistake to tree: " + mistake.printPath2Here());
+
+            // evaluate refutation
+            var mistakeKar = na.analyzeNode(brain, mistake, visits);
+            String refutationMove = mistakeKar.moveInfos.get(0).move;
+            Point refutationPoint = Intersection.gtp2point(refutationMove);
+            Node refutationNode = mistake.addBasicMove(refutationPoint.x, refutationPoint.y);
+
+            // add comment for how much this mistake cost
+            String comment = "Your mistake at " + humanMistake + " lost approximately " + Math.round(Math.abs(karTest.blackScore() - mistakeKar.blackScore())) + " points";
+            refutationNode.addAct(new CommentAction(comment));
+        }
+    }
+
+    // possible computer responses, some of which may be losing points
+    private ArrayList<String> generateHumanOptions(KataAnalysisResult nodeKar, Node node) throws Exception {
+        // create list
+        var candidates = new ArrayList<String>();
+
+        // add human policy moves
+        double minHumanPolicy = Double.parseDouble(props.getProperty("extend.min_human_mistake_policy", "0.05"));
+        List<KataAnalysisResult.Policy> topHuman = getHumanPolicy("5k", node, 5);
+        for (KataAnalysisResult.Policy p : topHuman) {
+            String move = Intersection.toGTPloc(p.x, p.y);
+            double dist = sgl.nearestBoardDistance(new Point(p.x, p.y), node.board.board);
+            if (dist > maxExtendDist) {
+                System.out.println("Move " + move + " too far from board: " + df.format(dist));
+                continue;
+            }
+            System.out.println("human option " + move + " human policy: " + df.format(p.policy) + (p.policy < minHumanPolicy ? "" : " x"));
+            if (p.policy < minHumanPolicy) {
+                continue;
+            }
+            if (!candidates.contains(move)) {
+                candidates.add(move);
+            }
+        }
+
+        return candidates;
     }
 
     private void markChoice(Node solution) {
@@ -157,10 +215,16 @@ public class TreeExtender {
 
         // add human policy moves
         double minHumanPolicy = Double.parseDouble(props.getProperty("extend.min_human_policy", "0.10"));
-        List<KataAnalysisResult.Policy> top20k = getHumanPolicy("20k", solution, 5);
-        for (KataAnalysisResult.Policy p : top20k) {
+        List<String> ranks = List.of("20k", "10k", "1k", "4d");
+        List<KataAnalysisResult.Policy> topPolicy = getMergedPolicy(ranks, solution, 5);
+        for (KataAnalysisResult.Policy p : topPolicy) {
             String move = Intersection.toGTPloc(p.x, p.y);
             System.out.println("Move " + move + " human policy: " + df.format(p.policy) + (p.policy < minHumanPolicy ? "" : " x"));
+            dist = sgl.nearestBoardDistance(Intersection.gtp2point(move), solution.board.board);
+            if (dist > maxExtendDist) {
+                System.out.println("Move " + move + " too far from top move: " + df.format(dist));
+                continue;
+            }
             if (p.policy < minHumanPolicy) {
                 continue;
             }
@@ -172,9 +236,22 @@ public class TreeExtender {
         return candidates;
     }
 
+    private List<KataAnalysisResult.Policy> getMergedPolicy(List<String> ranks, Node node, int num) throws Exception {
+        List<KataAnalysisResult.Policy> merged = new ArrayList<>();
+        for (String rank : ranks) {
+            var l = getHumanPolicy(rank, node, num);
+            // merge policies
+            for (var p : l) {
+                if (!merged.contains(p)) {
+                    merged.add(p);
+                }
+            }
+        }
+        return merged;
+    }
+
     private List<KataAnalysisResult.Policy> getHumanPolicy(String rank, Node node, int num) throws Exception {
         KataAnalysisResult kar = null;
-        var na = new NodeAnalyzer(props);
         kar = na.analyzeNode(brain, node, 1, null, rank);
         // see if the correct move is the top human moves out of the multiple choice
         return kar.getTopPolicy(num, kar.humanPolicy);

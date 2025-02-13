@@ -88,4 +88,24 @@ public class DifficultyEstimator {
         return diffRank;
     }
 
+    public double rank2elo(String rank) {
+        String numString = rank.substring(0, rank.length() - 1);
+        int num = Integer.parseInt(numString);
+        if (rank.endsWith("d")) {
+            return 3000 + 100 * (num - 1);
+        } else {
+            return 3000 - 100 * num;
+        }
+    }
+
+    // calculates elo given a win probability and a strength rating
+    public double calculateEloX(double e, double p) {
+        return e + 400 * Math.log10((1 - p) / p);
+    }
+
+    // do a reverse elo calculation given solve percentages on the root node
+    public String estimateProbabilityFromRoot() {
+        return "10k";
+    }
+
 }

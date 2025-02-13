@@ -120,11 +120,21 @@ public class TreeExtender {
             var mistakeKar = na.analyzeNode(brain, mistake, visits);
             String refutationMove = mistakeKar.moveInfos.get(0).move;
             Point refutationPoint = Intersection.gtp2point(refutationMove);
-            Node refutationNode = mistake.addBasicMove(refutationPoint.x, refutationPoint.y);
 
-            // add comment for how much this mistake cost
-            String comment = "Your mistake at " + humanMistake + " lost approximately " + Math.round(Math.abs(karTest.blackScore() - mistakeKar.blackScore())) + " points";
-            refutationNode.addAct(new CommentAction(comment));
+            // if this is far from the problem, we don't add it, just terminate the branch here
+            double dist = sgl.nearestBoardDistance(refutationPoint, mistake.board.board);
+            if (dist > maxExtendDist) {
+                System.out.println("Refutation " + refutationMove + " too far from board: " + df.format(dist));
+                String clr = Intersection.color2name(mistake.getToMove() == Intersection.BLACK ? Intersection.BLACK : Intersection.WHITE, true);
+                String comment = "This loses approximately " + Math.round(Math.abs(karTest.blackScore() - mistakeKar.blackScore())) + " points. " + clr + " will play away next.";
+                mistake.addAct(new CommentAction(comment));
+            } else {
+                Node refutationNode = mistake.addBasicMove(refutationPoint.x, refutationPoint.y);
+
+                // add comment for how much this mistake cost
+                String comment = "Your mistake at " + humanMistake + " lost approximately " + Math.round(Math.abs(karTest.blackScore() - mistakeKar.blackScore())) + " points";
+                refutationNode.addAct(new CommentAction(comment));
+            }
         }
     }
 

@@ -12,7 +12,6 @@ import java.util.Properties;
 
 
 public class DifficultyEstimator {
-
     private final Properties props;
     private KataBrain brain;
     private Node problem;
@@ -99,13 +98,64 @@ public class DifficultyEstimator {
     }
 
     // calculates elo given a win probability and a strength rating
-    public double calculateEloX(double e, double p) {
+    public double calculateEloX(double e, double p)
+    {
         return e + 400 * Math.log10((1 - p) / p);
     }
 
-    // do a reverse elo calculation given solve percentages on the root node
-    public String estimateProbabilityFromRoot() {
-        return "10k";
+    public String elo2rank(double elo) {
+        if (elo >= 3000) {
+            return ((int)((elo - 3000) / 100) + 1) + "d";
+        } else {
+            return (int)((3000 - elo) / 100) + "k";
+        }
     }
 
+    // do a reverse elo calculation given solve percentages on the root node, no exploration
+    public String estimateProbabilityFromRoot() throws Exception {
+        System.out.println("------------- starting estimateProbabilityFromRoot");
+        // run human eval on root node
+        KataAnalysisResult kar = null;
+        NodeAnalyzer na = new NodeAnalyzer(props);
+        String rank = "15k";
+        kar = na.analyzeNode(brain, problem, 1, null, rank);
+
+        // estimate probability this human level chooses a right move
+        double winningOdds = calcPercentageCorrect(kar.humanPolicy, problem);
+        double rankElo = rank2elo(rank);
+        double elo = calculateEloX(rankElo, winningOdds);
+        String estRank = elo2rank(elo);
+        System.out.println("winningOdds: " + winningOdds + ", rankElo: " + rankElo + ", elo: " + elo + ", estRank: " + estRank);
+
+        return estRank;
+    }
+
+    private double calcPercentageCorrect(List<Double> policy, Node n) {
+        double rightTotal = 0, wrongTotal = 0;
+        boolean isForced = n.forceMove;
+        if (isForced) {
+            System.out.println("Forced move");
+        }
+        for (int y = 0; y < 19; y++) {
+            for (int x = 0; x < 19; x++) {
+                double p = policy.get(x + y * 19);
+                if (p < 0) continue;
+//                System.out.print(p + " ");
+                // is this a move, and is it right?
+                Node child = n.getMoveChild(x, y);
+                if (isForced && child == null) {
+                    // ignore since they must pick from tree
+                    continue;
+                }
+                if (child != null && child.searchForTheTruth()) {
+                    rightTotal += p;
+                } else {
+                    wrongTotal += p;
+                }
+            }
+        }
+        System.out.println("rightTotal: " + rightTotal + ", wrongTotal: " + wrongTotal);
+        // normalize and return
+        return rightTotal / (rightTotal + wrongTotal);
+    }
 }

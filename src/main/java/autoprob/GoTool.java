@@ -8,6 +8,7 @@ import autoprob.go.parse.Parser;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
+import autoprob.problem.DifficultyEstimator;
 
 import java.awt.Point;
 import java.io.File;
@@ -37,6 +38,8 @@ public class GoTool {
             runExtentsCommand(props);
         } else if (command.equals("analyze")) {
             runAnalyzeCommand(props);
+        } else if (command.equals("rate")) {
+            runRateCommand(props);
         } else if (command.equals("fortress")) {
             runFortressCommand(props);
         } else if (command.equals("showpolicy")) {
@@ -198,6 +201,15 @@ public class GoTool {
             }
             System.out.println();
         }
+    }
+    private void runRateCommand(Properties props) throws Exception {
+        Node node = loadPassedSgf(props);
+        System.out.println("(" + node.outputSGF(true) + ")");
+
+        KataBrain brain = new KataBrain(props);
+        DifficultyEstimator de = new DifficultyEstimator(props, node, brain, null);
+        String diff = de.estimateProbabilityFromRoot();
+        System.out.println("root difficulty: " + diff);
     }
 
     private void runAnalyzeCommand(Properties props) throws Exception {

@@ -348,11 +348,24 @@ public class Node {
         
         return tike;
     }
-    
-    /**
-     *  they clicked a square and made a valid move -- the curnode is called
-     *  to see how to handle it
-     */
+
+    public Node getMoveChild(int x, int y) {
+        for (Enumeration e = babies.elements(); e.hasMoreElements();) {
+            Node n = (Node) e.nextElement();
+            Point p = n.findMove();
+            if (p != null && p.x == x && p.y == y) {
+                // that's us!
+                n.setResultFromMovingHere();
+                return n;
+            }
+        }
+        return null;
+    }
+
+        /**
+         *  they clicked a square and made a valid move -- the curnode is called
+         *  to see how to handle it
+         */
     public void handleMove(int x, int y) throws Exception {
         // examine children, see if one reflects the move we just made
         for (Enumeration e = babies.elements(); e.hasMoreElements();) {
@@ -361,7 +374,6 @@ public class Node {
             if (p != null && p.x == x && p.y == y) {
                 // that's us!
                 n.setResultFromMovingHere();
-//                ga.globals.setCurNode(n);  // advance us to here
                 return;
             }
         }

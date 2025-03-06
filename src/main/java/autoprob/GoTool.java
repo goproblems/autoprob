@@ -208,8 +208,11 @@ public class GoTool {
 
         KataBrain brain = new KataBrain(props);
         DifficultyEstimator de = new DifficultyEstimator(props, node, brain, null);
-        String diff = de.estimateProbabilityFromRoot();
-        System.out.println("root difficulty: " + diff);
+
+        boolean recurse = Boolean.parseBoolean(props.getProperty("recurse", "true"));
+
+        String diff = de.estimateProbabilityFromRoot(recurse);
+        System.out.println("estimated problem difficulty: " + diff);
     }
 
     private void runAnalyzeCommand(Properties props) throws Exception {

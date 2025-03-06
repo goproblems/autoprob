@@ -105,33 +105,70 @@ public class DifficultyEstimator {
 
     public String elo2rank(double elo) {
         if (elo >= 3000) {
-            return ((int)((elo - 3000) / 100) + 1) + "d";
+            int dan = ((int)((elo - 3000) / 100) + 1);
+            dan = Math.min(Math.max(dan, 1), 9);  // Ensure dan between 1 and 9
+            return dan + "d";
         } else {
-            return (int)((3000 - elo) / 100) + "k";
+            int kyu = ((int)((2999 - elo) / 100) + 1);
+            kyu = Math.min(Math.max(kyu, 1), 30); // Ensure kyu between 1 and 30
+            return kyu + "k";
         }
     }
 
     // do a reverse elo calculation given solve percentages on the root node, no exploration
-    public String estimateProbabilityFromRoot() throws Exception {
-        System.out.println("------------- starting estimateProbabilityFromRoot");
-        // run human eval on root node
-        KataAnalysisResult kar = null;
-        NodeAnalyzer na = new NodeAnalyzer(props);
-        String rank = "15k";
-        kar = na.analyzeNode(brain, problem, 1, null, rank);
+    public String estimateProbabilityFromRoot(boolean doRecurse) throws Exception {
+        System.out.println("------------- starting estimateProbabilityFromRoot recurse: " + doRecurse);
 
-        // estimate probability this human level chooses a right move
-        double winningOdds = calcPercentageCorrect(kar.humanPolicy, problem);
-        double rankElo = rank2elo(rank);
-        double elo = calculateEloX(rankElo, winningOdds);
-        String estRank = elo2rank(elo);
-        System.out.println("winningOdds: " + winningOdds + ", rankElo: " + rankElo + ", elo: " + elo + ", estRank: " + estRank);
+        String onlyOneRank = props.getProperty("estimator.one_rank", "");
+
+        // loop through all human values
+        int cnt = 0;
+        double sum = 0;
+        for (int level = 20; level >= -8; level -= 1) {
+            String rank = (level > 0) ? level + "k" : (-level + 1) + "d";
+
+            if (!onlyOneRank.isEmpty() && !rank.equals(onlyOneRank)) {
+                continue;
+            }
+            System.out.println("rank: " + rank);
+
+            double p = getEstProbability(rank, problem, doRecurse);
+
+            double rankElo = rank2elo(rank);
+            double elo = calculateEloX(rankElo, p);
+            String estRank = elo2rank(elo);
+            System.out.println("winningOdds: " + p + ", rankElo: " + rankElo + ", elo: " + elo + ", estRank: " + estRank);
+
+            System.out.println("elo: " + elo);
+            sum += elo;
+            cnt++;
+        }
+
+        double avgElo = sum / cnt;
+        String estRank = elo2rank(avgElo);
+        System.out.println("avgElo: " + avgElo + ", estRank: " + estRank);
+
+        problem.addXtraTag("DIFF", estRank);
 
         return estRank;
     }
 
-    private double calcPercentageCorrect(List<Double> policy, Node n) {
+    private double getEstProbability(String rank, Node node, boolean doRecurse) throws Exception {
+        KataAnalysisResult kar;
+        NodeAnalyzer na = new NodeAnalyzer(props);
+        // run human eval
+        kar = na.analyzeNode(brain, node, 1, null, rank);
+
+        // estimate probability this human level chooses a right move
+        double winningOdds = calcPercentageCorrect(rank, kar.humanPolicy, node, doRecurse);
+        System.out.println("winningOdds: " + winningOdds);
+        return winningOdds;
+    }
+
+    // looks at policy chances vs tree to see how likely the policy is correct
+    private double calcPercentageCorrect(String rank, List<Double> policy, Node n, boolean doRecurse) throws Exception {
         double rightTotal = 0, wrongTotal = 0;
+        double totalMoveChoice = 0; // total probability of all moves we might pick. this can be less than 1 if situations are forced
         boolean isForced = n.forceMove;
         if (isForced) {
             System.out.println("Forced move");
@@ -139,23 +176,53 @@ public class DifficultyEstimator {
         for (int y = 0; y < 19; y++) {
             for (int x = 0; x < 19; x++) {
                 double p = policy.get(x + y * 19);
-                if (p < 0) continue;
-//                System.out.print(p + " ");
+                if (p < 0) continue; // ignore illegal moves
                 // is this a move, and is it right?
                 Node child = n.getMoveChild(x, y);
                 if (isForced && child == null) {
                     // ignore since they must pick from tree
                     continue;
                 }
+                totalMoveChoice += p; // this might be chosen
                 if (child != null && child.searchForTheTruth()) {
+                    if (doRecurse) {
+                        // recurse
+                        double recursePct = calcRecursePercentage(rank, child);
+                        double newp = recursePct * p; // weight by how likely this move is to be right
+                        System.out.println("recursePct: " + recursePct + ", newp: " + newp + ", oldp: " + p);
+                        p = newp;
+                    }
                     rightTotal += p;
                 } else {
                     wrongTotal += p;
                 }
             }
         }
-        System.out.println("rightTotal: " + rightTotal + ", wrongTotal: " + wrongTotal);
+        System.out.println("rightTotal: " + rightTotal + ", wrongTotal: " + wrongTotal + ", totalMoveChoice: " + totalMoveChoice);
         // normalize and return
-        return rightTotal / (rightTotal + wrongTotal);
+        if (rightTotal  == 0) {
+            rightTotal = 0.0001; // at least a misclick, surely
+        }
+        return rightTotal / (totalMoveChoice);
+    }
+
+    // we go deeper, first do computer response options then combine
+    private double calcRecursePercentage(String rank, Node n) throws Exception {
+        // n represents the last human move
+        if (n.babies.isEmpty()) {
+            // no computer response, just return 1
+            return 1;
+        }
+
+        // normally we just look at the first branch, but if there's a CHOICE tag, we look at all
+        // for now just keep it simple
+
+        Node computerMove = n.babies.get(0);
+        Point move = computerMove.getMoveAction().getMove();
+        System.out.println("computerMove: " + Intersection.toGTPloc(move.x, move.y));
+
+        double p = getEstProbability(rank, computerMove, true);
+        System.out.println("response to : " + Intersection.toGTPloc(move.x, move.y) + " right probability: " + p);
+        return p;
     }
 }

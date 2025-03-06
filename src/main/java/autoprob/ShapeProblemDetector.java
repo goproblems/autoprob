@@ -138,7 +138,8 @@ public class ShapeProblemDetector extends ProblemDetector {
 
 
         DifficultyEstimator de = new DifficultyEstimator(props, problem, brain, rootAnalysis);
-        difficultyRank = de.estimateStatic();
+//        difficultyRank = de.estimateStatic();
+        difficultyRank = de.estimateProbabilityFromRoot(false);
 
         System.out.println("END shape problem detect");
     }

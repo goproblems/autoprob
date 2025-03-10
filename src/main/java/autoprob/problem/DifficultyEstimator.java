@@ -121,6 +121,9 @@ public class DifficultyEstimator {
 
         String onlyOneRank = props.getProperty("estimator.one_rank", "");
 
+        // create a map of ranks to string descriptions for later
+        var rankMap = new java.util.HashMap<String, String>();
+
         // loop through all human values
         int cnt = 0;
         double sum = 0;
@@ -137,9 +140,9 @@ public class DifficultyEstimator {
             double rankElo = rank2elo(rank);
             double elo = calculateEloX(rankElo, p);
             String estRank = elo2rank(elo);
-            System.out.println("winningOdds: " + p + ", rankElo: " + rankElo + ", elo: " + elo + ", estRank: " + estRank);
-
-            System.out.println("elo: " + elo);
+            String desc = "winningOdds: " + p + ", rankElo: " + (int)rankElo + ", elo: " + (int)elo + ", estRank: " + estRank;
+            System.out.println(desc);
+            rankMap.put(rank, estRank);
             sum += elo;
             cnt++;
         }
@@ -149,6 +152,13 @@ public class DifficultyEstimator {
         System.out.println("avgElo: " + avgElo + ", estRank: " + estRank);
 
         problem.addXtraTag("DIFF", estRank);
+
+        // print out rankmap in rank order
+        for (int level = 20; level >= -8; level -= 1) {
+            String rank = (level > 0) ? level + "k" : (-level + 1) + "d";
+            if (rankMap.containsKey(rank))
+                System.out.println(rank + ": " + rankMap.get(rank));
+        }
 
         return estRank;
     }
@@ -170,6 +180,8 @@ public class DifficultyEstimator {
         double rightTotal = 0, wrongTotal = 0;
         double totalMoveChoice = 0; // total probability of all moves we might pick. this can be less than 1 if situations are forced
         boolean isForced = n.forceMove;
+        boolean assumeForcee = Boolean.parseBoolean(props.getProperty("estimator.assume_forced", "false"));
+
         if (isForced) {
             System.out.println("Forced move");
         }

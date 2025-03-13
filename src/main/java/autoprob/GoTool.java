@@ -186,6 +186,7 @@ public class GoTool {
 
     public void fullHumanPolicy(KataBrain brain, Properties props, Node problem) throws Exception {
         // run katago humanSL mode at each human level
+        int numPolicy = Integer.parseInt(props.getProperty("analyze.num_human", "6"));
         String diffRank = "";
         for (int level = 20; level >= -8; level -= 1) {
             var na = new NodeAnalyzer(props);
@@ -193,7 +194,7 @@ public class GoTool {
             KataAnalysisResult kar = null;
             kar = na.analyzeNode(brain, problem, 1, null, rank);
             // see if the correct move is the top human moves out of the multiple choice
-            List<KataAnalysisResult.Policy> top = kar.getTopPolicy(5, kar.humanPolicy);
+            List<KataAnalysisResult.Policy> top = kar.getTopPolicy(numPolicy, kar.humanPolicy);
             System.out.print(String.format("%3s", rank) + " policy: ");
             for (KataAnalysisResult.Policy p : top) {
                 System.out.print(String.format("%3d", (int)(p.policy * 100)) + " at " + String.format("%3s", Intersection.toGTPloc(p.x, p.y, 19)) + ", ");
@@ -222,7 +223,19 @@ public class GoTool {
         // optionally get starting path
         String path = props.getProperty("analyze.starting_path");
         if (path != null) {
+            System.out.println("starting path: " + path);
             node = addPath(node, path);
+        }
+
+        // optionally advance to a specific turn
+        int onlySearchTurn = Integer.parseInt(props.getProperty("analyze.turn", "0"));
+        if (onlySearchTurn > 0) {
+            Node n = node;
+            for (int adv = 0; adv < onlySearchTurn; adv++) {
+                n = n.favoriteSon();
+            }
+            node = n;
+            System.out.println("advancing to turn: " + onlySearchTurn + ", move: " + node.getMoveAction());
         }
 
         // use katago to generate policy

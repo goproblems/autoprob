@@ -9,6 +9,7 @@ import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
 import autoprob.problem.DifficultyEstimator;
+import autoprob.problem.SiteProblem;
 
 import java.awt.Point;
 import java.io.File;
@@ -48,6 +49,8 @@ public class GoTool {
             runWritePolicyCommand(props);
         } else if (command.equals("solve")) {
             runSolveCommand(props);
+        } else if (command.equals("siteproblem")) {
+            runSiteProblemCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -449,6 +452,11 @@ public class GoTool {
         writer.flush();
         writer.close();
         System.out.println("complete to " + outPathString);
+    }
+
+    private void runSiteProblemCommand(Properties props) throws Exception {
+        SiteProblem sp = new SiteProblem();
+        sp.execute(props);
     }
 
     private static void solveSgfFile(Properties props, String sgfPath, KataBrain brain, PrintWriter writer) throws Exception {

@@ -11,24 +11,35 @@ public class Problem {
     public String imageUrl;
     public UserProfile.Rank rank;
     public String specificGenre;
-    public int correctAnswers;
-    public int wrongAnswers;
     public List<String> tags;
     public String createdAt;
     public String updatedAt;
     public Author author;
     public String sgf;
-    
+    public Attempts attempts;
+    public Boolean alive;
+    public Double elo;
+    public Boolean isStandard;
+    public Boolean isCanon;
+
     public static class Author {
         public int id;
         public String name;
     }
-    
+
+    public static class Attempts {
+        public int solved;
+        public int failed;
+        public int tries;
+    }
+
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("Problem #").append(id).append("\n");
+        sb.append("Problem #").append(id).append(isStandard ? " standard" : " nonstandard").append(isCanon ? " canon" : " noncannon").append("\n");
+        sb.append("Alive: ").append(alive).append("\n");
         sb.append("Rank: ").append(rank.value).append(rank.unit).append("\n");
+        sb.append("Elo: ").append(Math.round(elo)).append("\n");
         sb.append("Genre: ").append(specificGenre).append("\n");
         
         if (author != null) {
@@ -36,8 +47,8 @@ public class Problem {
         }
         
         sb.append("Created: ").append(createdAt).append("\n");
-        sb.append("Success rate: ").append(correctAnswers).append(" correct / ")
-          .append(wrongAnswers).append(" wrong\n");
+        sb.append("Success rate: ").append(attempts.solved).append(" / ")
+          .append(attempts.tries).append("\n");
         
         if (description != null && !description.isEmpty()) {
             sb.append("\nDescription:\n").append(description).append("\n");

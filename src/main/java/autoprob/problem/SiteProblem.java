@@ -41,10 +41,16 @@ public class SiteProblem {
                 Gson gson = new GsonBuilder().setPrettyPrinting().create();
                 System.out.println(gson.toJson(problem));
             }
+
+            var attempts = loadAttempts(props, problemId);
         } else {
             System.out.println("\n=== Problem Request Failed ===");
             System.out.println("Error Code: " + response.getStatusCode());
             System.out.println("Error Message: " + response.getErrorMessage());
         }
+    }
+
+    private Object loadAttempts(Properties props, String problemId) {
+        // call API such as: goproblems.com/api/v2/attempts?limit=10&offset=0&sort_direction=desc&sort_by=id&problem_id=5
     }
 }

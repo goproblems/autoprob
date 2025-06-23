@@ -1,11 +1,15 @@
 package autoprob.problem;
 
 import autoprob.ApiClient;
+import autoprob.api.Attempt;
+import autoprob.api.AttemptListResponse;
 import autoprob.api.Problem;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -42,7 +46,19 @@ public class SiteProblem {
                 System.out.println(gson.toJson(problem));
             }
 
-            var attempts = loadAttempts(props, problemId);
+            // Load and display attempts
+            int maxAttempts = Integer.parseInt(props.getProperty("attempts.limit", "10"));
+            AttemptListResponse attemptsResponse = loadAttempts(props, problemId, maxAttempts);
+            if (attemptsResponse != null) {
+                System.out.println("\n" + attemptsResponse.toString());
+                
+                // Display raw JSON if in debug mode
+                if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                    System.out.println("\nRaw Attempts Response:");
+                    Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                    System.out.println(gson.toJson(attemptsResponse));
+                }
+            }
         } else {
             System.out.println("\n=== Problem Request Failed ===");
             System.out.println("Error Code: " + response.getStatusCode());
@@ -50,7 +66,67 @@ public class SiteProblem {
         }
     }
 
-    private Object loadAttempts(Properties props, String problemId) {
-        // call API such as: goproblems.com/api/v2/attempts?limit=10&offset=0&sort_direction=desc&sort_by=id&problem_id=5
+    private AttemptListResponse loadAttempts(Properties props, String problemId, int maxAttempts) {
+        try {
+            List<Attempt> allAttempts = new ArrayList<>();
+            int offset = 0;
+            int pageSize = Math.min(maxAttempts, 50); // API might have limits, so use reasonable page size
+            int totalCount = 0;
+            boolean hasMore = true;
+            
+            ApiClient apiClient = new ApiClient();
+            
+            // Load attempts with pagination until we have enough or no more available
+            while (allAttempts.size() < maxAttempts && hasMore) {
+                int requestLimit = Math.min(pageSize, maxAttempts - allAttempts.size());
+                
+                // Build query string with pagination parameters
+                String queryString = String.format("?limit=%d&offset=%d&sort_direction=desc&sort_by=id&problem_id=%s",
+                    requestLimit, offset, problemId);
+                
+                if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                    System.out.println("Loading attempts with query: " + queryString);
+                }
+                
+                // Make API request for this page
+                ApiClient.ApiResponse<AttemptListResponse> response = apiClient.makeGetRequest(
+                        "api.user.attempts", null, queryString, AttemptListResponse.class, props);
+                
+                if (response.isSuccess()) {
+                    AttemptListResponse pageResponse = response.getData();
+                    if (pageResponse != null && pageResponse.items != null) {
+                        allAttempts.addAll(pageResponse.items);
+                        totalCount = pageResponse.totalRecords;
+                        hasMore = pageResponse.items.size() == requestLimit && (offset + pageResponse.items.size()) < totalCount;
+                        offset += pageResponse.items.size();
+                        
+                        if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                            System.out.println("Loaded " + pageResponse.items.size() + " attempts, total so far: " + allAttempts.size());
+                        }
+                    } else {
+                        hasMore = false;
+                    }
+                } else {
+                    System.out.println("Failed to load attempts: " + response.getErrorMessage());
+                    if (allAttempts.isEmpty()) {
+                        return null;
+                    }
+                    break;
+                }
+            }
+            
+            // Create final response with all collected attempts
+            AttemptListResponse finalResponse = new AttemptListResponse(allAttempts, totalCount, allAttempts.size(), 0);
+            finalResponse.hasMore = allAttempts.size() < totalCount;
+            
+            return finalResponse;
+            
+        } catch (Exception e) {
+            System.out.println("Error loading attempts: " + e.getMessage());
+            if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                e.printStackTrace();
+            }
+            return null;
+        }
     }
 }

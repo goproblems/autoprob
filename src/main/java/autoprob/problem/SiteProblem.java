@@ -51,13 +51,6 @@ public class SiteProblem {
             AttemptListResponse attemptsResponse = loadAttempts(props, problemId, maxAttempts);
             if (attemptsResponse != null) {
                 System.out.println("\n" + attemptsResponse.toString());
-                
-                // Display raw JSON if in debug mode
-                if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
-                    System.out.println("\nRaw Attempts Response:");
-                    Gson gson = new GsonBuilder().setPrettyPrinting().create();
-                    System.out.println(gson.toJson(attemptsResponse));
-                }
             }
         } else {
             System.out.println("\n=== Problem Request Failed ===");

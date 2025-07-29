@@ -115,6 +115,16 @@ public class DifficultyEstimator {
         }
     }
 
+    public static int rankname2rank(String rank) {
+        String numString = rank.substring(0, rank.length() - 1);
+        int num = Integer.parseInt(numString);
+        if (rank.endsWith("d")) {
+            return 30 + num - 1;
+        } else {
+            return 30 - num;
+        }
+    }
+
     // do a reverse elo calculation given solve percentages on the root node, no exploration
     public String estimateProbabilityFromRoot(boolean doRecurse) throws Exception {
         System.out.println("------------- starting estimateProbabilityFromRoot recurse: " + doRecurse);

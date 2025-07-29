@@ -136,7 +136,6 @@ public class ShapeProblemDetector extends ProblemDetector {
             te.extendTree();
         }
 
-
         DifficultyEstimator de = new DifficultyEstimator(props, problem, brain, rootAnalysis);
 //        difficultyRank = de.estimateStatic();
         difficultyRank = de.estimateProbabilityFromRoot(true);
@@ -146,6 +145,10 @@ public class ShapeProblemDetector extends ProblemDetector {
 
     public String getFileNameExtras() {
         return "_p" + prev.turnNumber + "_" + difficultyRank;
+    }
+
+    public String getEstimatedRating() {
+        return difficultyRank;
     }
 
     // set a good readable comment for the solution

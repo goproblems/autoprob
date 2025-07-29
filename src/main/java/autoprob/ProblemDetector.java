@@ -432,4 +432,6 @@ public class ProblemDetector {
 	public String getFileNameExtras() {
 		return "_p" + prev.turnNumber;
 	}
+
+	public String getEstimatedRating() { return null; }
 }

@@ -9,13 +9,19 @@ import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.DecimalFormat;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
+import autoprob.api.Problem;
+import autoprob.api.ProblemDraft;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.parse.Parser;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 public class KataRunner {
 	private static final DecimalFormat df = new DecimalFormat("0.00");
@@ -29,7 +35,7 @@ public class KataRunner {
 	public void startEngine(VisDetector vis) throws Exception {
 		try {
 			KataBrain brain = new KataBrain(props);
-			
+
 			// choose a mode depending on properties
 			String path = props.getProperty("path");
 			if (path == null) {

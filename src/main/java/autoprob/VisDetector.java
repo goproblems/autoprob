@@ -1,8 +1,12 @@
 package autoprob;
 
+import autoprob.api.ProblemDraft;
 import autoprob.go.Intersection;
 import autoprob.katastruct.MoveInfo;
+import autoprob.problem.DifficultyEstimator;
 import autoprob.vis.PosFrame;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 import java.awt.*;
 import java.io.IOException;
@@ -53,9 +57,25 @@ public class VisDetector {
             String outPath = outDir + "/" + fileName + det.getFileNameExtras() + ".sgf";
             System.out.println("saving to: " + outPath);
             saveToFile(det, outPath);
-            if (Boolean.parseBoolean(props.getProperty("output.no_gui", "false"))) {
-                return true;
+        }
+
+        boolean postToServer = Boolean.parseBoolean(props.getProperty("output.post2drafts", "false"));
+        if (postToServer) {
+            // post to server
+            System.out.println("posting to server: " + det.getFileNameExtras());
+            try {
+                String sgf = ("(" + det.problem.outputSGF(true) + ")");
+                String ratingName = det.getEstimatedRating();
+                int rating = DifficultyEstimator.rankname2rank(ratingName);
+                ProblemDraft pd = new ProblemDraft(sgf,"best move", det.getFileNameExtras(), "lc", rating, null);
+                sendProblemDraft(pd);
+            } catch (Exception e) {
+                e.printStackTrace();
             }
+        }
+
+        if (Boolean.parseBoolean(props.getProperty("output.no_gui", "false"))) {
+            return true;
         }
 
         double baseScore = det.prev.rootInfo.scoreLead; // represents best
@@ -87,6 +107,26 @@ public class VisDetector {
         pf.addSourceInfoPanelEntry("w chng: ", String.valueOf(det.ownDeltaW));
         pf.addSourceInfoPanelEntry("#sols: ", det.numSols + ", " + det.solString);
         return true;
+    }
+
+    public void sendProblemDraft(ProblemDraft pd) throws Exception {
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        String requestBody = gson.toJson(pd);
+
+        ApiClient apiClient = new ApiClient();
+        ApiClient.ApiResponse<ProblemDraft> response = apiClient.makePostRequest(
+                "api.problem.drafts", null, requestBody, ProblemDraft.class, props);
+
+        if (response.isSuccess()) {
+            System.out.println("\n=== Problem Draft Created on server ===");
+            System.out.println(response.getData());
+        }
+        else {
+            System.out.println("\n=== Problem Draft Creation Failed ===");
+            System.out.println("Error Code: " + response.getStatusCode());
+            System.out.println("Error Message: " + response.getErrorMessage());
+            System.out.println(response.getData());
+        }
     }
 
     private void saveToFile(ProblemDetector det, String outPath) {

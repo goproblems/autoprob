@@ -67,7 +67,7 @@ public class VisDetector {
                 String sgf = ("(" + det.problem.outputSGF(true) + ")");
                 String ratingName = det.getEstimatedRating();
                 int rating = DifficultyEstimator.rankname2rank(ratingName);
-                ProblemDraft pd = new ProblemDraft(sgf,"best move", det.getFileNameExtras(), "lc", rating, null);
+                ProblemDraft pd = new ProblemDraft(sgf,"best move", fileName + det.getFileNameExtras(), "lc", rating, null);
                 sendProblemDraft(pd);
             } catch (Exception e) {
                 e.printStackTrace();

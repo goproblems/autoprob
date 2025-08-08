@@ -22,6 +22,7 @@ public class Attempt {
         public Avatar avatar;
         public String lastOnlineAt;
         public UserProfile.Rank rank;
+        public Double elo;
     }
     
     public static class Avatar {
@@ -66,6 +67,9 @@ public class Attempt {
         
         if (user != null && user.rank != null) {
             sb.append("\n  User rank: ").append(user.rank.value).append(user.rank.unit);
+            if (user.elo != null) {
+                sb.append(", Elo: ").append(String.format("%.1f", user.elo));
+            }
         }
         
         return sb.toString();

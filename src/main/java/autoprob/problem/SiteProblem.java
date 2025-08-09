@@ -122,4 +122,35 @@ public class SiteProblem {
             return null;
         }
     }
+
+    /* how the PHP code does elo calculation:
+        public const K_VAL = 32;
+    public const K_VAL_PROBLEM = 140;
+    public const K_FADE = 80;
+    public const K_FADE_PROBLEM = 10;
+
+    $newProblemElo = $this->eloCalculator->calculateProblemElo(
+            $context->getProblemElo(),
+            $context->getUserElo(),
+            $context->getTriesCount(),
+            $solved,
+            EloCalculatorInterface::K_VAL_PROBLEM,
+            EloCalculatorInterface::K_FADE_PROBLEM
+        );
+
+    public function calculateProblemElo(
+        float $problemElo,
+        float $userElo,
+        int $triesCount,
+        bool $solved,
+        int $kVal,
+        int $kFade
+    ): float {
+        $kProblem  = $kVal * $kFade / ($kFade + sqrt(1 + $triesCount));
+
+        return $problemElo
+            + ($solved ? -1 : 1) * $kProblem
+            * (1.0 - $this->calculateUserExperience($problemElo, $userElo, $solved));
+    }
+     */
 }

@@ -197,9 +197,9 @@ public class SiteProblem {
         System.out.println("Processing attempts in chronological order (oldest first)");
         
         // Print table header
-        System.out.println("\n" + String.format("%-12s %-10s %-12s %-12s %-12s %-12s", 
-            "Attempt #", "Result", "User Rank", "User Elo", "Problem Elo", "New Elo"));
-        System.out.println("-".repeat(80));
+        System.out.println("\n" + String.format("%-12s %-10s %-12s %-12s %-12s %-12s %-10s", 
+            "Attempt #", "Result", "User Rank", "User Elo", "Problem Elo", "New Elo", "New Rank"));
+        System.out.println("-".repeat(90));
         
         double currentElo = 1200.0; // Starting Elo
         int attemptCount = 0;
@@ -227,20 +227,25 @@ public class SiteProblem {
             double newElo = calculateProblemElo(currentElo, userElo, attemptCount, 
                                                attempt.solved, K_VAL_PROBLEM, K_FADE_PROBLEM);
             
+            // Calculate new rank from new Elo
+            String newRank = EloRankCalculator.calculateEloShortLevelName(newElo);
+            
             // Print row
-            System.out.println(String.format("%-12s %-10s %-12s %-12.1f %-12.1f %-12.1f",
+            System.out.println(String.format("%-12s %-10s %-12s %-12.1f %-12.1f %-12.1f %-10s",
                 "#" + attempt.id,
                 attempt.solved ? "SOLVED" : "FAILED",
                 userRank,
                 userElo,
                 currentElo,
-                newElo));
+                newElo,
+                newRank));
             
             currentElo = newElo;
         }
         
-        System.out.println("-".repeat(80));
-        System.out.println(String.format("Final simulated Elo: %.1f", currentElo));
+        System.out.println("-".repeat(90));
+        System.out.println(String.format("Final simulated Elo: %.1f (%s)", currentElo, 
+                                        EloRankCalculator.calculateEloShortLevelName(currentElo)));
         System.out.println("\nNote: This simulation starts from 1200 and processes historical attempts.");
         System.out.println("The actual problem Elo on the site may differ as it likely started from a different value.");
     }

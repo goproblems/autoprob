@@ -14,6 +14,12 @@ import java.util.Map;
 import java.util.Properties;
 
 public class SiteProblem {
+    // Elo calculation constants from PHP code
+    private static final int K_VAL = 32;
+    private static final int K_VAL_PROBLEM = 140;
+    private static final int K_FADE = 80;
+    private static final int K_FADE_PROBLEM = 10;
+    
     public void execute(Properties props) throws Exception {
         String problemId = props.getProperty("id");
         if (problemId == null) {
@@ -51,6 +57,9 @@ public class SiteProblem {
             AttemptListResponse attemptsResponse = loadAttempts(props, problemId, maxAttempts);
             if (attemptsResponse != null) {
                 System.out.println("\n" + attemptsResponse.toString());
+                
+                // Simulate Elo calculation
+                simulateEloCalculation(attemptsResponse);
             }
         } else {
             System.out.println("\n=== Problem Request Failed ===");
@@ -153,4 +162,85 @@ public class SiteProblem {
             * (1.0 - $this->calculateUserExperience($problemElo, $userElo, $solved));
     }
      */
+    
+    /**
+     * Calculate expected score for user based on Elo ratings
+     * This is the standard Elo expected score formula
+     */
+    private double calculateUserExperience(double problemElo, double userElo, boolean solved) {
+        // Expected score formula: 1 / (1 + 10^((problemElo - userElo) / 400))
+        double expectedScore = 1.0 / (1.0 + Math.pow(10, (problemElo - userElo) / 400.0));
+        return expectedScore;
+    }
+    
+    /**
+     * Calculate new problem Elo based on attempt result
+     * Based on the PHP implementation
+     */
+    private double calculateProblemElo(double problemElo, double userElo, int triesCount, 
+                                      boolean solved, int kVal, int kFade) {
+        double kProblem = kVal * kFade / (kFade + Math.sqrt(1 + triesCount));
+        
+        double newElo = problemElo + 
+            (solved ? -1 : 1) * kProblem * 
+            (1.0 - calculateUserExperience(problemElo, userElo, solved));
+            
+        return newElo;
+    }
+    
+    /**
+     * Simulate Elo calculation for problem based on attempts
+     */
+    private void simulateEloCalculation(AttemptListResponse attemptsResponse) {
+        System.out.println("\n=== Elo Simulation ===");
+        System.out.println("Starting with initial Elo: 1200");
+        System.out.println("Note: Attempts are processed in reverse chronological order (newest first)");
+        
+        // Print table header
+        System.out.println("\n" + String.format("%-12s %-10s %-12s %-12s %-12s %-12s", 
+            "Attempt #", "Result", "User Rank", "User Elo", "Problem Elo", "New Elo"));
+        System.out.println("-".repeat(80));
+        
+        double currentElo = 1200.0; // Starting Elo
+        int attemptCount = 0;
+        
+        // Process attempts in reverse order (oldest first) for chronological simulation
+        List<Attempt> attempts = new ArrayList<>(attemptsResponse.items);
+        java.util.Collections.reverse(attempts);
+        
+        for (Attempt attempt : attempts) {
+            attemptCount++;
+            
+            // Get user elo, skip if not available
+            if (attempt.user == null || attempt.user.elo == null) {
+                continue;
+            }
+            
+            double userElo = attempt.user.elo;
+            String userRank = "N/A";
+            if (attempt.user.rank != null) {
+                userRank = attempt.user.rank.value + attempt.user.rank.unit;
+            }
+            
+            // Calculate new Elo
+            double newElo = calculateProblemElo(currentElo, userElo, attemptCount, 
+                                               attempt.solved, K_VAL_PROBLEM, K_FADE_PROBLEM);
+            
+            // Print row
+            System.out.println(String.format("%-12s %-10s %-12s %-12.1f %-12.1f %-12.1f",
+                "#" + attempt.id,
+                attempt.solved ? "SOLVED" : "FAILED",
+                userRank,
+                userElo,
+                currentElo,
+                newElo));
+            
+            currentElo = newElo;
+        }
+        
+        System.out.println("-".repeat(80));
+        System.out.println(String.format("Final simulated Elo: %.1f", currentElo));
+        System.out.println("\nNote: This simulation starts from 1200 and processes historical attempts.");
+        System.out.println("The actual problem Elo on the site may differ as it likely started from a different value.");
+    }
 }

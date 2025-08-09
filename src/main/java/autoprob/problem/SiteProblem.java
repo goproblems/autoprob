@@ -221,39 +221,61 @@ public class SiteProblem {
     }
     
     /**
-     * Calculate new problem Elo using Bayesian approach
-     * This method considers uncertainty and uses a more principled probabilistic update
+     * Calculate new problem Elo using aggressive Bayesian approach for maximum convergence
+     * Uses full information extraction from each attempt
      */
     private double calculateBayesianElo(double problemElo, double userElo, int triesCount, 
                                        boolean solved, double uncertainty) {
         // Calculate expected probability that the user solves the problem
-        // If problem is harder than user, this probability is lower
         double expectedSolveProb = 1.0 / (1.0 + Math.pow(10, (problemElo - userElo) / 400.0));
         
         // Actual outcome (1 if user solved, 0 if user failed)
         double actualOutcome = solved ? 1.0 : 0.0;
         
-        // Calculate surprise factor
-        // Positive surprise: user solved when not expected (problem might be easier)
-        // Negative surprise: user failed when expected to solve (problem might be harder)
+        // Calculate the prediction error (surprise)
         double surprise = actualOutcome - expectedSolveProb;
         
-        // Adaptive K-factor based on uncertainty and tries count
-        // Start with higher K when uncertain, decrease as we get more data
-        double kFactor = K_VAL_PROBLEM * (uncertainty / 100.0) * K_FADE_PROBLEM / 
-                        (K_FADE_PROBLEM + Math.sqrt(1.0 + triesCount));
+        // Maximum convergence: use a variant of the Kelly Criterion
+        // This gives us the optimal bet size for fastest growth
+        // Kelly fraction = edge / odds = surprise
+        double kellyFraction = Math.abs(surprise);
         
-        // Weight the update by the user's rating reliability
-        // Users with ratings far from the problem provide less reliable information
-        double ratingDifference = Math.abs(problemElo - userElo);
-        double reliabilityWeight = 1.0 / (1.0 + ratingDifference / 400.0);
+        // Scale to Elo space (400 points = 10:1 odds)
+        // Maximum theoretical single-attempt change
+        double maxSingleChange = 400.0 * kellyFraction;
         
-        // Bayesian update: if user solved (positive surprise), problem is easier (decrease Elo)
-        // if user failed (negative surprise), problem is harder (increase Elo)
-        double adjustment = kFactor * surprise * reliabilityWeight;
+        // Decay factor - still need some stability as we get more data
+        double decayFactor = 1.0 / Math.pow(1.0 + triesCount / 5.0, 0.3);
         
-        // Apply the adjustment (negative because positive surprise means problem is easier)
-        double newElo = problemElo - adjustment;
+        // User trust factor - how much we trust this user's result
+        double ratingDiff = Math.abs(problemElo - userElo);
+        double trustFactor;
+        if (ratingDiff < 100) {
+            trustFactor = 1.0;  // Perfect information
+        } else if (ratingDiff < 400) {
+            trustFactor = 1.0 - (ratingDiff - 100) / 600.0;  // Gradual decay
+        } else {
+            trustFactor = 0.5;  // Still use info from distant users
+        }
+        
+        // Information quality: how surprising/informative was this result?
+        // Maximized when we're most wrong (surprise near ±1)
+        double informationQuality = 2.0 * Math.abs(surprise);
+        
+        // Calculate the adjustment
+        // Use sign of surprise: positive surprise (user solved unexpectedly) = problem easier
+        double adjustment = maxSingleChange * decayFactor * trustFactor * 
+                          informationQuality * (uncertainty / 100.0);
+        
+        // Apply adjustment with correct sign
+        double newElo;
+        if (solved) {
+            // User solved: problem is easier than we thought
+            newElo = problemElo - adjustment;
+        } else {
+            // User failed: problem is harder than we thought  
+            newElo = problemElo + adjustment;
+        }
         
         return newElo;
     }
@@ -329,8 +351,8 @@ public class SiteProblem {
             currentElo = newElo;
             currentBayesianElo = newBayesianElo;
             
-            // Reduce uncertainty over time (Bayesian learning)
-            uncertainty = Math.max(20.0, uncertainty * 0.95);
+            // Reduce uncertainty over time (Bayesian learning) - keep it higher for more responsiveness
+            uncertainty = Math.max(50.0, uncertainty * 0.98);
         }
         
         System.out.println("-".repeat(115));

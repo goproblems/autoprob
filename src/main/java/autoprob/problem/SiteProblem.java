@@ -194,7 +194,7 @@ public class SiteProblem {
     private void simulateEloCalculation(AttemptListResponse attemptsResponse) {
         System.out.println("\n=== Elo Simulation ===");
         System.out.println("Starting with initial Elo: 1200");
-        System.out.println("Note: Attempts are processed in reverse chronological order (newest first)");
+        System.out.println("Processing attempts in chronological order (oldest first)");
         
         // Print table header
         System.out.println("\n" + String.format("%-12s %-10s %-12s %-12s %-12s %-12s", 
@@ -204,7 +204,8 @@ public class SiteProblem {
         double currentElo = 1200.0; // Starting Elo
         int attemptCount = 0;
         
-        // Process attempts in reverse order (oldest first) for chronological simulation
+        // Process attempts in chronological order (oldest first)
+        // Since API returns newest first, we need to reverse
         List<Attempt> attempts = new ArrayList<>(attemptsResponse.items);
         java.util.Collections.reverse(attempts);
         

@@ -59,7 +59,7 @@ public class SiteProblem {
                 System.out.println("\n" + attemptsResponse.toString());
                 
                 // Simulate Elo calculation
-                simulateEloCalculation(attemptsResponse);
+                simulateEloCalculation(problem, attemptsResponse);
             }
         } else {
             System.out.println("\n=== Problem Request Failed ===");
@@ -191,9 +191,15 @@ public class SiteProblem {
     /**
      * Simulate Elo calculation for problem based on attempts
      */
-    private void simulateEloCalculation(AttemptListResponse attemptsResponse) {
+    private void simulateEloCalculation(Problem problem, AttemptListResponse attemptsResponse) {
+        // Use suggestedElo if available, otherwise default to 1200
+        double startingElo = (problem.suggestedElo != null) ? problem.suggestedElo : 1200.0;
+        String startingRank = EloRankCalculator.calculateEloShortLevelName(startingElo);
+        
         System.out.println("\n=== Elo Simulation ===");
-        System.out.println("Starting with initial Elo: 1200");
+        System.out.println(String.format("Starting with initial Elo: %.1f (%s)%s", 
+            startingElo, startingRank,
+            problem.suggestedElo != null ? " [using suggested Elo]" : " [default]"));
         System.out.println("Processing attempts in chronological order (oldest first)");
         
         // Print table header
@@ -201,7 +207,7 @@ public class SiteProblem {
             "Attempt #", "Result", "User Rank", "User Elo", "Problem Elo", "New Elo", "New Rank"));
         System.out.println("-".repeat(90));
         
-        double currentElo = 1200.0; // Starting Elo
+        double currentElo = startingElo;
         int attemptCount = 0;
         
         // Process attempts in chronological order (oldest first)

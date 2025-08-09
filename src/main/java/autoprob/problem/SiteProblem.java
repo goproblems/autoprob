@@ -187,13 +187,22 @@ public class SiteProblem {
      */
     
     /**
-     * Calculate expected score for user based on Elo ratings
-     * This is the standard Elo expected score formula
+     * Calculate user experience based on the PHP implementation
+     * From the PHP code:
+     * $result = 1.0 / (1.0 + 10 ** (($problemElo - $userElo) / EloCalculatorInterface::K_USER_EXPERIENCE_DIVIDER));
+     * if (!$solved) { $result = 1.0 - $result; }
      */
     private double calculateUserExperience(double problemElo, double userElo, boolean solved) {
-        // Expected score formula: 1 / (1 + 10^((problemElo - userElo) / 400))
-        double expectedScore = 1.0 / (1.0 + Math.pow(10, (problemElo - userElo) / 400.0));
-        return expectedScore;
+        // K_USER_EXPERIENCE_DIVIDER = 400.0 from the PHP constants
+        double K_USER_EXPERIENCE_DIVIDER = 400.0;
+        
+        double result = 1.0 / (1.0 + Math.pow(10, (problemElo - userElo) / K_USER_EXPERIENCE_DIVIDER));
+        
+        if (!solved) {
+            result = 1.0 - result;
+        }
+        
+        return result;
     }
     
     /**

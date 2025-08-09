@@ -52,8 +52,12 @@ public class SiteProblem {
                 System.out.println(gson.toJson(problem));
             }
 
-            // Load and display attempts
-            int maxAttempts = Integer.parseInt(props.getProperty("attempts.limit", "10"));
+            // Load and display attempts  
+            String attemptsLimitStr = props.getProperty("attempts.limit", "100");
+            int maxAttempts = Integer.parseInt(attemptsLimitStr);
+            if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                System.out.println("attempts.limit property value: '" + attemptsLimitStr + "' -> maxAttempts: " + maxAttempts);
+            }
             AttemptListResponse attemptsResponse = loadAttempts(props, problemId, maxAttempts);
             if (attemptsResponse != null) {
                 System.out.println("\n" + attemptsResponse.toString());
@@ -72,11 +76,15 @@ public class SiteProblem {
         try {
             List<Attempt> allAttempts = new ArrayList<>();
             int offset = 0;
-            int pageSize = Math.min(maxAttempts, 50); // API might have limits, so use reasonable page size
+            int pageSize = 50; // Use a fixed page size for API requests
             int totalCount = 0;
             boolean hasMore = true;
             
             ApiClient apiClient = new ApiClient();
+            
+            if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                System.out.println("Starting to load attempts, maxAttempts=" + maxAttempts + ", pageSize=" + pageSize);
+            }
             
             // Load attempts with pagination until we have enough or no more available
             while (allAttempts.size() < maxAttempts && hasMore) {
@@ -87,7 +95,8 @@ public class SiteProblem {
                     requestLimit, offset, problemId);
                 
                 if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
-                    System.out.println("Loading attempts with query: " + queryString);
+                    System.out.println("Loading attempts with query: " + queryString + 
+                                     " (requestLimit=" + requestLimit + ", offset=" + offset + ")");
                 }
                 
                 // Make API request for this page
@@ -99,11 +108,14 @@ public class SiteProblem {
                     if (pageResponse != null && pageResponse.items != null) {
                         allAttempts.addAll(pageResponse.items);
                         totalCount = pageResponse.totalRecords;
-                        hasMore = pageResponse.items.size() == requestLimit && (offset + pageResponse.items.size()) < totalCount;
                         offset += pageResponse.items.size();
                         
+                        // Continue if we haven't loaded all available attempts and haven't reached our limit
+                        hasMore = allAttempts.size() < totalCount && allAttempts.size() < maxAttempts;
+                        
                         if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
-                            System.out.println("Loaded " + pageResponse.items.size() + " attempts, total so far: " + allAttempts.size());
+                            System.out.println("Loaded " + pageResponse.items.size() + " attempts, total so far: " + allAttempts.size() + 
+                                             ", totalRecords from API: " + totalCount + ", offset now: " + offset + ", hasMore: " + hasMore);
                         }
                     } else {
                         hasMore = false;
@@ -137,6 +149,7 @@ public class SiteProblem {
     public const K_VAL_PROBLEM = 140;
     public const K_FADE = 80;
     public const K_FADE_PROBLEM = 10;
+       public const K_USER_EXPERIENCE_DIVIDER = 400.0;
 
     $newProblemElo = $this->eloCalculator->calculateProblemElo(
             $context->getProblemElo(),
@@ -160,6 +173,16 @@ public class SiteProblem {
         return $problemElo
             + ($solved ? -1 : 1) * $kProblem
             * (1.0 - $this->calculateUserExperience($problemElo, $userElo, $solved));
+    }
+
+    private function calculateUserExperience(float $problemElo, float $userElo, bool $solved): float
+    {
+        $result = 1.0 / (1.0 + 10 ** (($problemElo - $userElo) / EloCalculatorInterface::K_USER_EXPERIENCE_DIVIDER));
+        if (!$solved) {
+            $result = 1.0 - $result;
+        }
+
+        return $result;
     }
      */
     
@@ -252,7 +275,5 @@ public class SiteProblem {
         System.out.println("-".repeat(90));
         System.out.println(String.format("Final simulated Elo: %.1f (%s)", currentElo, 
                                         EloRankCalculator.calculateEloShortLevelName(currentElo)));
-        System.out.println("\nNote: This simulation starts from 1200 and processes historical attempts.");
-        System.out.println("The actual problem Elo on the site may differ as it likely started from a different value.");
     }
 }

@@ -221,6 +221,44 @@ public class SiteProblem {
     }
     
     /**
+     * Calculate new problem Elo using Bayesian approach
+     * This method considers uncertainty and uses a more principled probabilistic update
+     */
+    private double calculateBayesianElo(double problemElo, double userElo, int triesCount, 
+                                       boolean solved, double uncertainty) {
+        // Calculate expected probability that the user solves the problem
+        // If problem is harder than user, this probability is lower
+        double expectedSolveProb = 1.0 / (1.0 + Math.pow(10, (problemElo - userElo) / 400.0));
+        
+        // Actual outcome (1 if user solved, 0 if user failed)
+        double actualOutcome = solved ? 1.0 : 0.0;
+        
+        // Calculate surprise factor
+        // Positive surprise: user solved when not expected (problem might be easier)
+        // Negative surprise: user failed when expected to solve (problem might be harder)
+        double surprise = actualOutcome - expectedSolveProb;
+        
+        // Adaptive K-factor based on uncertainty and tries count
+        // Start with higher K when uncertain, decrease as we get more data
+        double kFactor = K_VAL_PROBLEM * (uncertainty / 100.0) * K_FADE_PROBLEM / 
+                        (K_FADE_PROBLEM + Math.sqrt(1.0 + triesCount));
+        
+        // Weight the update by the user's rating reliability
+        // Users with ratings far from the problem provide less reliable information
+        double ratingDifference = Math.abs(problemElo - userElo);
+        double reliabilityWeight = 1.0 / (1.0 + ratingDifference / 400.0);
+        
+        // Bayesian update: if user solved (positive surprise), problem is easier (decrease Elo)
+        // if user failed (negative surprise), problem is harder (increase Elo)
+        double adjustment = kFactor * surprise * reliabilityWeight;
+        
+        // Apply the adjustment (negative because positive surprise means problem is easier)
+        double newElo = problemElo - adjustment;
+        
+        return newElo;
+    }
+    
+    /**
      * Simulate Elo calculation for problem based on attempts
      */
     private void simulateEloCalculation(Problem problem, AttemptListResponse attemptsResponse) {
@@ -235,11 +273,13 @@ public class SiteProblem {
         System.out.println("Processing attempts in chronological order (oldest first)");
         
         // Print table header
-        System.out.println("\n" + String.format("%-12s %-10s %-12s %-12s %-12s %-12s %-10s", 
-            "Attempt #", "Result", "User Rank", "User Elo", "Problem Elo", "New Elo", "New Rank"));
-        System.out.println("-".repeat(90));
+        System.out.println("\n" + String.format("%-12s %-10s %-10s %-10s %-12s %-12s %-8s %-12s %-8s", 
+            "Attempt #", "Result", "User Rank", "User Elo", "Problem Elo", "New Elo", "Rank", "Bayes Elo", "B.Rank"));
+        System.out.println("-".repeat(115));
         
         double currentElo = startingElo;
+        double currentBayesianElo = startingElo;
+        double uncertainty = 100.0; // Initial uncertainty for Bayesian calculation
         int attemptCount = 0;
         
         // Process attempts in chronological order (oldest first)
@@ -261,28 +301,42 @@ public class SiteProblem {
                 userRank = attempt.user.rank.value + attempt.user.rank.unit;
             }
             
-            // Calculate new Elo
+            // Calculate new Elo using standard method
             double newElo = calculateProblemElo(currentElo, userElo, attemptCount, 
                                                attempt.solved, K_VAL_PROBLEM, K_FADE_PROBLEM);
             
-            // Calculate new rank from new Elo
+            // Calculate new Elo using Bayesian method
+            double newBayesianElo = calculateBayesianElo(currentBayesianElo, userElo, attemptCount,
+                                                        attempt.solved, uncertainty);
+            
+            // Calculate ranks from both Elos
             String newRank = EloRankCalculator.calculateEloShortLevelName(newElo);
+            String newBayesianRank = EloRankCalculator.calculateEloShortLevelName(newBayesianElo);
             
             // Print row
-            System.out.println(String.format("%-12s %-10s %-12s %-12.1f %-12.1f %-12.1f %-10s",
+            System.out.println(String.format("%-12s %-10s %-10s %-10.1f %-12.1f %-12.1f %-8s %-12.1f %-8s",
                 "#" + attempt.id,
                 attempt.solved ? "SOLVED" : "FAILED",
                 userRank,
                 userElo,
                 currentElo,
                 newElo,
-                newRank));
+                newRank,
+                newBayesianElo,
+                newBayesianRank));
             
+            // Update current values
             currentElo = newElo;
+            currentBayesianElo = newBayesianElo;
+            
+            // Reduce uncertainty over time (Bayesian learning)
+            uncertainty = Math.max(20.0, uncertainty * 0.95);
         }
         
-        System.out.println("-".repeat(90));
+        System.out.println("-".repeat(115));
         System.out.println(String.format("Final simulated Elo: %.1f (%s)", currentElo, 
                                         EloRankCalculator.calculateEloShortLevelName(currentElo)));
+        System.out.println(String.format("Final Bayesian Elo: %.1f (%s)", currentBayesianElo, 
+                                        EloRankCalculator.calculateEloShortLevelName(currentBayesianElo)));
     }
 }

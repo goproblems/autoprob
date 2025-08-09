@@ -19,6 +19,7 @@ public class Problem {
     public Attempts attempts;
     public Boolean alive;
     public Double elo;
+    public Double suggestedElo;
     public Boolean isStandard;
     public Boolean isCanon;
 
@@ -40,6 +41,9 @@ public class Problem {
         sb.append("Alive: ").append(alive).append("\n");
         sb.append("Rank: ").append(rank.value).append(rank.unit).append("\n");
         sb.append("Elo: ").append(Math.round(elo)).append("\n");
+        if (suggestedElo != null) {
+            sb.append("Suggested Elo: ").append(Math.round(suggestedElo)).append("\n");
+        }
         sb.append("Genre: ").append(specificGenre).append("\n");
         
         if (author != null) {

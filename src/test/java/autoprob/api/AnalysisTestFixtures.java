@@ -10,17 +10,17 @@ import java.io.Reader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 
-final class AnalysisTestFixtures {
+public final class AnalysisTestFixtures {
     private static final Gson GSON = new GsonBuilder().create();
 
     private AnalysisTestFixtures() {
     }
 
-    static AnalysisRequest loadRequest(String resourceName) {
+    public static AnalysisRequest loadRequest(String resourceName) {
         return load(resourceName, AnalysisRequest.class);
     }
 
-    static AnalysisResult loadResult(String resourceName) {
+    public static AnalysisResult loadResult(String resourceName) {
         return load(resourceName, AnalysisResult.class);
     }
 

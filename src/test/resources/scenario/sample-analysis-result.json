@@ -1,0 +1,12 @@
+{
+  "path": "Fo",
+  "loss": -0.15,
+  "score": 2.3,
+  "urgency": 0.8,
+  "endness": -1.0,
+  "rank": "ai",
+  "weight": 0.9,
+  "katagoPlayouts": 10000,
+  "katagoWeightsFile": "kata1-b40c256-s11840935168-d2898845681.bin.gz",
+  "extraInfo": "Strong invasion move"
+}

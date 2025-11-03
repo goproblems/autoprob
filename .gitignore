@@ -1,3 +1,10 @@
+*.sgf
+*.bak
+*.csv
+*.gz
+*.gif
+*.png
+
 # Compiled class file
 *.class
 

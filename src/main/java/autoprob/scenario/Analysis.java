@@ -27,17 +27,11 @@ public class Analysis implements AutoCloseable {
 
     private final Properties props;
     private final KataBrain brain;
-    private final NodeAnalyzer nodeAnalyzer;
     private final Parser parser = new Parser();
 
-    public Analysis(Properties props) throws Exception {
-        this(props, new KataBrain(props), new NodeAnalyzer(props));
-    }
-
-    public Analysis(Properties props, KataBrain brain, NodeAnalyzer nodeAnalyzer) {
+    public Analysis(Properties props, KataBrain brain) throws Exception {
         this.props = Objects.requireNonNull(props, "props");
         this.brain = brain;
-        this.nodeAnalyzer = Objects.requireNonNull(nodeAnalyzer, "nodeAnalyzer");
     }
 
     /**
@@ -49,6 +43,8 @@ public class Analysis implements AutoCloseable {
         if (request.scenario.sgf == null || request.scenario.sgf.isBlank()) {
             throw new IllegalArgumentException("Scenario SGF is required");
         }
+
+        var nodeAnalyzer = new NodeAnalyzer(props);
 
         Node root = parser.parse(request.scenario.sgf);
         applyToMovePreference(root, request.scenario.toMove);

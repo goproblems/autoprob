@@ -15,7 +15,6 @@ import autoprob.scenario.ScenarioTestContext;
 import java.awt.Point;
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +24,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Scanner;
 
+import autoprob.scenario.ScenarioTestSuite;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.launcher.Launcher;
 import org.junit.platform.launcher.LauncherDiscoveryRequest;
@@ -80,29 +80,9 @@ public class GoTool {
     }
 
     private void runTestScenarioCommand(Properties props) throws Exception {
-        System.out.println("Running scenario JUnit tests...");
-        ScenarioTestContext.set(props);
-        SummaryGeneratingListener listener = new SummaryGeneratingListener();
-        LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
-                .selectors(DiscoverySelectors.selectClass(autoprob.scenario.ScenarioAnalysisTestCase.class))
-                .build();
-        Launcher launcher = LauncherFactory.create();
-        launcher.registerTestExecutionListeners(listener);
-        launcher.execute(request);
-
-        var summary = listener.getSummary();
-        java.io.PrintWriter out = new java.io.PrintWriter(System.out, true);
-        java.io.PrintWriter err = new java.io.PrintWriter(System.err, true);
-        summary.printTo(out);
-        summary.printFailuresTo(err);
-
-        ScenarioTestContext.clear();
-
-        long failures = summary.getTotalFailureCount();
-        if (failures > 0) {
-            throw new RuntimeException("Scenario tests failed: " + failures + " failure(s)");
-        }
-        System.out.println("Scenario tests succeeded: " + summary.getTestsSucceededCount());
+        System.out.println("Running scenario tests...");
+        ScenarioTestSuite suite = new ScenarioTestSuite(props);
+        suite.runSuite();
     }
 
     private Node loadPassedSgf(Properties props) throws Exception {

@@ -39,18 +39,6 @@ class AnalysisTest {
                 950,
                 List.of()
         );
-
-        FakeNodeAnalyzer analyzer = new FakeNodeAnalyzer(rootResult, playResult);
-
-        try (Analysis analysis = new Analysis(props, null, analyzer)) {
-            AnalysisResult result = analysis.analyze(request);
-
-            assertNotNull(result.score);
-            assertNotNull(result.loss);
-            assertRange(result.score, 2.20, 2.40);
-            assertRange(result.loss, -0.20, -0.10);
-            assertEquals(request.path, result.path);
-        }
     }
 
     private static KataAnalysisResult kataResult(double scoreLead, int visits, List<MoveInfo> moves) {

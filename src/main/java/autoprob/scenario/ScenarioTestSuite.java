@@ -27,7 +27,10 @@ public class ScenarioTestSuite {
         KataBrain brain = new KataBrain(props);
 
         // iterate through tests
+        int cnt = 0;
         for (ScenTest test : tests) {
+            System.out.println("Running scenario test #" + (cnt));
+
             try (Analysis analysis = new Analysis(props, brain)) {
                 var req = new AnalysisRequest();
                 req.scenario = new AnalysisRequest.Scenario();
@@ -46,6 +49,7 @@ public class ScenarioTestSuite {
                 System.out.println("Exception during test for expected score: " + df.format(test.score));
                 e.printStackTrace();
             }
+            cnt++;
         }
     }
 }

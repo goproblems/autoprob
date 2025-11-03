@@ -142,6 +142,12 @@ public class Node {
                     if (mom != null)
                     	mom.defaultToMoveColor = Intersection.BLACK;
                 }
+                else if (tag.equals("PL")) {
+                    if (val.equals("B"))
+                        defaultToMoveColor = Intersection.BLACK;
+                    else
+                        defaultToMoveColor = Intersection.WHITE;
+                }
                 else if (tag.equals("AW"))
                     addAct(new SetupAction(val, Intersection.WHITE, this));
                 else if (tag.equals("AB"))

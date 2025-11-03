@@ -25,12 +25,6 @@ import java.util.Properties;
 import java.util.Scanner;
 
 import autoprob.scenario.ScenarioTestSuite;
-import org.junit.platform.engine.discovery.DiscoverySelectors;
-import org.junit.platform.launcher.Launcher;
-import org.junit.platform.launcher.LauncherDiscoveryRequest;
-import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
-import org.junit.platform.launcher.core.LauncherFactory;
-import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
 
 // KataRunner is a class that runs the KataGo engine to analyze Go games. the main function is estimating problem difficulty.
 public class GoTool {

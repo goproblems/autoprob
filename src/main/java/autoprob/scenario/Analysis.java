@@ -47,11 +47,13 @@ public class Analysis implements AutoCloseable {
         var nodeAnalyzer = new NodeAnalyzer(props);
 
         Node root = parser.parse(request.scenario.sgf);
-        applyToMovePreference(root, request.scenario.toMove);
+        System.out.println(root.board);
+        System.out.println("To move: " + (root.getToMove() == Intersection.BLACK ? "black" : "white"));
 
         List<PathMove> pathMoves = parsePath(root, request.path);
 
         int visits = determineVisits();
+        System.out.println("Visits: " + visits);
         KataAnalysisResult rootResult = nodeAnalyzer.analyzeNode(brain, root, visits, null, DEFAULT_HUMAN_RANK);
         double baselineScore = rootResult.blackScore();
 
@@ -165,17 +167,6 @@ public class Analysis implements AutoCloseable {
             }
         }
         return null;
-    }
-
-    private void applyToMovePreference(Node root, String toMove) {
-        if (toMove == null) {
-            return;
-        }
-        if (toMove.equalsIgnoreCase("w")) {
-            root.defaultToMoveColor = Intersection.WHITE;
-        } else if (toMove.equalsIgnoreCase("b")) {
-            root.defaultToMoveColor = Intersection.BLACK;
-        }
     }
 
     private record PathMove(String gtp, Point point) {}

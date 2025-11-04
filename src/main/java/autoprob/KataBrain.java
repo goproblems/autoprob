@@ -85,6 +85,7 @@ public class KataBrain {
 	}
 
 	public void stopKataBrain() {
+        System.out.println("Stopping KataBrain...");
 		if (thread != null) {
 			thread.interrupt(); // Interrupt the thread, causing blocking I/O to throw an exception
 		}
@@ -174,7 +175,7 @@ public class KataBrain {
 	// tries until finds it
 	// TODO: respond to errors
 	public KataAnalysisResult getResult(String id, int targetTurn) {
-		System.out.println("brain fetching: " + id + " : " + targetTurn);
+//		System.out.println("brain fetching: " + id + " : " + targetTurn);
 		String nm = id + targetTurn; // lookup
 		while (true) {
 			synchronized (this) {

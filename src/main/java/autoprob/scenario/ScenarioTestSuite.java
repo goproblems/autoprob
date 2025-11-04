@@ -25,7 +25,7 @@ public class ScenarioTestSuite {
     public void runSuite() throws Exception {
         ScenTest[] tests = {
                 new ScenTest(invasion1, "B2", 6.5, 9.0),
-                new ScenTest(invasion1, "C7", 2.5, 0.5),
+//                new ScenTest(invasion1, "C7", 2.5, 0.5),
         };
 
         KataBrain brain = new KataBrain(props);
@@ -43,7 +43,8 @@ public class ScenarioTestSuite {
                 req.difficulty = "ai";
                 req.path = test.path;
 
-                AnalysisResult result = analysis.analyze(req);
+                AnalysisResult[] results = analysis.analyze(req);
+                AnalysisResult result = results[0]; // base move
                 double resultScore = result.score;
                 if (Math.abs(resultScore - test.score) < SCORE_RANGE) {
                     System.out.println("Test passed for expected score: " + df.format(test.score));

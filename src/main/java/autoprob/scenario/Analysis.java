@@ -71,6 +71,7 @@ public class Analysis {
         result.score = endKata.blackScore();
         result.loss = endKata.blackScore() - momKata.blackScore();
         result.katagoPlayouts = endKata.rootInfo.visits;
+        result.weight = 0.0; // not used for human move
         // get last fragment for model
         String fullModelPath = props.getProperty("kata.model");
         result.katagoWeightsFile = (fullModelPath.substring(fullModelPath.lastIndexOf('/') + 1)).substring(fullModelPath.lastIndexOf('\\') + 1);
@@ -109,6 +110,7 @@ public class Analysis {
         responseResult.loss = move.scoreLead - endKata.blackScore();
         responseResult.katagoPlayouts = move.visits;
         responseResult.katagoWeightsFile = result.katagoWeightsFile;
+        responseResult.weight = (double)move.visits / (double)endKata.rootInfo.visits; // simple for now: fraction of playouts
 
         result.endness = -1.0; // default to not an end move
         if (node.depth > 5) {

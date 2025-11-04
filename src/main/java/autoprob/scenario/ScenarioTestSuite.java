@@ -35,7 +35,8 @@ public class ScenarioTestSuite {
         for (ScenTest test : tests) {
             System.out.println("Running scenario test #" + (cnt));
 
-            try (Analysis analysis = new Analysis(props, brain)) {
+            Analysis analysis = new Analysis(props, brain);
+            try {
                 var req = new AnalysisRequest();
                 req.scenario = new AnalysisRequest.Scenario();
                 req.scenario.sgf = test.sgf;
@@ -64,5 +65,7 @@ public class ScenarioTestSuite {
             }
             cnt++;
         }
+
+        brain.stopKataBrain();
     }
 }

@@ -20,7 +20,7 @@ import java.util.Properties;
 /**
  * Orchestrates running KataGo analysis for API scenarios.
  */
-public class Analysis implements AutoCloseable {
+public class Analysis {
     private static final String DEFAULT_HUMAN_RANK = "10k";
     private static final String VISITS_PROPERTY = "scenario.analysis.visits";
     private static final String FALLBACK_VISITS_PROPERTY = "search.visits";
@@ -78,13 +78,6 @@ public class Analysis implements AutoCloseable {
 
             return result;
         } finally {
-        }
-    }
-
-    @Override
-    public void close() {
-        if (brain != null) {
-            brain.stopKataBrain();
         }
     }
 

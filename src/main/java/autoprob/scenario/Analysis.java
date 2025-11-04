@@ -50,39 +50,33 @@ public class Analysis implements AutoCloseable {
         System.out.println(root.board);
         System.out.println("To move: " + (root.getToMove() == Intersection.BLACK ? "black" : "white"));
 
-        List<PathMove> pathMoves = parsePath(root, request.path);
-
         int visits = determineVisits();
         System.out.println("Visits: " + visits);
+
+        // first we analyze the root position, establish a baseline for score and more
         KataAnalysisResult rootResult = nodeAnalyzer.analyzeNode(brain, root, visits, null, DEFAULT_HUMAN_RANK);
         double baselineScore = rootResult.blackScore();
 
-        KataAnalysisResult finalResult = rootResult;
-        List<Node> addedNodes = Collections.emptyList();
-        if (!pathMoves.isEmpty()) {
-            addedNodes = applyMoves(root, pathMoves);
-            Node terminal = addedNodes.get(addedNodes.size() - 1);
-            finalResult = nodeAnalyzer.analyzeNode(brain, terminal, visits, null, DEFAULT_HUMAN_RANK);
-        }
+        // play the moves in the path, get a new position from that
+        Node node = addPath(root, request.path);
+        // analyze the parent node, so we know direct loss for the last move
+        KataAnalysisResult momResult = nodeAnalyzer.analyzeNode(brain, node.mom, visits, null, DEFAULT_HUMAN_RANK);
+
+        KataAnalysisResult endResult = nodeAnalyzer.analyzeNode(brain, node, visits, null, DEFAULT_HUMAN_RANK);
 
         try {
             AnalysisResult result = new AnalysisResult();
             result.path = request.path;
             result.rank = request.difficulty;
-            result.score = finalResult.blackScore();
-            result.loss = finalResult.blackScore() - baselineScore;
-            result.katagoPlayouts = finalResult.rootInfo != null ? finalResult.rootInfo.visits : null;
-            result.katagoWeightsFile = props.getProperty("kata.model");
-
-            MoveInfo candidateInfo = firstMoveInfo(rootResult, pathMoves);
-            if (candidateInfo != null) {
-                result.weight = candidateInfo.weight;
-                result.extraInfo = candidateInfo.extString();
-            }
+            result.score = endResult.blackScore();
+            result.loss = endResult.blackScore() - momResult.blackScore();
+            result.katagoPlayouts = endResult.rootInfo.visits;
+            // get last fragment for model
+            String fullModelPath = props.getProperty("kata.model");
+            result.katagoWeightsFile = (fullModelPath.substring(fullModelPath.lastIndexOf('/') + 1)).substring(fullModelPath.lastIndexOf('\\') + 1);
 
             return result;
         } finally {
-            removeMoves(addedNodes);
         }
     }
 
@@ -105,69 +99,14 @@ public class Analysis implements AutoCloseable {
         return 1000;
     }
 
-    private List<PathMove> parsePath(Node root, String path) {
-        if (path == null || path.isBlank()) {
-            return List.of();
+    // adds moves from path to the end of node
+    private Node addPath(Node node, String path) throws Exception {
+        // path is a comma separated list of moves like "C4,D19,E4"
+        String[] moves = path.split(",");
+        for (String move : moves) {
+            Point p = Intersection.gtp2point(move);
+            node = node.addBasicMove(p.x, p.y);
         }
-        if (path.length() % 2 != 0) {
-            throw new IllegalArgumentException("Path must contain pairs of coordinates");
-        }
-        int boardSize = root.board.boardX;
-        List<PathMove> moves = new ArrayList<>(path.length() / 2);
-        for (int i = 0; i < path.length(); i += 2) {
-            char colToken = path.charAt(i);
-            char rowToken = path.charAt(i + 1);
-            int x = decodeSgfCoordinate(colToken);
-            int y = decodeSgfCoordinate(rowToken);
-            if (x < 0 || y < 0 || x >= boardSize || y >= boardSize) {
-                throw new IllegalArgumentException("Move out of bounds in path: " + path);
-            }
-            String gtp = Intersection.toGTPloc(x, y, boardSize);
-            Point point = new Point(x, y);
-            moves.add(new PathMove(gtp, point));
-        }
-        return moves;
+        return node;
     }
-
-    private int decodeSgfCoordinate(char token) {
-        return Character.toLowerCase(token) - 'a';
-    }
-
-    private List<Node> applyMoves(Node root, List<PathMove> moves) throws Exception {
-        List<Node> added = new ArrayList<>(moves.size());
-        Node current = root;
-        for (PathMove move : moves) {
-            Node next = current.addBasicMove(move.point().x, move.point().y);
-            added.add(next);
-            current = next;
-        }
-        return added;
-    }
-
-    private void removeMoves(List<Node> addedNodes) {
-        if (addedNodes == null || addedNodes.isEmpty()) {
-            return;
-        }
-        for (int i = addedNodes.size() - 1; i >= 0; i--) {
-            Node node = addedNodes.get(i);
-            if (node != null && node.mom != null) {
-                node.mom.removeChildNode(node);
-            }
-        }
-    }
-
-    private MoveInfo firstMoveInfo(KataAnalysisResult rootResult, List<PathMove> pathMoves) {
-        if (rootResult.moveInfos == null || rootResult.moveInfos.isEmpty() || pathMoves.isEmpty()) {
-            return null;
-        }
-        String firstMove = pathMoves.get(0).gtp();
-        for (MoveInfo moveInfo : rootResult.moveInfos) {
-            if (firstMove.equalsIgnoreCase(moveInfo.move)) {
-                return moveInfo;
-            }
-        }
-        return null;
-    }
-
-    private record PathMove(String gtp, Point point) {}
 }

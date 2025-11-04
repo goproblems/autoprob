@@ -24,7 +24,8 @@ public class ScenarioTestSuite {
 
     public void runSuite() throws Exception {
         ScenTest[] tests = {
-                new ScenTest(invasion1, "B2", 6.5, 9.0, "C5", "ai"),
+//                new ScenTest(invasion1, "B2", 6.5, 9.0, "C5", "ai"),
+                new ScenTest(invasion1, "B2", 6.5, 9.0, "C5", "15k"),
 //                new ScenTest(invasion1, "C7", 2.5, 0.5),
         };
 

@@ -23,7 +23,10 @@ public class ScenarioTestSuite {
     public record ScenTest(String sgf, String path, double score, double loss) {}
 
     public void runSuite() throws Exception {
-        ScenTest[] tests = { new ScenTest(invasion1, "B2", 6.5, 9.0) };
+        ScenTest[] tests = {
+                new ScenTest(invasion1, "B2", 6.5, 9.0),
+                new ScenTest(invasion1, "C7", 2.5, 0.5),
+        };
 
         KataBrain brain = new KataBrain(props);
 

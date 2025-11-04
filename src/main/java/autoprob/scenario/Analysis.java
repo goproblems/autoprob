@@ -62,6 +62,7 @@ public class Analysis implements AutoCloseable {
         // analyze the parent node, so we know direct loss for the last move
         KataAnalysisResult momResult = nodeAnalyzer.analyzeNode(brain, node.mom, visits, null, DEFAULT_HUMAN_RANK);
 
+        // analyze the end position after the path
         KataAnalysisResult endResult = nodeAnalyzer.analyzeNode(brain, node, visits, null, DEFAULT_HUMAN_RANK);
 
         try {

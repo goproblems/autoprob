@@ -10,7 +10,7 @@ import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
 import autoprob.problem.DifficultyEstimator;
 import autoprob.problem.SiteProblem;
-import autoprob.scenario.ScenarioTestContext;
+import autoprob.scenario.ScenarioTestSuite;
 
 import java.awt.Point;
 import java.io.File;
@@ -20,11 +20,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Scanner;
 
-import autoprob.scenario.ScenarioTestSuite;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import autoprob.api.AnalysisRequest;
+import autoprob.api.AnalysisResult;
+import autoprob.scenario.Analysis;
 
 // KataRunner is a class that runs the KataGo engine to analyze Go games. the main function is estimating problem difficulty.
 public class GoTool {
@@ -55,6 +61,8 @@ public class GoTool {
             runSiteProblemCommand(props);
         } else if (command.equals("testscenario")) {
             runTestScenarioCommand(props);
+        } else if (command.equals("scenariohandler")) {
+            runScenarioHandlerCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -77,6 +85,11 @@ public class GoTool {
         System.out.println("Running scenario tests...");
         ScenarioTestSuite suite = new ScenarioTestSuite(props);
         suite.runSuite();
+    }
+
+    private void runScenarioHandlerCommand(Properties props) throws Exception {
+        autoprob.scenario.ScenarioHandler handler = new autoprob.scenario.ScenarioHandler(props);
+        handler.run();
     }
 
     private Node loadPassedSgf(Properties props) throws Exception {

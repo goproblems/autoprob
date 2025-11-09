@@ -53,6 +53,7 @@ public class ScenarioHandler {
 
                     AnalysisRequest request = response.getData();
                     System.out.println("Processing analysis request id=" + request.id + ", path=" + request.path);
+                    System.out.println("scenario id=" + request.scenario.id);
 
                     AnalysisResult[] results = analysis.analyze(request);
 
@@ -60,12 +61,14 @@ public class ScenarioHandler {
                     submission.results = results;
 
                     Map<String, String> pathParams = new HashMap<>();
+                    pathParams.put("scenarioId", String.valueOf(request.scenario.id));
                     pathParams.put("id", String.valueOf(request.id));
 
                     String requestBody = gson.toJson(submission);
+                    System.out.println("Submitting JSON: " + requestBody);
 
-                    ApiClient.ApiResponse<String> submitResponse = apiClient.makePostRequest(
-                            "api.analysis.requests.submit", pathParams, requestBody, String.class, props);
+                    ApiClient.ApiResponse<Object> submitResponse = apiClient.makePostRequest(
+                            "api.analysis.requests.submit", pathParams, requestBody, Object.class, props);
 
                     if (submitResponse.isSuccess()) {
                         System.out.println("Submitted analysis results for request " + request.id);

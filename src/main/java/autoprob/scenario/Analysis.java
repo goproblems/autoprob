@@ -101,6 +101,22 @@ public class Analysis {
 
         // make extendable list of possible results
         ArrayList<AnalysisResult> results = new ArrayList<>();
+
+        // Add root node analysis as the first result if this is a first move
+        if (!request.path.contains(",")) {
+            AnalysisResult rootResult = new AnalysisResult();
+            rootResult.path = "";  // root position
+            rootResult.rank = request.difficulty;
+            rootResult.score = rootKata.blackScore();
+            rootResult.loss = 0.0;  // no loss at root
+            rootResult.urgency = 0.0;
+            rootResult.endness = 0.0;
+            rootResult.katagoPlayouts = rootKata.rootInfo.visits;
+            rootResult.katagoWeightsFile = result.katagoWeightsFile;
+            rootResult.weight = 0.0;
+            results.add(rootResult);
+        }
+
         results.add(result);
 
         // if not an end move, we can add possible response moves from katago

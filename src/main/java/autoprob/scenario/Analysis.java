@@ -34,10 +34,12 @@ public class Analysis {
     private final KataBrain brain;
     private final Parser parser = new Parser();
     private final StringBuilder debugInfo = new StringBuilder();
+    private final double minHumanPolicy;
 
     public Analysis(Properties props, KataBrain brain) throws Exception {
         this.props = Objects.requireNonNull(props, "props");
         this.brain = brain;
+        this.minHumanPolicy = Double.parseDouble(props.getProperty("scenario.min_response_policy", "0.05"));
     }
 
     /**
@@ -135,7 +137,6 @@ public class Analysis {
     private void addResponseResultsHumanRank(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String humanRank) throws Exception {
         // use katago human-like policy results
         List<KataAnalysisResult.Policy> top = endKata.getTopPolicy(10, endKata.humanPolicy); // gets all, sorted
-        double minHumanPolicy = Double.parseDouble(props.getProperty("scenario.min_response_policy", "0.05"));
         int visits = determineVisits();
         var nodeAnalyzer = new NodeAnalyzer(props);
 
@@ -525,6 +526,17 @@ public class Analysis {
 
                 // If opponent's response is not tenuki, this is a sente move
                 if (!isTenuki(candidatePoint, opponentResponse)) {
+                    // Check humanPolicy if available
+                    if (node.kres.humanPolicy != null) {
+                        int idx = candidatePoint.x + candidatePoint.y * 19;
+                        double humanPolicyValue = node.kres.humanPolicy.get(idx);
+                        if (humanPolicyValue < minHumanPolicy) {
+                            // humanPolicy too low, don't count as sente
+                            System.out.println("too low human policy for sente move: " + candidateMove.move + " pol: " + df.format(humanPolicyValue));
+                            continue;
+                        }
+                    }
+
                     senteCount++;
                     //TODO: record which move is sente for debugging
                     double responseDistance = Math.sqrt(

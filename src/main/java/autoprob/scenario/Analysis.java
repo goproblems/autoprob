@@ -104,20 +104,18 @@ public class Analysis {
         // make extendable list of possible results
         ArrayList<AnalysisResult> results = new ArrayList<>();
 
-        // Add root node analysis as the first result if this is a first move
-        if (!request.path.contains(",")) {
-            AnalysisResult rootResult = new AnalysisResult();
-            rootResult.path = "";  // root position
-            rootResult.rank = request.difficulty;
-            rootResult.score = rootKata.blackScore();
-            rootResult.loss = 0.0;  // no loss at root
-            rootResult.urgency = 0.0;
-            rootResult.endness = 0.0;
-            rootResult.katagoPlayouts = rootKata.rootInfo.visits;
-            rootResult.katagoWeightsFile = result.katagoWeightsFile;
-            rootResult.weight = 0.0;
-            results.add(rootResult);
-        }
+        // Always add root node analysis for calculating total loss for scenario node
+        AnalysisResult rootResult = new AnalysisResult();
+        rootResult.path = "";  // root position
+        rootResult.rank = request.difficulty;
+        rootResult.score = rootKata.blackScore();
+        rootResult.loss = 0.0;  // no loss at root
+        rootResult.urgency = 0.0;
+        rootResult.endness = 0.0;
+        rootResult.katagoPlayouts = rootKata.rootInfo.visits;
+        rootResult.katagoWeightsFile = result.katagoWeightsFile;
+        rootResult.weight = 0.0;
+        results.add(rootResult);
 
         results.add(result);
 
@@ -532,7 +530,7 @@ public class Analysis {
                         double humanPolicyValue = node.kres.humanPolicy.get(idx);
                         if (humanPolicyValue < minHumanPolicy) {
                             // humanPolicy too low, don't count as sente
-                            System.out.println("too low human policy for sente move: " + candidateMove.move + " pol: " + df.format(humanPolicyValue));
+                            System.out.println("too low human policy for sente move: " + candidateMove.move + " human pol: " + df.format(humanPolicyValue) + " pol: " + df.format(candidateMove.prior));
                             continue;
                         }
                     }

@@ -249,7 +249,7 @@ public class Analysis {
             return;
         }
 
-        final int MAX_OPTIMAL_MOVES = 3;
+        final int MAX_OPTIMAL_MOVES = 1;
         int movesToAdd = Math.min(momKata.moveInfos.size(), MAX_OPTIMAL_MOVES);
 
         // Get the parent path (path without the last move)
@@ -264,7 +264,7 @@ public class Analysis {
 
         for (int i = 0; i < movesToAdd; i++) {
             MoveInfo optimalMove = momKata.moveInfos.get(i);
-            int optimalMoveVisits = optimalMove.visits != null ? optimalMove.visits : 0;
+            int optimalMoveVisits = optimalMove.visits;
 
             // Create the node for this optimal move and analyze it
             Point movePoint = Intersection.gtp2point(optimalMove.move);
@@ -347,8 +347,6 @@ public class Analysis {
         final double MAX_ENDNESS = 1.0;
         final double MIN_ENDNESS = -1.0;
 
-        if (node.depth <= MIN_DEPTH_FOR_ENDNESS)
-            return MIN_ENDNESS;
 
         // Success - player move with positive score AND gained advantage from root
         boolean isPlayerMove = (node.getToMove() != root.getToMove());
@@ -398,6 +396,9 @@ public class Analysis {
             }
             debugInfo.append("No sente but has high policy move;");
         }
+
+        if (node.depth <= MIN_DEPTH_FOR_ENDNESS)
+            return MIN_ENDNESS;
 
         // TODO: Total loss - change to continuous value instead of threshold
 
@@ -625,7 +626,7 @@ public class Analysis {
      * @return true if the distance is >= TENUKI_DISTANCE_THRESHOLD
      */
     private boolean isTenuki(Point from, Point to) {
-        final double TENUKI_DISTANCE_THRESHOLD = 5;
+        final double TENUKI_DISTANCE_THRESHOLD = 6;
         double distance = Math.sqrt(
             Math.pow(to.x - from.x, 2) +
             Math.pow(to.y - from.y, 2)

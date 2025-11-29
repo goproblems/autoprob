@@ -119,6 +119,9 @@ public class Analysis {
 
         results.add(result);
 
+        // Add optimal moves from parent node (momKata) - these are the best moves KataGo recommends at that position
+        addOptimalMoves(node.mom, momKata, root, rootKata, request.path, request.difficulty, result.katagoWeightsFile, results);
+
         // if not an end move, we can add possible response moves from katago
         if (result.endness < 0.0) {
             if (humanRank.equals("ai")) {
@@ -129,7 +132,7 @@ public class Analysis {
             }
         }
 
-        return results.toArray(new AnalysisResult[0]);
+        return results.toArray(AnalysisResult[]::new);
     }
 
     private void addResponseResultsHumanRank(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String humanRank) throws Exception {
@@ -225,6 +228,85 @@ public class Analysis {
         results.add(responseResult);
     }
 
+    /**
+     * Add optimal moves from the parent node.
+     * These are the best moves KataGo recommends at the position before the last move in the path.
+     * Includes tenuki moves as well. Each move is fully analyzed with KataGo.
+     *
+     * @param momNode Parent node (position before the last move)
+     * @param momKata KataGo analysis of the parent node
+     * @param root Root node for endness calculation
+     * @param rootKata KataGo analysis of root node
+     * @param path The full path string
+     * @param rank The difficulty rank
+     * @param weightsFile KataGo weights file name
+     * @param results List to add results to
+     */
+    private void addOptimalMoves(Node momNode, KataAnalysisResult momKata, Node root,
+                                 KataAnalysisResult rootKata, String path, String rank,
+                                 String weightsFile, ArrayList<AnalysisResult> results) throws Exception {
+        if (momKata == null || momKata.moveInfos == null || momKata.moveInfos.isEmpty()) {
+            return;
+        }
+
+        final int MAX_OPTIMAL_MOVES = 3;
+        int movesToAdd = Math.min(momKata.moveInfos.size(), MAX_OPTIMAL_MOVES);
+
+        // Get the parent path (path without the last move)
+        String parentPath = getParentPath(path);
+
+        int visits = determineVisits();
+        var nodeAnalyzer = new NodeAnalyzer(props);
+        String humanRank = rank;
+        if (humanRank != null && humanRank.equalsIgnoreCase("pro")) {
+            humanRank = "9d";
+        }
+
+        for (int i = 0; i < movesToAdd; i++) {
+            MoveInfo optimalMove = momKata.moveInfos.get(i);
+            int optimalMoveVisits = optimalMove.visits != null ? optimalMove.visits : 0;
+
+            // Create the node for this optimal move and analyze it
+            Point movePoint = Intersection.gtp2point(optimalMove.move);
+            Node optimalNode = momNode.addBasicMove(movePoint.x, movePoint.y);
+            KataAnalysisResult optimalKata = nodeAnalyzer.analyzeNode(brain, optimalNode, visits, null, humanRank);
+            optimalNode.kres = optimalKata;
+
+            AnalysisResult optimalResult = new AnalysisResult();
+            optimalResult.path = parentPath.isEmpty() ? optimalMove.move : parentPath + "," + optimalMove.move;
+            optimalResult.rank = rank;
+            optimalResult.score = optimalKata.blackScore();
+            optimalResult.loss = optimalKata.blackScore() - momKata.blackScore();
+            optimalResult.urgency = calculateUrgency(optimalNode);
+            optimalResult.katagoPlayouts = optimalKata.rootInfo.visits;
+            optimalResult.katagoWeightsFile = weightsFile;
+            optimalResult.weight = (double) optimalMoveVisits;
+
+            debugInfo.setLength(0);
+            optimalResult.endness = calculateEndness(optimalResult, optimalNode, root, rootKata);
+            optimalResult.extraInfo = formatExtraInfo(optimalKata, "optimal_move;" + debugInfo.toString());
+
+            results.add(optimalResult);
+        }
+    }
+
+    /**
+     * Get the parent path by removing the last move from the path.
+     *
+     * @param path The full path string (e.g., "C4,D19,E4")
+     * @return The parent path (e.g., "C4,D19"), or empty string if path has only one move
+     */
+    private String getParentPath(String path) {
+        if (path == null || path.isEmpty()) {
+            return "";
+        }
+        int lastComma = path.lastIndexOf(',');
+        if (lastComma < 0) {
+            return "";  // Only one move in path
+        }
+        return path.substring(0, lastComma);
+    }
+
     private int determineVisits() {
         String primary = props.getProperty(VISITS_PROPERTY);
         if (primary != null) {
@@ -278,8 +360,8 @@ public class Analysis {
             (result.score > 0 && root.getToMove() == Intersection.BLACK ||
                 result.score <= 0 && root.getToMove() == Intersection.WHITE) &&
             hasAdvantage) {
-            debugInfo.append("Endness: positive score on player move and has advantage");
-            return MAX_ENDNESS;
+            debugInfo.append("Endness: positive score on player move and has advantage, good move, but don't end problem for now; ");
+            // return MAX_ENDNESS;
         }
 
         // Failure - significant score drop
@@ -309,8 +391,12 @@ public class Analysis {
 
         // Sente moves - check if there are any sente moves remaining
         if (!hasSenteMoves(node)) {
-            debugInfo.append("Endness: no sente moves remaining;");
-            return MAX_ENDNESS;
+            // No sente moves, but check if there's a high policy move worth playing
+            if (!hasHighPolicyMove(node)) {
+                debugInfo.append("Endness: no sente and no high policy moves;");
+                return MAX_ENDNESS;
+            }
+            debugInfo.append("No sente but has high policy move;");
         }
 
         // TODO: Total loss - change to continuous value instead of threshold
@@ -326,7 +412,7 @@ public class Analysis {
      * High urgency indicates the problem hasn't been resolved and we should keep playing it out.
      *
      * @param node Current node with KataGo analysis (node.kres must be set)
-     * @return urgency value: higher means more urgent to continue locally
+     * @return urgency value: higher means more urgent to continue
      */
     private double calculateUrgency(Node node) {
         final double HIGH_URGENCY = 10.0;  // urgency when no tenuki option is available
@@ -383,30 +469,95 @@ public class Analysis {
     }
 
     /**
-     * Check if KataGo wants to tenuki (play elsewhere from current dispute area).
+     * Check if KataGo/human policy wants to tenuki (play elsewhere from current dispute area).
+     * Uses humanPolicy if available, otherwise falls back to moveInfos.
      * Conditions:
-     * 1. Best move is far from the last move (distance check)
-     * 2. Best move has significant lead over second best
+     * 1. Best move (by humanPolicy) is far from the last move (distance check)
+     * 2. All high policy moves are tenuki
      * 3. Not a ko situation (ko threats don't count as tenuki)
      *
      * @param node Current node
-     * @return true if KataGo wants to tenuki, false otherwise
+     * @return true if wants to tenuki, false otherwise
      */
     private boolean wantsTenuki(Node node) {
-        final double SIGNIFICANT_SCORE_LEAD = 2.0;     // score lead over second best
-        final double SIGNIFICANT_WINRATE_LEAD = 0.05;  // winrate lead over second best
-        final double SIGNIFICANT_PRIOR_LEAD = 0.15;    // policy (prior) lead over second best
-        final int SIGNIFICANT_VISIT_RATIO = 4;         // visits ratio over second best
-
         Point currentMove = node.findMove();
-        if (currentMove == null || node.kres == null ||
-            node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+        if (currentMove == null || node.kres == null) {
             return false;
         }
 
         // Check for ko situation first - ko threats should not count as tenuki
         if (isKoSituation(node)) {
-            debugInfo.append("Ko situation, ignore distance;");
+            debugInfo.append("Ko situation, ignore tenuki;");
+            return false;
+        }
+
+        // Use humanPolicy if available, otherwise fall back to regular policy/moveInfos
+        List<Double> policyToUse = node.kres.humanPolicy != null ? node.kres.humanPolicy : node.kres.policy;
+        if (policyToUse == null) {
+            // Fall back to moveInfos-based logic
+            return wantsTenukiByMoveInfos(node, currentMove);
+        }
+
+        // Get top policy moves sorted by humanPolicy
+        List<KataAnalysisResult.Policy> topMoves = node.kres.getTopPolicy(10, policyToUse);
+        if (topMoves.isEmpty()) {
+            return false;
+        }
+
+        // Check the best move by policy
+        KataAnalysisResult.Policy bestMove = topMoves.get(0);
+        Point bestMovePoint = new Point(bestMove.x, bestMove.y);
+        String bestMoveStr = Intersection.toGTPloc(bestMove.x, bestMove.y);
+
+        // Best move must be tenuki
+        if (!isTenuki(currentMove, bestMovePoint)) {
+            debugInfo.append(String.format("Best humanPolicy move %s is not tenuki;", bestMoveStr));
+            return false;
+        }
+
+        // Check all high policy moves to see if any non-tenuki exists
+        List<String> tenukiMoves = new ArrayList<>();
+        List<String> nonTenukiMoves = new ArrayList<>();
+        tenukiMoves.add(bestMoveStr);
+
+        for (int i = 1; i < topMoves.size(); i++) {
+            KataAnalysisResult.Policy candidate = topMoves.get(i);
+
+            // Stop if policy is too low (less than half of the best move's policy)
+            if (candidate.policy < bestMove.policy * 0.5 || candidate.policy < minHumanPolicy) {
+                break;
+            }
+
+            Point candidatePoint = new Point(candidate.x, candidate.y);
+            String candidateStr = Intersection.toGTPloc(candidate.x, candidate.y);
+
+            if (isTenuki(currentMove, candidatePoint)) {
+                tenukiMoves.add(candidateStr);
+            } else {
+                nonTenukiMoves.add(candidateStr);
+            }
+        }
+
+        // If any high policy non-tenuki move exists, don't consider it as wanting tenuki
+        if (!nonTenukiMoves.isEmpty()) {
+            debugInfo.append(String.format("Wants tenuki(%s) but non-tenuki moves %s have high policy;",
+                String.join(",", tenukiMoves), nonTenukiMoves));
+            return false;
+        }
+
+        // All high policy moves are tenuki
+        debugInfo.append(String.format("Wants Tenuki(humanPolicy), all high policy moves are tenuki: %s;",
+            String.join(",", tenukiMoves)));
+        return true;
+    }
+
+    /**
+     * Fallback method to check tenuki using moveInfos when humanPolicy is not available.
+     */
+    private boolean wantsTenukiByMoveInfos(Node node, Point currentMove) {
+        final double SIGNIFICANT_SCORE_LEAD = 2.0;
+
+        if (node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
             return false;
         }
 
@@ -421,42 +572,49 @@ public class Analysis {
             return false;
         }
 
-        double distance = Math.sqrt(
-            Math.pow(nextBestMovePoint.x - currentMove.x, 2) +
-            Math.pow(nextBestMovePoint.y - currentMove.y, 2)
-        );
-
         // If only one candidate move
         if (moves.size() < 2) {
-            debugInfo.append(String.format("Tenuki(dist=%.1f,only);", distance));
+            debugInfo.append(String.format("Wants Tenuki(%s,only);", nextBestMove.move));
             return true;
         }
 
-        // Second condition: best move(the tenuki) must have significant lead over second best
-        // Check multiple metrics to determine the lead
-        MoveInfo secondBest = moves.get(1);
-        double scoreDiff = Math.abs(nextBestMove.scoreLead - secondBest.scoreLead);
-        double winrateDiff = nextBestMove.winrate - secondBest.winrate;
-        double priorDiff = nextBestMove.prior - secondBest.prior;
-        int visitRatio = 1;
-        if (nextBestMove.visits != null && secondBest.visits != null && secondBest.visits > 0) {
-            visitRatio = nextBestMove.visits / secondBest.visits;
+        // Check all candidate moves to see if any competitive non-tenuki move exists
+        final int MAX_MOVES_TO_CHECK = 5;
+        int movesToCheck = Math.min(moves.size(), MAX_MOVES_TO_CHECK);
+
+        List<String> tenukiMoves = new ArrayList<>();
+        List<String> nonTenukiMoves = new ArrayList<>();
+        tenukiMoves.add(nextBestMove.move);
+
+        for (int i = 1; i < movesToCheck; i++) {
+            MoveInfo candidate = moves.get(i);
+
+            // Check if this move is competitive with the best move (by score)
+            double scoreDiff = nextBestMove.scoreLead - candidate.scoreLead;
+            if (scoreDiff >= SIGNIFICANT_SCORE_LEAD) {
+                break;  // This and remaining moves are not competitive
+            }
+
+            // This move is competitive, check if it's tenuki or not
+            Point candidatePoint = Intersection.gtp2point(candidate.move);
+            if (isTenuki(currentMove, candidatePoint)) {
+                tenukiMoves.add(candidate.move);
+            } else {
+                nonTenukiMoves.add(candidate.move);
+            }
         }
 
-        // If any metric shows significant lead, accept the tenuki
-        if (scoreDiff >= SIGNIFICANT_SCORE_LEAD ||
-            winrateDiff >= SIGNIFICANT_WINRATE_LEAD ||
-            priorDiff >= SIGNIFICANT_PRIOR_LEAD ||
-            visitRatio >= SIGNIFICANT_VISIT_RATIO) {
-            debugInfo.append(String.format("Tenuki(dist=%.1f,ΔS=%.1f,ΔW=%.2f,ΔP=%.2f,VR=%d);",
-                distance, scoreDiff, winrateDiff, priorDiff, visitRatio));
-            return true;
+        // If any competitive non-tenuki move exists, don't consider it as wanting tenuki
+        if (!nonTenukiMoves.isEmpty()) {
+            debugInfo.append(String.format("Wants tenuki(%s) but non-tenuki moves %s are competitive;",
+                String.join(",", tenukiMoves), nonTenukiMoves));
+            return false;
         }
 
-        // Distance is far but second best is competitive
-        debugInfo.append(String.format("Wants tenuki but second best is competitive(dist=%.1f,ΔS=%.1f,ΔW=%.2f,ΔP=%.2f,VR=%d);",
-            distance, scoreDiff, winrateDiff, priorDiff, visitRatio));
-        return false;
+        // All competitive moves are tenuki
+        debugInfo.append(String.format("Wants Tenuki(moveInfos), all competitive moves are tenuki: %s;",
+            String.join(",", tenukiMoves)));
+        return true;
     }
 
     /**
@@ -476,20 +634,17 @@ public class Analysis {
     }
 
     /**
-     * Check if there are any sente moves remaining in the current position.
-     * A move is considered sente if the opponent must respond locally (not tenuki).
-     *
-     * Algorithm:
-     * 1. Get all non-tenuki candidate moves in current position
-     * 2. For each candidate, check opponent's response in PV
-     * 3. If opponent's response is not tenuki, it's a sente move
-     * 4. Return true if at least one sente move exists
+     * Check if there's a high humanPolicy move that's not a tenuki.
+     * Used when there are no sente moves, but we still want to continue
+     * if there's a move humans would likely play.
      *
      * @param node Current node
-     * @return true if there are sente moves, false if all moves allow tenuki
+     * @return true if there's a high policy non-tenuki move
      */
-    private boolean hasSenteMoves(Node node) {
-        if (node.kres == null || node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+    private boolean hasHighPolicyMove(Node node) {
+        final double HIGH_POLICY_THRESHOLD = 0.20;  // 20% policy threshold
+
+        if (node.kres == null) {
             return false;
         }
 
@@ -498,52 +653,116 @@ public class Analysis {
             return false;
         }
 
-        List<MoveInfo> moves = node.kres.moveInfos;
+        // Use humanPolicy if available, otherwise fall back to regular policy
+        List<Double> policy = node.kres.humanPolicy != null ? node.kres.humanPolicy : node.kres.policy;
+        if (policy == null) {
+            return false;
+        }
+
+        // Get top policy moves
+        List<KataAnalysisResult.Policy> top = node.kres.getTopPolicy(5, policy);
+
+        for (var pol : top) {
+            // Skip if tenuki
+            Point candidateMove = new Point(pol.x, pol.y);
+            if (isTenuki(currentMove, candidateMove)) {
+                continue;
+            }
+
+            // Check if policy is high enough
+            if (pol.policy >= HIGH_POLICY_THRESHOLD) {
+                debugInfo.append(String.format("High policy move: %s (pol=%.2f);", 
+                    Intersection.toGTPloc(pol.x, pol.y), pol.policy));
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if there are any sente moves remaining in the current position.
+     * A move is considered sente if the opponent must respond locally (not tenuki).
+     * Uses humanPolicy for ordering if available.
+     *
+     * Algorithm:
+     * 1. Get top moves sorted by humanPolicy (or regular policy as fallback)
+     * 2. For each non-tenuki candidate, find its PV in moveInfos
+     * 3. If opponent's response in PV is not tenuki, it's a sente move
+     * 4. Return true if at least one sente move exists
+     *
+     * @param node Current node
+     * @return true if there are sente moves, false if all moves allow tenuki
+     */
+    private boolean hasSenteMoves(Node node) {
+        if (node.kres == null) {
+            return false;
+        }
+
+        Point currentMove = node.findMove();
+        if (currentMove == null) {
+            return false;
+        }
+
+        // Use humanPolicy if available, otherwise fall back to regular policy
+        List<Double> policyToUse = node.kres.humanPolicy != null ? node.kres.humanPolicy : node.kres.policy;
+        if (policyToUse == null || node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+            return false;
+        }
+
+        // Get top moves sorted by policy
+        List<KataAnalysisResult.Policy> topMoves = node.kres.getTopPolicy(10, policyToUse);
+
         int senteCount = 0;
         int checkedCount = 0;
-
-        // Check top candidate moves (limit to avoid performance issues)
         final int MAX_CANDIDATES_TO_CHECK = 5;
-        int candidatesToCheck = Math.min(moves.size(), MAX_CANDIDATES_TO_CHECK);
 
-        for (int i = 0; i < candidatesToCheck; i++) {
-            MoveInfo candidateMove = moves.get(i);
+        for (var pol : topMoves) {
+            if (checkedCount >= MAX_CANDIDATES_TO_CHECK) {
+                break;
+            }
+
+            // Skip if policy is too low
+            if (pol.policy < minHumanPolicy) {
+                continue;
+            }
+
+            Point candidatePoint = new Point(pol.x, pol.y);
+            String candidateMove = Intersection.toGTPloc(pol.x, pol.y);
 
             // Skip if the candidate itself is a tenuki
-            Point candidatePoint = Intersection.gtp2point(candidateMove.move);
             if (isTenuki(currentMove, candidatePoint)) {
-                continue;  // This candidate is already a tenuki, skip
+                continue;
             }
 
             checkedCount++;
 
-            // Check opponent's response using PV (principal variation)
-            if (candidateMove.pv != null && candidateMove.pv.size() >= 2) {
-                // pv[0] is our move, pv[1] is opponent's response
-                Point opponentResponse = Intersection.gtp2point(candidateMove.pv.get(1));
-
-                // If opponent's response is not tenuki, this is a sente move
-                if (!isTenuki(candidatePoint, opponentResponse)) {
-                    // Check humanPolicy if available
-                    if (node.kres.humanPolicy != null) {
-                        int idx = candidatePoint.x + candidatePoint.y * 19;
-                        double humanPolicyValue = node.kres.humanPolicy.get(idx);
-                        if (humanPolicyValue < minHumanPolicy) {
-                            // humanPolicy too low, don't count as sente
-                            System.out.println("too low human policy for sente move: " + candidateMove.move + " human pol: " + df.format(humanPolicyValue) + " pol: " + df.format(candidateMove.prior));
-                            continue;
-                        }
-                    }
-
-                    senteCount++;
-                    //TODO: record which move is sente for debugging
-                    double responseDistance = Math.sqrt(
-                        Math.pow(opponentResponse.x - candidatePoint.x, 2) +
-                        Math.pow(opponentResponse.y - candidatePoint.y, 2)
-                    );
-                    debugInfo.append(String.format("Sente move found: %s (resp dist=%.1f);",
-                        candidateMove.move, responseDistance));
+            // Find this move in moveInfos to get its PV
+            MoveInfo moveInfo = null;
+            for (MoveInfo mi : node.kres.moveInfos) {
+                if (mi.move.equals(candidateMove)) {
+                    moveInfo = mi;
+                    break;
                 }
+            }
+
+            if (moveInfo == null || moveInfo.pv == null || moveInfo.pv.size() < 2) {
+                continue;  // No PV info for this move
+            }
+
+            // Check opponent's response using PV (principal variation)
+            // pv[0] is our move, pv[1] is opponent's response
+            Point opponentResponse = Intersection.gtp2point(moveInfo.pv.get(1));
+
+            // If opponent's response is not tenuki, this is a sente move
+            if (!isTenuki(candidatePoint, opponentResponse)) {
+                senteCount++;
+                double responseDistance = Math.sqrt(
+                    Math.pow(opponentResponse.x - candidatePoint.x, 2) +
+                    Math.pow(opponentResponse.y - candidatePoint.y, 2)
+                );
+                debugInfo.append(String.format("Sente move found: %s (pol=%.2f,resp dist=%.1f);",
+                    candidateMove, pol.policy, responseDistance));
             }
         }
 

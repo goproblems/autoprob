@@ -372,7 +372,8 @@ public class Analysis {
         double endness = MIN_ENDNESS;
 
         // Value of a tenuki - check if KataGo wants to tenuki
-        if (wantsTenuki(node)) {
+        // Only check on player's move, since on computer's move, tenuki is user's choice
+        if (isPlayerMove && wantsTenuki(node)) {
             debugInfo.append("Endness: computer wants to tenuki;");
             return MAX_ENDNESS;
         }
@@ -381,14 +382,14 @@ public class Analysis {
         // About 30 moves beyond MIN_DEPTH to go from -1.0 to 0.0
         final double DEPTH_TARGET_MOVES = 30.0;  // target moves
         final double DEPTH_POWER = 1.1; // power for gentle acceleration
-        int depthBeyondMin = node.depth - MIN_DEPTH_FOR_ENDNESS;
+        int depthBeyondMin = Math.max(0, node.depth - MIN_DEPTH_FOR_ENDNESS);
         double depthRatio = depthBeyondMin / DEPTH_TARGET_MOVES;
         double depthFactor = Math.pow(depthRatio, DEPTH_POWER);
         endness += depthFactor;
         debugInfo.append(String.format("DepthFactor: %.2f;", depthFactor));
 
         // Sente moves - check if there are any sente moves remaining
-        if (!hasSenteMoves(node)) {
+        if (isPlayerMove && !hasSenteMoves(node)) {
             // No sente moves, but check if there's a high policy move worth playing
             if (!hasHighPolicyMove(node)) {
                 debugInfo.append("Endness: no sente and no high policy moves;");
@@ -472,8 +473,9 @@ public class Analysis {
     /**
      * Check if KataGo/human policy wants to tenuki (play elsewhere from current dispute area).
      * Uses humanPolicy if available, otherwise falls back to moveInfos.
+     * Checks against the last N moves to determine if a move is tenuki.
      * Conditions:
-     * 1. Best move (by humanPolicy) is far from the last move (distance check)
+     * 1. Best move (by humanPolicy) is far from recent moves (distance check)
      * 2. All high policy moves are tenuki
      * 3. Not a ko situation (ko threats don't count as tenuki)
      *
@@ -481,6 +483,8 @@ public class Analysis {
      * @return true if wants to tenuki, false otherwise
      */
     private boolean wantsTenuki(Node node) {
+        final int TENUKI_HISTORY_MOVES = 3;  // Number of recent moves to check for tenuki
+
         Point currentMove = node.findMove();
         if (currentMove == null || node.kres == null) {
             return false;
@@ -492,12 +496,15 @@ public class Analysis {
             return false;
         }
 
+        // Get recent moves for tenuki checking
+        List<Point> recentMoves = getRecentMoves(node, TENUKI_HISTORY_MOVES);
+
         // Use humanPolicy if available, otherwise fall back to regular policy/moveInfos
         List<Double> policyToUse = node.kres.humanPolicy != null ? node.kres.humanPolicy : node.kres.policy;
-        if (policyToUse == null) {
-            // Fall back to moveInfos-based logic
-            return wantsTenukiByMoveInfos(node, currentMove);
-        }
+        // if (policyToUse == null) {
+        //     // Fall back to moveInfos-based logic
+        //     return wantsTenukiByMoveInfos(node, recentMoves);
+        // }
 
         // Get top policy moves sorted by humanPolicy
         List<KataAnalysisResult.Policy> topMoves = node.kres.getTopPolicy(10, policyToUse);
@@ -510,8 +517,8 @@ public class Analysis {
         Point bestMovePoint = new Point(bestMove.x, bestMove.y);
         String bestMoveStr = Intersection.toGTPloc(bestMove.x, bestMove.y);
 
-        // Best move must be tenuki
-        if (!isTenuki(currentMove, bestMovePoint)) {
+        // Best move must be tenuki (far from all recent moves)
+        if (!isTenukiFromRecent(bestMovePoint, recentMoves)) {
             debugInfo.append(String.format("Best humanPolicy move %s is not tenuki;", bestMoveStr));
             return false;
         }
@@ -532,7 +539,7 @@ public class Analysis {
             Point candidatePoint = new Point(candidate.x, candidate.y);
             String candidateStr = Intersection.toGTPloc(candidate.x, candidate.y);
 
-            if (isTenuki(currentMove, candidatePoint)) {
+            if (isTenukiFromRecent(candidatePoint, recentMoves)) {
                 tenukiMoves.add(candidateStr);
             } else {
                 nonTenukiMoves.add(candidateStr);
@@ -553,70 +560,114 @@ public class Analysis {
     }
 
     /**
-     * Fallback method to check tenuki using moveInfos when humanPolicy is not available.
+     * Get the last N moves from the game tree.
+     *
+     * @param node Current node
+     * @param count Number of recent moves to retrieve
+     * @return List of recent move points (most recent first)
      */
-    private boolean wantsTenukiByMoveInfos(Node node, Point currentMove) {
-        final double SIGNIFICANT_SCORE_LEAD = 2.0;
+    private List<Point> getRecentMoves(Node node, int count) {
+        List<Point> recentMoves = new ArrayList<>();
+        Node current = node;
 
-        if (node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
-            return false;
-        }
-
-        List<MoveInfo> moves = node.kres.moveInfos;
-        MoveInfo nextBestMove = moves.get(0);
-
-        // Check distance of best move
-        Point nextBestMovePoint = Intersection.gtp2point(nextBestMove.move);
-
-        // best move must be far away
-        if (!isTenuki(currentMove, nextBestMovePoint)) {
-            return false;
-        }
-
-        // If only one candidate move
-        if (moves.size() < 2) {
-            debugInfo.append(String.format("Wants Tenuki(%s,only);", nextBestMove.move));
-            return true;
-        }
-
-        // Check all candidate moves to see if any competitive non-tenuki move exists
-        final int MAX_MOVES_TO_CHECK = 5;
-        int movesToCheck = Math.min(moves.size(), MAX_MOVES_TO_CHECK);
-
-        List<String> tenukiMoves = new ArrayList<>();
-        List<String> nonTenukiMoves = new ArrayList<>();
-        tenukiMoves.add(nextBestMove.move);
-
-        for (int i = 1; i < movesToCheck; i++) {
-            MoveInfo candidate = moves.get(i);
-
-            // Check if this move is competitive with the best move (by score)
-            double scoreDiff = nextBestMove.scoreLead - candidate.scoreLead;
-            if (scoreDiff >= SIGNIFICANT_SCORE_LEAD) {
-                break;  // This and remaining moves are not competitive
+        while (current != null && recentMoves.size() < count) {
+            Point move = current.findMove();
+            if (move != null) {
+                recentMoves.add(move);
             }
-
-            // This move is competitive, check if it's tenuki or not
-            Point candidatePoint = Intersection.gtp2point(candidate.move);
-            if (isTenuki(currentMove, candidatePoint)) {
-                tenukiMoves.add(candidate.move);
-            } else {
-                nonTenukiMoves.add(candidate.move);
-            }
+            current = current.mom;
         }
 
-        // If any competitive non-tenuki move exists, don't consider it as wanting tenuki
-        if (!nonTenukiMoves.isEmpty()) {
-            debugInfo.append(String.format("Wants tenuki(%s) but non-tenuki moves %s are competitive;",
-                String.join(",", tenukiMoves), nonTenukiMoves));
-            return false;
-        }
-
-        // All competitive moves are tenuki
-        debugInfo.append(String.format("Wants Tenuki(moveInfos), all competitive moves are tenuki: %s;",
-            String.join(",", tenukiMoves)));
-        return true;
+        return recentMoves;
     }
+
+    /**
+     * Check if a move is tenuki from all recent moves.
+     * A move is considered tenuki if it's far from all recent moves.
+     *
+     * @param candidateMove The move to check
+     * @param recentMoves List of recent moves
+     * @return true if the move is far from all recent moves
+     */
+    private boolean isTenukiFromRecent(Point candidateMove, List<Point> recentMoves) {
+        if (recentMoves.isEmpty()) {
+            return false;
+        }
+
+        for (Point recentMove : recentMoves) {
+            if (!isTenuki(recentMove, candidateMove)) {
+                return false;  // Close to at least one recent move
+            }
+        }
+
+        return true;  // Far from all recent moves
+    }
+
+    // /**
+    //  * Fallback method to check tenuki using moveInfos when humanPolicy is not available.
+    //  */
+    // private boolean wantsTenukiByMoveInfos(Node node, List<Point> recentMoves) {
+    //     final double SIGNIFICANT_SCORE_LEAD = 2.0;
+
+    //     if (node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+    //         return false;
+    //     }
+
+    //     List<MoveInfo> moves = node.kres.moveInfos;
+    //     MoveInfo nextBestMove = moves.get(0);
+
+    //     // Check distance of best move from recent moves
+    //     Point nextBestMovePoint = Intersection.gtp2point(nextBestMove.move);
+
+    //     // best move must be far away from all recent moves
+    //     if (!isTenukiFromRecent(nextBestMovePoint, recentMoves)) {
+    //         return false;
+    //     }
+
+    //     // If only one candidate move
+    //     if (moves.size() < 2) {
+    //         debugInfo.append(String.format("Wants Tenuki(%s,only);", nextBestMove.move));
+    //         return true;
+    //     }
+
+    //     // Check all candidate moves to see if any competitive non-tenuki move exists
+    //     final int MAX_MOVES_TO_CHECK = 5;
+    //     int movesToCheck = Math.min(moves.size(), MAX_MOVES_TO_CHECK);
+
+    //     List<String> tenukiMoves = new ArrayList<>();
+    //     List<String> nonTenukiMoves = new ArrayList<>();
+    //     tenukiMoves.add(nextBestMove.move);
+
+    //     for (int i = 1; i < movesToCheck; i++) {
+    //         MoveInfo candidate = moves.get(i);
+
+    //         // Check if this move is competitive with the best move (by score)
+    //         double scoreDiff = nextBestMove.scoreLead - candidate.scoreLead;
+    //         if (scoreDiff >= SIGNIFICANT_SCORE_LEAD) {
+    //             break;  // This and remaining moves are not competitive
+    //         }
+
+    //         // This move is competitive, check if it's tenuki or not
+    //         Point candidatePoint = Intersection.gtp2point(candidate.move);
+    //         if (isTenukiFromRecent(candidatePoint, recentMoves)) {
+    //             tenukiMoves.add(candidate.move);
+    //         } else {
+    //             nonTenukiMoves.add(candidate.move);
+    //         }
+    //     }
+
+    //     // If any competitive non-tenuki move exists, don't consider it as wanting tenuki
+    //     if (!nonTenukiMoves.isEmpty()) {
+    //         debugInfo.append(String.format("Wants tenuki(%s) but non-tenuki moves %s are competitive;",
+    //             String.join(",", tenukiMoves), nonTenukiMoves));
+    //         return false;
+    //     }
+
+    //     // All competitive moves are tenuki
+    //     debugInfo.append(String.format("Wants Tenuki(moveInfos), all competitive moves are tenuki: %s;",
+    //         String.join(",", tenukiMoves)));
+    //     return true;
+    // }
 
     /**
      * Check if the distance between two points constitutes a tenuki.

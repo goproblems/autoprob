@@ -266,6 +266,15 @@ public class Analysis {
             MoveInfo optimalMove = momKata.moveInfos.get(i);
             int optimalMoveVisits = optimalMove.visits;
 
+            // Build the path for this optimal move
+            String optimalPath = parentPath.isEmpty() ? optimalMove.move : parentPath + "," + optimalMove.move;
+
+            // Skip if this optimal move is the same as the user's submitted path
+            if (optimalPath.equals(path)) {
+                System.out.println("Skipping optimal move " + optimalMove.move + " - same as player path");
+                continue;
+            }
+
             // Create the node for this optimal move and analyze it
             Point movePoint = Intersection.gtp2point(optimalMove.move);
             Node optimalNode = momNode.addBasicMove(movePoint.x, movePoint.y);
@@ -273,7 +282,7 @@ public class Analysis {
             optimalNode.kres = optimalKata;
 
             AnalysisResult optimalResult = new AnalysisResult();
-            optimalResult.path = parentPath.isEmpty() ? optimalMove.move : parentPath + "," + optimalMove.move;
+            optimalResult.path = optimalPath;
             optimalResult.rank = rank;
             optimalResult.score = optimalKata.blackScore();
             optimalResult.loss = optimalKata.blackScore() - momKata.blackScore();
@@ -362,10 +371,10 @@ public class Analysis {
             // return MAX_ENDNESS;
         }
 
-        // Failure - significant score drop
-        double drop = Math.abs(result.score - rootKata.blackScore());
-        if (drop >= SCORE_DROP_THRESHOLD) {
-            debugInfo.append("Endness: significant score drop;");
+        // Failure - significant score drop (loss for the player)
+        double scoreLoss = (root.getToMove() == Intersection.BLACK) ? -scoreDelta : scoreDelta;
+        if (scoreLoss >= SCORE_DROP_THRESHOLD) {
+            debugInfo.append(String.format("Endness: significant score loss (%.1f);", scoreLoss));
             return MAX_ENDNESS;
         }
 
@@ -388,8 +397,8 @@ public class Analysis {
         endness += depthFactor;
         debugInfo.append(String.format("DepthFactor: %.2f;", depthFactor));
 
-        // Sente moves - check if there are any sente moves remaining
-        if (isPlayerMove && !hasSenteMoves(node)) {
+        // Only check on computer move, to see if player still has sente moves to play
+        if (!isPlayerMove && !hasSenteMoves(node)) {
             // No sente moves, but check if there's a high policy move worth playing
             if (!hasHighPolicyMove(node)) {
                 debugInfo.append("Endness: no sente and no high policy moves;");
@@ -526,27 +535,34 @@ public class Analysis {
         // Check all high policy moves to see if any non-tenuki exists
         List<String> tenukiMoves = new ArrayList<>();
         List<String> nonTenukiMoves = new ArrayList<>();
-        tenukiMoves.add(bestMoveStr);
+
+        // Determine if we're using humanPolicy or regular policy
+        boolean usingHumanPolicy = node.kres.humanPolicy != null;
+        String policyLabel = usingHumanPolicy ? "hp" : "p";
+
+        // bestMove.policy already contains the value from policyToUse (humanPolicy or regular policy)
+        tenukiMoves.add(String.format("%s(%s=%.2f)", bestMoveStr, policyLabel, bestMove.policy));
 
         for (int i = 1; i < topMoves.size(); i++) {
             KataAnalysisResult.Policy candidate = topMoves.get(i);
 
-            // Stop if policy is too low (less than half of the best move's policy)
-            if (candidate.policy < bestMove.policy * 0.5 || candidate.policy < minHumanPolicy) {
+            // Stop if policy is too low
+            if (candidate.policy < minHumanPolicy) {
                 break;
             }
 
             Point candidatePoint = new Point(candidate.x, candidate.y);
             String candidateStr = Intersection.toGTPloc(candidate.x, candidate.y);
 
-            if (isTenukiFromRecent(candidatePoint, recentMoves)) {
-                tenukiMoves.add(candidateStr);
-            } else {
-                nonTenukiMoves.add(candidateStr);
-            }
-        }
+            // candidate.policy already contains the value from policyToUse
+            String candidateWithPolicy = String.format("%s(%s=%.2f)", candidateStr, policyLabel, candidate.policy);
 
-        // If any high policy non-tenuki move exists, don't consider it as wanting tenuki
+            if (isTenukiFromRecent(candidatePoint, recentMoves)) {
+                tenukiMoves.add(candidateWithPolicy);
+            } else {
+                nonTenukiMoves.add(candidateWithPolicy);
+            }
+        }        // If any high policy non-tenuki move exists, don't consider it as wanting tenuki
         if (!nonTenukiMoves.isEmpty()) {
             debugInfo.append(String.format("Wants tenuki(%s) but non-tenuki moves %s have high policy;",
                 String.join(",", tenukiMoves), nonTenukiMoves));
@@ -556,6 +572,8 @@ public class Analysis {
         // All high policy moves are tenuki
         debugInfo.append(String.format("Wants Tenuki(humanPolicy), all high policy moves are tenuki: %s;",
             String.join(",", tenukiMoves)));
+        debugInfo.append(String.format("Non tenuki moves: %s;",
+            String.join(",", nonTenukiMoves)));
         return true;
     }
 
@@ -694,8 +712,6 @@ public class Analysis {
      * @return true if there's a high policy non-tenuki move
      */
     private boolean hasHighPolicyMove(Node node) {
-        final double HIGH_POLICY_THRESHOLD = 0.20;  // 20% policy threshold
-
         if (node.kres == null) {
             return false;
         }
@@ -721,9 +737,8 @@ public class Analysis {
                 continue;
             }
 
-            // Check if policy is high enough
-            if (pol.policy >= HIGH_POLICY_THRESHOLD) {
-                debugInfo.append(String.format("High policy move: %s (pol=%.2f);", 
+            if (pol.policy >= minHumanPolicy) {
+                debugInfo.append(String.format("High policy move: %s (hp=%.2f);",
                     Intersection.toGTPloc(pol.x, pol.y), pol.policy));
                 return true;
             }

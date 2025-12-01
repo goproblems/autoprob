@@ -30,6 +30,24 @@ public class Analysis {
     private static final String VISITS_PROPERTY = "scenario.analysis.visits";
     private static final String FALLBACK_VISITS_PROPERTY = "search.visits";
 
+    private static final int MIN_DEPTH_FOR_ENDNESS = 5;
+    private static final double SCORE_DROP_THRESHOLD = 15.0;
+    private static final double MAX_ENDNESS = 1.0;
+    private static final double MIN_ENDNESS = -1.0;
+    private static final double DEPTH_TARGET_MOVES = 30.0;
+
+    // Controls the curve shape for depth factor: 1.0 = linear, >1.0 = slower early/faster late.
+    // Does not affect the threshold (MIN_DEPTH_FOR_ENDNESS + DEPTH_TARGET_MOVES) where endness becomes positive.
+    private static final double DEPTH_POWER = 1.1;
+
+    private static final double MAX_URGENCY = 10.0;
+
+    private static final int TENUKI_HISTORY_MOVES = 3;
+    private static final double TENUKI_DISTANCE_THRESHOLD = 6.0;
+
+    private static final int MAX_OPTIMAL_MOVES = 1;
+    private static final int MAX_SENTE_CANDIDATES = 5;
+
     private final Properties props;
     private final KataBrain brain;
     private final Parser parser = new Parser();
@@ -62,13 +80,7 @@ public class Analysis {
         int visits = determineVisits();
         System.out.println("Visits: " + visits);
 
-        String humanRank = DEFAULT_HUMAN_RANK;
-        if (request.difficulty != null && !request.difficulty.isBlank()) {
-            humanRank = request.difficulty;
-            if (humanRank.equalsIgnoreCase("pro")) {
-                humanRank = "9d";
-            }
-        }
+        String humanRank = normalizeRank(request.difficulty);
 
         // first we analyze the root position, establish a baseline for score and more
         KataAnalysisResult rootKata = nodeAnalyzer.analyzeNode(brain, root, visits, null, humanRank);
@@ -82,23 +94,12 @@ public class Analysis {
         KataAnalysisResult endKata = nodeAnalyzer.analyzeNode(brain, node, visits, null, humanRank);
         node.kres = endKata;
 
-        AnalysisResult result = new AnalysisResult();
-        result.path = request.path;
-        result.rank = request.difficulty;
-        result.score = endKata.blackScore();
-        result.loss = endKata.blackScore() - momKata.blackScore();
-        result.katagoPlayouts = endKata.rootInfo.visits;
-        result.weight = 0.0; // not used for human move
         // get last fragment for model
         String fullModelPath = props.getProperty("kata.model");
-        result.katagoWeightsFile = (fullModelPath.substring(fullModelPath.lastIndexOf('/') + 1)).substring(fullModelPath.lastIndexOf('\\') + 1);
+        String weightsFile = (fullModelPath.substring(fullModelPath.lastIndexOf('/') + 1)).substring(fullModelPath.lastIndexOf('\\') + 1);
 
-        result.urgency = calculateUrgency(node);
-        // let's decide if this is a good end move
-        debugInfo.setLength(0); // Clear debug info
-        result.endness = calculateEndness(result, node, root, rootKata);
-
-        // Format extraInfo with analysis data and debug info
+        AnalysisResult result = buildAnalysisResult(request.path, request.difficulty, node,
+            endKata, momKata, root, rootKata, weightsFile, 0.0);
         result.extraInfo = formatExtraInfo(endKata, debugInfo.toString());
 
         // make extendable list of possible results
@@ -113,14 +114,14 @@ public class Analysis {
         rootResult.urgency = 0.0;
         rootResult.endness = 0.0;
         rootResult.katagoPlayouts = rootKata.rootInfo.visits;
-        rootResult.katagoWeightsFile = result.katagoWeightsFile;
+        rootResult.katagoWeightsFile = weightsFile;
         rootResult.weight = 0.0;
         results.add(rootResult);
 
         results.add(result);
 
         // Add optimal moves from parent node (momKata) - these are the best moves KataGo recommends at that position
-        addOptimalMoves(node.mom, momKata, root, rootKata, request.path, request.difficulty, result.katagoWeightsFile, results);
+        addOptimalMoves(node.mom, momKata, root, rootKata, request.path, request.difficulty, weightsFile, results);
 
         // if not an end move, we can add possible response moves from katago
         if (result.endness < 0.0) {
@@ -159,30 +160,16 @@ public class Analysis {
                 }
             }
 
-            Integer moveVisits = null;
-            for (MoveInfo mi : endKata.moveInfos) {
-                if (mi.move.equals(mv)) {
-                    moveVisits = mi.visits;
-                    break;
-                }
-            }
+            MoveInfo mi = endKata.getMoveInfo(mv);
+            Integer moveVisits = mi != null ? mi.visits : null;
 
             Node responseNode = node.addBasicMove(pol.x, pol.y);
             KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, humanRank);
             responseNode.kres = responseKata;
 
-            AnalysisResult responseResult = new AnalysisResult();
-            responseResult.path = result.path + "," + mv;
-            responseResult.rank = result.rank;
-            responseResult.score = responseKata.blackScore();
-            responseResult.loss = responseKata.blackScore() - endKata.blackScore();
-            responseResult.urgency = calculateUrgency(responseNode);
-            responseResult.katagoPlayouts = responseKata.rootInfo.visits;
-            responseResult.katagoWeightsFile = result.katagoWeightsFile;
-            responseResult.weight = moveVisits != null ? (double) moveVisits : 0.0; // using visits from endKata.moveInfos
-
-            debugInfo.setLength(0);
-            responseResult.endness = calculateEndness(responseResult, responseNode, root, rootKata);
+            double weight = moveVisits != null ? (double) moveVisits : 0.0;
+            AnalysisResult responseResult = buildAnalysisResult(result.path + "," + mv, result.rank,
+                responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, weight);
             responseResult.extraInfo = formatExtraInfo(responseKata, debugInfo.toString());
 
             results.add(responseResult);
@@ -211,18 +198,8 @@ public class Analysis {
         KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, rank);
         responseNode.kres = responseKata;
 
-        AnalysisResult responseResult = new AnalysisResult();
-        responseResult.path = result.path + "," + move.move;
-        responseResult.rank = result.rank;
-        responseResult.score = responseKata.blackScore();
-        responseResult.loss = responseKata.blackScore() - endKata.blackScore();
-        responseResult.urgency = calculateUrgency(responseNode);
-        responseResult.katagoPlayouts = responseKata.rootInfo.visits;
-        responseResult.katagoWeightsFile = result.katagoWeightsFile;
-        responseResult.weight = (double) move.visits; // using visits
-
-        debugInfo.setLength(0);
-        responseResult.endness = calculateEndness(responseResult, responseNode, root, rootKata);
+        AnalysisResult responseResult = buildAnalysisResult(result.path + "," + move.move, result.rank,
+            responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, (double) move.visits);
         responseResult.extraInfo = formatExtraInfo(responseKata, debugInfo.toString());
 
         results.add(responseResult);
@@ -249,7 +226,6 @@ public class Analysis {
             return;
         }
 
-        final int MAX_OPTIMAL_MOVES = 1;
         int movesToAdd = Math.min(momKata.moveInfos.size(), MAX_OPTIMAL_MOVES);
 
         // Get the parent path (path without the last move)
@@ -257,10 +233,7 @@ public class Analysis {
 
         int visits = determineVisits();
         var nodeAnalyzer = new NodeAnalyzer(props);
-        String humanRank = rank;
-        if (humanRank != null && humanRank.equalsIgnoreCase("pro")) {
-            humanRank = "9d";
-        }
+        String humanRank = normalizeRank(rank);
 
         for (int i = 0; i < movesToAdd; i++) {
             MoveInfo optimalMove = momKata.moveInfos.get(i);
@@ -281,19 +254,9 @@ public class Analysis {
             KataAnalysisResult optimalKata = nodeAnalyzer.analyzeNode(brain, optimalNode, visits, null, humanRank);
             optimalNode.kres = optimalKata;
 
-            AnalysisResult optimalResult = new AnalysisResult();
-            optimalResult.path = optimalPath;
-            optimalResult.rank = rank;
-            optimalResult.score = optimalKata.blackScore();
-            optimalResult.loss = optimalKata.blackScore() - momKata.blackScore();
-            optimalResult.urgency = calculateUrgency(optimalNode);
-            optimalResult.katagoPlayouts = optimalKata.rootInfo.visits;
-            optimalResult.katagoWeightsFile = weightsFile;
-            optimalResult.weight = (double) optimalMoveVisits;
-
-            debugInfo.setLength(0);
-            optimalResult.endness = calculateEndness(optimalResult, optimalNode, root, rootKata);
-            optimalResult.extraInfo = formatExtraInfo(optimalKata, "optimal_move;" + debugInfo.toString());
+            AnalysisResult optimalResult = buildAnalysisResult(optimalPath, rank, optimalNode,
+                optimalKata, momKata, root, rootKata, weightsFile, (double) optimalMoveVisits);
+            optimalResult.extraInfo = formatExtraInfo(optimalKata, debugInfo.toString());
 
             results.add(optimalResult);
         }
@@ -328,6 +291,44 @@ public class Analysis {
         return 1000;
     }
 
+    private String normalizeRank(String rank) {
+        if (rank == null || rank.isBlank()) {
+            return DEFAULT_HUMAN_RANK;
+        }
+        if (rank.equalsIgnoreCase("pro")) {
+            return "9d";
+        }
+        return rank;
+    }
+
+    private List<Double> selectPolicy(KataAnalysisResult kres) {
+        return kres.humanPolicy != null ? kres.humanPolicy : kres.policy;
+    }
+
+    /**
+     * Build an AnalysisResult with common fields populated.
+     * Calculates urgency and endness. Caller should set extraInfo after calling this.
+     */
+    private AnalysisResult buildAnalysisResult(String path, String rank, Node node,
+                                               KataAnalysisResult nodeKata, KataAnalysisResult parentKata,
+                                               Node root, KataAnalysisResult rootKata,
+                                               String weightsFile, double weight) {
+        AnalysisResult result = new AnalysisResult();
+        result.path = path;
+        result.rank = rank;
+        result.score = nodeKata.blackScore();
+        result.loss = nodeKata.blackScore() - parentKata.blackScore();
+        result.urgency = calculateUrgency(node);
+        result.katagoPlayouts = nodeKata.rootInfo.visits;
+        result.katagoWeightsFile = weightsFile;
+        result.weight = weight;
+
+        debugInfo.setLength(0);
+        result.endness = calculateEndness(result, node, root, rootKata);
+
+        return result;
+    }
+
     // adds moves from path to the end of node
     private Node addPath(Node node, String path) throws Exception {
         // path is a comma separated list of moves like "C4,D19,E4"
@@ -351,12 +352,6 @@ public class Analysis {
      */
     private double calculateEndness(AnalysisResult result, Node node, Node root, 
                                    KataAnalysisResult rootKata) {
-        final int MIN_DEPTH_FOR_ENDNESS = 5;
-        final double SCORE_DROP_THRESHOLD = 15.0;
-        final double MAX_ENDNESS = 1.0;
-        final double MIN_ENDNESS = -1.0;
-
-
         // Success - player move with positive score AND gained advantage from root
         boolean isPlayerMove = (node.getToMove() != root.getToMove());
         double scoreDelta = result.score - rootKata.blackScore(); // From black's perspective
@@ -388,9 +383,6 @@ public class Analysis {
         }
 
         // Depth of tree - deeper means more likely to end (gentle acceleration)
-        // About 30 moves beyond MIN_DEPTH to go from -1.0 to 0.0
-        final double DEPTH_TARGET_MOVES = 30.0;  // target moves
-        final double DEPTH_POWER = 1.1; // power for gentle acceleration
         int depthBeyondMin = Math.max(0, node.depth - MIN_DEPTH_FOR_ENDNESS);
         double depthRatio = depthBeyondMin / DEPTH_TARGET_MOVES;
         double depthFactor = Math.pow(depthRatio, DEPTH_POWER);
@@ -426,8 +418,6 @@ public class Analysis {
      * @return urgency value: higher means more urgent to continue
      */
     private double calculateUrgency(Node node) {
-        final double HIGH_URGENCY = 10.0;  // urgency when no tenuki option is available
-
         if (node.kres == null || node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
             return 0.0;
         }
@@ -439,7 +429,6 @@ public class Analysis {
 
         // moves are sorted by quality
         List<MoveInfo> moves = node.kres.moveInfos;
-
 
         // Find the best move (not tenuki)
         MoveInfo bestMove = null;
@@ -468,7 +457,7 @@ public class Analysis {
         if (bestTenukiMove == null) {
             // No moves are tenuki move
             // This means the position is very urgent
-            return HIGH_URGENCY;
+            return MAX_URGENCY;
         }
 
         // Calculate urgency as the score difference
@@ -492,8 +481,6 @@ public class Analysis {
      * @return true if wants to tenuki, false otherwise
      */
     private boolean wantsTenuki(Node node) {
-        final int TENUKI_HISTORY_MOVES = 3;  // Number of recent moves to check for tenuki
-
         Point currentMove = node.findMove();
         if (currentMove == null || node.kres == null) {
             return false;
@@ -508,15 +495,14 @@ public class Analysis {
         // Get recent moves for tenuki checking
         List<Point> recentMoves = getRecentMoves(node, TENUKI_HISTORY_MOVES);
 
-        // Use humanPolicy if available, otherwise fall back to regular policy/moveInfos
-        List<Double> policyToUse = node.kres.humanPolicy != null ? node.kres.humanPolicy : node.kres.policy;
-        // if (policyToUse == null) {
+        // Use humanPolicy if available, otherwise fall back to regular policy
+        List<Double> policy = selectPolicy(node.kres);
+        // if (policy == null) {
         //     // Fall back to moveInfos-based logic
         //     return wantsTenukiByMoveInfos(node, recentMoves);
         // }
-
         // Get top policy moves sorted by humanPolicy
-        List<KataAnalysisResult.Policy> topMoves = node.kres.getTopPolicy(10, policyToUse);
+        List<KataAnalysisResult.Policy> topMoves = node.kres.getTopPolicy(10, policy);
         if (topMoves.isEmpty()) {
             return false;
         }
@@ -572,8 +558,6 @@ public class Analysis {
         // All high policy moves are tenuki
         debugInfo.append(String.format("Wants Tenuki(humanPolicy), all high policy moves are tenuki: %s;",
             String.join(",", tenukiMoves)));
-        debugInfo.append(String.format("Non tenuki moves: %s;",
-            String.join(",", nonTenukiMoves)));
         return true;
     }
 
@@ -695,7 +679,6 @@ public class Analysis {
      * @return true if the distance is >= TENUKI_DISTANCE_THRESHOLD
      */
     private boolean isTenuki(Point from, Point to) {
-        final double TENUKI_DISTANCE_THRESHOLD = 6;
         double distance = Math.sqrt(
             Math.pow(to.x - from.x, 2) +
             Math.pow(to.y - from.y, 2)
@@ -722,7 +705,7 @@ public class Analysis {
         }
 
         // Use humanPolicy if available, otherwise fall back to regular policy
-        List<Double> policy = node.kres.humanPolicy != null ? node.kres.humanPolicy : node.kres.policy;
+        List<Double> policy = selectPolicy(node.kres);
         if (policy == null) {
             return false;
         }
@@ -772,20 +755,19 @@ public class Analysis {
         }
 
         // Use humanPolicy if available, otherwise fall back to regular policy
-        List<Double> policyToUse = node.kres.humanPolicy != null ? node.kres.humanPolicy : node.kres.policy;
-        if (policyToUse == null || node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+        List<Double> policy = selectPolicy(node.kres);
+        if (policy == null || node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
             return false;
         }
 
         // Get top moves sorted by policy
-        List<KataAnalysisResult.Policy> topMoves = node.kres.getTopPolicy(10, policyToUse);
+        List<KataAnalysisResult.Policy> topMoves = node.kres.getTopPolicy(10, policy);
 
         int senteCount = 0;
         int checkedCount = 0;
-        final int MAX_CANDIDATES_TO_CHECK = 5;
 
         for (var pol : topMoves) {
-            if (checkedCount >= MAX_CANDIDATES_TO_CHECK) {
+            if (checkedCount >= MAX_SENTE_CANDIDATES) {
                 break;
             }
 
@@ -805,13 +787,7 @@ public class Analysis {
             checkedCount++;
 
             // Find this move in moveInfos to get its PV
-            MoveInfo moveInfo = null;
-            for (MoveInfo mi : node.kres.moveInfos) {
-                if (mi.move.equals(candidateMove)) {
-                    moveInfo = mi;
-                    break;
-                }
-            }
+            MoveInfo moveInfo = node.kres.getMoveInfo(candidateMove);
 
             if (moveInfo == null || moveInfo.pv == null || moveInfo.pv.size() < 2) {
                 continue;  // No PV info for this move

@@ -52,31 +52,33 @@ public class ScenarioHandler {
                     }
 
                     AnalysisRequest request = response.getData();
-                    System.out.println("Processing analysis request id=" + request.id + ", path=" + request.path);
-                    System.out.println("scenario id=" + request.scenario.id);
-
-                    AnalysisResult[] results = analysis.analyze(request);
-
-                    ScenarioResultSubmission submission = new ScenarioResultSubmission();
-                    submission.results = results;
+                    System.out.println("Processing analysis request id=" + request.id + 
+                        ", scenarioId=" + request.scenario.id +
+                        ", path=" + request.path + 
+                        ", difficulty=" + request.difficulty);
 
                     Map<String, String> pathParams = new HashMap<>();
                     pathParams.put("scenarioId", String.valueOf(request.scenario.id));
                     pathParams.put("id", String.valueOf(request.id));
 
-                    String requestBody = gson.toJson(submission);
-                    System.out.println("Submitting JSON: " + requestBody);
+                    analysis.setResultSubmitter(batchResults -> {
+                        ScenarioResultSubmission submission = new ScenarioResultSubmission();
+                        submission.results = batchResults;
+                        String body = gson.toJson(submission);
+                        System.out.println("Submitting " + batchResults.length + " results");
+                        System.out.println("Submitting JSON: " + body);
+                        ApiClient.ApiResponse<Object> submitResponse = apiClient.makePostRequest(
+                                "api.analysis.requests.submit", pathParams, body, Object.class, props);
+                        if (submitResponse.isSuccess()) {
+                            System.out.println("Submitted analysis results for request " + request.id);
+                        } else {
+                            System.out.println("Failed to submit results for request " + request.id +
+                                    ". Status: " + submitResponse.getStatusCode() +
+                                    ", message: " + submitResponse.getErrorMessage());
+                        }
+                    });
 
-                    ApiClient.ApiResponse<Object> submitResponse = apiClient.makePostRequest(
-                            "api.analysis.requests.submit", pathParams, requestBody, Object.class, props);
-
-                    if (submitResponse.isSuccess()) {
-                        System.out.println("Submitted analysis results for request " + request.id);
-                    } else {
-                        System.out.println("Failed to submit results for request " + request.id +
-                                ". Status: " + submitResponse.getStatusCode() +
-                                ", message: " + submitResponse.getErrorMessage());
-                    }
+                    analysis.analyze(request);
                 } catch (Exception ex) {
                     System.out.println("Error while handling scenario request: " + ex.getMessage());
                     ex.printStackTrace();

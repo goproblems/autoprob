@@ -13,7 +13,9 @@ import com.google.gson.Gson;
 
 import java.awt.Point;
 import java.text.DecimalFormat;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,11 +50,22 @@ public class Analysis {
     private static final int MAX_OPTIMAL_MOVES = 1;
     private static final int MAX_SENTE_CANDIDATES = 5;
 
+    private static final int PRECALCULATION_MAX_DEPTH = 20;
+    private static final int PRECALCULATION_MAX_NODES = 100;
+    private static final int PRECALCULATION_BATCH_SIZE = 10;  // Submit results every N nodes
+
     private final Properties props;
     private final KataBrain brain;
     private final Parser parser = new Parser();
     private final StringBuilder debugInfo = new StringBuilder();
     private final double minHumanPolicy;
+
+    private ResultSubmitter resultSubmitter;
+
+    @FunctionalInterface
+    public interface ResultSubmitter {
+        void submit(AnalysisResult[] results) throws Exception;
+    }
 
     public Analysis(Properties props, KataBrain brain) throws Exception {
         this.props = Objects.requireNonNull(props, "props");
@@ -60,9 +73,20 @@ public class Analysis {
         this.minHumanPolicy = Double.parseDouble(props.getProperty("scenario.min_response_policy", "0.05"));
     }
 
+    public void setResultSubmitter(ResultSubmitter submitter) {
+        this.resultSubmitter = submitter;
+    }
+
+    private void submitResults(AnalysisResult[] results) throws Exception {
+        if (resultSubmitter != null && results.length > 0) {
+            resultSubmitter.submit(results);
+        }
+    }
+
     /**
      * Runs KataGo on the supplied request path and summarizes the outcome.
-     * we assume that the given path is a human move. this is important.
+     * If depth > 0 and path is empty, runs in precalculation mode to precalculate the game tree.
+     * Otherwise, analyzes the given path.
      */
     public AnalysisResult[] analyze(AnalysisRequest request) throws Exception {
         Objects.requireNonNull(request, "request");
@@ -71,6 +95,19 @@ public class Analysis {
             throw new IllegalArgumentException("Scenario SGF is required");
         }
 
+        boolean isPrecalculationMode = request.path == null || request.path.isBlank();
+
+        if (isPrecalculationMode) {
+            return analyzePrecalculation(request);
+        }
+
+        return analyzePath(request);
+    }
+
+    /**
+     * Analyzes a specific path (original behavior).
+     */
+    private AnalysisResult[] analyzePath(AnalysisRequest request) throws Exception {
         var nodeAnalyzer = new NodeAnalyzer(props);
 
         Node root = parser.parse(request.scenario.sgf);
@@ -133,7 +170,129 @@ public class Analysis {
             }
         }
 
-        return results.toArray(AnalysisResult[]::new);
+        AnalysisResult[] resultArray = results.toArray(AnalysisResult[]::new);
+        submitResults(resultArray);
+        return resultArray;
+    }
+
+    /**
+     * Node in the precalculation queue.
+     */
+    private record PrecalcNode(Node node, KataAnalysisResult kata, String path, int depth) {}
+
+    /**
+     * Precalculation mode: precalculate the game tree from root, following high humanPolicy moves.
+     * Uses BFS with a queue to analyze nodes breadth-first.
+     * Submits results in batches if a ResultSubmitter is configured.
+     *
+     * @param request The analysis request with depth and maxNodes parameters
+     * @return Array of AnalysisResult for all precalculated nodes
+     */
+    private AnalysisResult[] analyzePrecalculation(AnalysisRequest request) throws Exception {
+        var nodeAnalyzer = new NodeAnalyzer(props);
+
+        Node root = parser.parse(request.scenario.sgf);
+        System.out.println(root.board);
+        System.out.println("To move: " + (root.getToMove() == Intersection.BLACK ? "black" : "white"));
+        System.out.println("Precalculation mode: maxDepth=" + PRECALCULATION_MAX_DEPTH + 
+            ", maxNodes=" + PRECALCULATION_MAX_NODES + ", batchSize=" + PRECALCULATION_BATCH_SIZE);
+
+        int visits = determineVisits();
+        String humanRank = normalizeRank(request.difficulty);
+        int maxDepth = PRECALCULATION_MAX_DEPTH;
+        int maxNodes = PRECALCULATION_MAX_NODES;
+
+        String fullModelPath = props.getProperty("kata.model");
+        String weightsFile = (fullModelPath.substring(fullModelPath.lastIndexOf('/') + 1))
+            .substring(fullModelPath.lastIndexOf('\\') + 1);
+
+        ArrayList<AnalysisResult> results = new ArrayList<>();
+        int nodesCount = 0;
+
+        // Analyze root
+        KataAnalysisResult rootKata = nodeAnalyzer.analyzeNode(brain, root, visits, null, humanRank);
+        root.kres = rootKata;
+
+        AnalysisResult rootResult = new AnalysisResult();
+        rootResult.path = "";
+        rootResult.rank = request.difficulty;
+        rootResult.score = rootKata.blackScore();
+        rootResult.loss = 0.0;
+        rootResult.urgency = 0.0;
+        rootResult.endness = 0.0;
+        rootResult.katagoPlayouts = rootKata.rootInfo.visits;
+        rootResult.katagoWeightsFile = weightsFile;
+        rootResult.weight = 0.0;
+        rootResult.extraInfo = formatExtraInfo(rootKata, "");
+        results.add(rootResult);
+        nodesCount++;
+
+        // BFS queue
+        Deque<PrecalcNode> queue = new ArrayDeque<>();
+        queue.add(new PrecalcNode(root, rootKata, "", 0));
+
+        while (!queue.isEmpty() && nodesCount < maxNodes) {
+            PrecalcNode current = queue.poll();
+            if (current.depth >= maxDepth) continue;
+
+            List<Double> policy = selectPolicy(current.kata);
+            if (policy == null) continue;
+
+            Point lastMove = current.node.findMove();
+
+            for (var pol : current.kata.getTopPolicy(10, policy)) {
+                if (nodesCount >= maxNodes) break;
+                if (pol.policy < minHumanPolicy) break;
+
+                // Skip tenuki
+                if (lastMove != null && isTenuki(lastMove, new Point(pol.x, pol.y))) continue;
+
+                String move = Intersection.toGTPloc(pol.x, pol.y);
+                String path = current.path.isEmpty() ? move : current.path + "," + move;
+
+                // Analyze child
+                Node childNode = current.node.addBasicMove(pol.x, pol.y);
+                KataAnalysisResult childKata = nodeAnalyzer.analyzeNode(brain, childNode, visits, null, humanRank);
+                childNode.kres = childKata;
+
+                System.out.println("Precalc: " + path + " (depth=" + (current.depth + 1) + 
+                    ", policy=" + df.format(pol.policy) + ", queue=" + queue.size() + ", total=" + nodesCount + ")");
+
+                // Build result
+                debugInfo.setLength(0);
+                AnalysisResult result = new AnalysisResult();
+                result.path = path;
+                result.rank = request.difficulty;
+                result.score = childKata.blackScore();
+                result.loss = childKata.blackScore() - current.kata.blackScore();
+                result.urgency = calculateUrgency(childNode);
+                result.katagoPlayouts = childKata.rootInfo.visits;
+                result.katagoWeightsFile = weightsFile;
+                result.weight = pol.policy;
+                result.endness = calculateEndness(result, childNode, root, rootKata);
+                result.extraInfo = formatExtraInfo(childKata, debugInfo.toString());
+                results.add(result);
+                nodesCount++;
+
+                if (results.size() >= PRECALCULATION_BATCH_SIZE) {
+                    System.out.println("Submitting batch of " + results.size() + " results (total: " + nodesCount + ")");
+                    submitResults(results.toArray(AnalysisResult[]::new));
+                    results.clear();
+                }
+
+                if (result.endness < 0) {
+                    queue.add(new PrecalcNode(childNode, childKata, path, current.depth + 1));
+                }
+            }
+        }
+
+        if (!results.isEmpty()) {
+            System.out.println("Submitting final batch of " + results.size() + " results (total: " + nodesCount + ")");
+            submitResults(results.toArray(AnalysisResult[]::new));
+        }
+
+        System.out.println("Precalculation complete: " + nodesCount + " nodes analyzed");
+        return new AnalysisResult[0];  // All results submitted via callback
     }
 
     private void addResponseResultsHumanRank(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String humanRank) throws Exception {

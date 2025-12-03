@@ -9,6 +9,7 @@ public class AnalysisRequest {
     public String path;
     public String difficulty;
     public String requestedAt;
+    public Boolean isPrecalculate;
 
     /**
      * Scenario details embedded within an analysis request.

@@ -14,4 +14,5 @@ public class AnalysisResult {
     public Integer katagoPlayouts;
     public String katagoWeightsFile;
     public String extraInfo;
+    public String analysis;
 }

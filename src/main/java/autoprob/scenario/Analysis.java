@@ -16,9 +16,7 @@ import java.text.DecimalFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -32,33 +30,29 @@ public class Analysis {
     private static final String VISITS_PROPERTY = "scenario.analysis.visits";
     private static final String FALLBACK_VISITS_PROPERTY = "search.visits";
 
-    private static final int MIN_DEPTH_FOR_ENDNESS = 5;
-    private static final double SCORE_DROP_THRESHOLD = 15.0;
-    private static final double MAX_ENDNESS = 1.0;
-    private static final double MIN_ENDNESS = -1.0;
-    private static final double DEPTH_TARGET_MOVES = 30.0;
-
-    // Controls the curve shape for depth factor: 1.0 = linear, >1.0 = slower early/faster late.
-    // Does not affect the threshold (MIN_DEPTH_FOR_ENDNESS + DEPTH_TARGET_MOVES) where endness becomes positive.
-    private static final double DEPTH_POWER = 1.1;
-
-    private static final double MAX_URGENCY = 10.0;
-
-    private static final int TENUKI_HISTORY_MOVES = 3;
-    private static final double TENUKI_DISTANCE_THRESHOLD = 6.0;
-
-    private static final int MAX_OPTIMAL_MOVES = 1;
-    private static final int MAX_SENTE_CANDIDATES = 5;
-
-    private static final int PRECALCULATION_MAX_DEPTH = 20;
-    private static final int PRECALCULATION_MAX_NODES = 3000;
-    private static final int PRECALCULATION_BATCH_SIZE = 10;  // Submit results every N nodes
-
     private final Properties props;
     private final KataBrain brain;
     private final Parser parser = new Parser();
     private final StringBuilder debugInfo = new StringBuilder();
+    private final Gson gson = new Gson();
+
+    // Configurable parameters loaded from properties
     private final double minHumanPolicy;
+    private final int minDepthForEndness;
+    private final double scoreDropThreshold;
+    private final double maxEndness;
+    private final double minEndness;
+    private final double depthTargetMoves;
+    private final double depthPower;
+    private final double maxUrgency;
+    private final int tenukiHistoryMoves;
+    private final double tenukiDistanceThreshold;
+    private final int maxOptimalMoves;
+    private final int maxSenteCandidates;
+    private final int precalculationMaxDepth;
+    private final int precalculationMaxNodes;
+    private final int precalculationBatchSize;
+    private final boolean precalculationDepthFirst;
 
     private ResultSubmitter resultSubmitter;
 
@@ -70,7 +64,24 @@ public class Analysis {
     public Analysis(Properties props, KataBrain brain) throws Exception {
         this.props = Objects.requireNonNull(props, "props");
         this.brain = brain;
+
+        // Load configurable parameters from properties
         this.minHumanPolicy = Double.parseDouble(props.getProperty("scenario.min_response_policy", "0.05"));
+        this.minDepthForEndness = Integer.parseInt(props.getProperty("scenario.min_depth_for_endness", "5"));
+        this.scoreDropThreshold = Double.parseDouble(props.getProperty("scenario.score_drop_threshold", "15.0"));
+        this.maxEndness = Double.parseDouble(props.getProperty("scenario.max_endness", "1.0"));
+        this.minEndness = Double.parseDouble(props.getProperty("scenario.min_endness", "-1.0"));
+        this.depthTargetMoves = Double.parseDouble(props.getProperty("scenario.depth_target_moves", "30.0"));
+        this.depthPower = Double.parseDouble(props.getProperty("scenario.depth_power", "1.1"));
+        this.maxUrgency = Double.parseDouble(props.getProperty("scenario.max_urgency", "10.0"));
+        this.tenukiHistoryMoves = Integer.parseInt(props.getProperty("scenario.tenuki_history_moves", "3"));
+        this.tenukiDistanceThreshold = Double.parseDouble(props.getProperty("scenario.tenuki_distance_threshold", "6.0"));
+        this.maxOptimalMoves = Integer.parseInt(props.getProperty("scenario.max_optimal_moves", "1"));
+        this.maxSenteCandidates = Integer.parseInt(props.getProperty("scenario.max_sente_candidates", "5"));
+        this.precalculationMaxDepth = Integer.parseInt(props.getProperty("scenario.precalculation_max_depth", "20"));
+        this.precalculationMaxNodes = Integer.parseInt(props.getProperty("scenario.precalculation_max_nodes", "3000"));
+        this.precalculationBatchSize = Integer.parseInt(props.getProperty("scenario.precalculation_batch_size", "10"));
+        this.precalculationDepthFirst = props.getProperty("scenario.precalculation_strategy", "bfs").equalsIgnoreCase("dfs");
     }
 
     public void setResultSubmitter(ResultSubmitter submitter) {
@@ -95,7 +106,7 @@ public class Analysis {
             throw new IllegalArgumentException("Scenario SGF is required");
         }
 
-        boolean isPrecalculationMode = request.path == null || request.path.isBlank();
+        boolean isPrecalculationMode = request.isPrecalculate != null && request.isPrecalculate;
 
         if (isPrecalculationMode) {
             return analyzePrecalculation(request);
@@ -137,7 +148,8 @@ public class Analysis {
 
         AnalysisResult result = buildAnalysisResult(request.path, request.difficulty, node,
             endKata, momKata, root, rootKata, weightsFile, 0.0);
-        result.extraInfo = formatExtraInfo(endKata, debugInfo.toString());
+        result.analysis = gson.toJson(endKata);
+        result.extraInfo = debugInfo.toString();
 
         // make extendable list of possible results
         ArrayList<AnalysisResult> results = new ArrayList<>();
@@ -171,8 +183,8 @@ public class Analysis {
     private record PrecalcNode(Node node, KataAnalysisResult kata, String path, int depth) {}
 
     /**
-     * Precalculation mode: precalculate the game tree from root, following high humanPolicy moves.
-     * Uses BFS with a queue to analyze nodes breadth-first.
+     * Precalculation mode: precalculate the game tree from root or a specified path.
+     * Uses BFS or DFS (configurable) to analyze nodes.
      * Submits results in batches if a ResultSubmitter is configured.
      *
      * @param request The analysis request with depth and maxNodes parameters
@@ -184,13 +196,19 @@ public class Analysis {
         Node root = parser.parse(request.scenario.sgf);
         System.out.println(root.board);
         System.out.println("To move: " + (root.getToMove() == Intersection.BLACK ? "black" : "white"));
-        System.out.println("Precalculation mode: maxDepth=" + PRECALCULATION_MAX_DEPTH + 
-            ", maxNodes=" + PRECALCULATION_MAX_NODES + ", batchSize=" + PRECALCULATION_BATCH_SIZE);
+
+        String startPath = (request.path != null && !request.path.isBlank()) ? request.path : "";
+        int startDepth = startPath.isEmpty() ? 0 : startPath.split(",").length;
+
+        System.out.println("Precalculation mode: strategy=" + (precalculationDepthFirst ? "dfs" : "bfs") +
+            ", startPath=" + (startPath.isEmpty() ? "(root)" : startPath) +
+            ", maxDepth=" + precalculationMaxDepth + 
+            ", maxNodes=" + precalculationMaxNodes + ", batchSize=" + precalculationBatchSize);
 
         int visits = determineVisits();
         String humanRank = normalizeRank(request.difficulty);
-        int maxDepth = PRECALCULATION_MAX_DEPTH;
-        int maxNodes = PRECALCULATION_MAX_NODES;
+        int maxDepth = precalculationMaxDepth;
+        int maxNodes = precalculationMaxNodes;
 
         String fullModelPath = props.getProperty("kata.model");
         String weightsFile = (fullModelPath.substring(fullModelPath.lastIndexOf('/') + 1))
@@ -206,9 +224,17 @@ public class Analysis {
         AnalysisResult rootResult = buildRootAnalysisResult(request.difficulty, rootKata, weightsFile);
         nodesCount++;
 
-        // BFS queue
+        Node startNode = root;
+        KataAnalysisResult startKata = rootKata;
+        if (!startPath.isEmpty()) {
+            startNode = addPath(root, startPath);
+            startKata = nodeAnalyzer.analyzeNode(brain, startNode, visits, null, humanRank);
+            startNode.kres = startKata;
+        }
+
+        // BFS/DFS queue
         Deque<PrecalcNode> queue = new ArrayDeque<>();
-        queue.add(new PrecalcNode(root, rootKata, "", 0));
+        queue.add(new PrecalcNode(startNode, startKata, startPath, startDepth));
 
         int playerColor = root.getToMove();
 
@@ -249,11 +275,12 @@ public class Analysis {
                 // Build result
                 AnalysisResult result = buildAnalysisResult(path, request.difficulty, childNode,
                     childKata, current.kata, root, rootKata, weightsFile, pol.policy);
-                result.extraInfo = formatExtraInfo(childKata, debugInfo.toString());
+                result.analysis = gson.toJson(childKata);
+                result.extraInfo = debugInfo.toString();
                 results.add(result);
                 nodesCount++;
 
-                if (results.size() >= PRECALCULATION_BATCH_SIZE) {
+                if (results.size() >= precalculationBatchSize) {
                     // Always include root result in every batch submission
                     ArrayList<AnalysisResult> batch = new ArrayList<>();
                     batch.add(rootResult);
@@ -264,7 +291,11 @@ public class Analysis {
                 }
 
                 if (result.endness < 0) {
-                    queue.add(new PrecalcNode(childNode, childKata, path, current.depth + 1));
+                    if (precalculationDepthFirst) {
+                        queue.addFirst(new PrecalcNode(childNode, childKata, path, current.depth + 1));
+                    } else {
+                        queue.addLast(new PrecalcNode(childNode, childKata, path, current.depth + 1));
+                    }
                 }
             }
         }
@@ -329,7 +360,8 @@ public class Analysis {
         double weight = moveVisits != null ? (double) moveVisits : 0.0;
         AnalysisResult responseResult = buildAnalysisResult(result.path + "," + mv, result.rank,
             responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, weight);
-        responseResult.extraInfo = formatExtraInfo(responseKata, debugInfo.toString());
+        responseResult.analysis = gson.toJson(responseKata);
+        responseResult.extraInfo = debugInfo.toString();
 
         results.add(responseResult);
     }
@@ -358,7 +390,8 @@ public class Analysis {
 
         AnalysisResult responseResult = buildAnalysisResult(result.path + "," + move.move, result.rank,
             responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, (double) move.visits);
-        responseResult.extraInfo = formatExtraInfo(responseKata, debugInfo.toString());
+        responseResult.analysis = gson.toJson(responseKata);
+        responseResult.extraInfo = debugInfo.toString();
 
         results.add(responseResult);
     }
@@ -384,7 +417,7 @@ public class Analysis {
             return;
         }
 
-        int movesToAdd = Math.min(momKata.moveInfos.size(), MAX_OPTIMAL_MOVES);
+        int movesToAdd = Math.min(momKata.moveInfos.size(), maxOptimalMoves);
 
         // Get the parent path (path without the last move)
         String parentPath = getParentPath(path);
@@ -414,7 +447,8 @@ public class Analysis {
 
             AnalysisResult optimalResult = buildAnalysisResult(optimalPath, rank, optimalNode,
                 optimalKata, momKata, root, rootKata, weightsFile, (double) optimalMoveVisits);
-            optimalResult.extraInfo = formatExtraInfo(optimalKata, debugInfo.toString());
+            optimalResult.analysis = gson.toJson(optimalKata);
+            optimalResult.extraInfo = debugInfo.toString();
 
             results.add(optimalResult);
         }
@@ -470,11 +504,12 @@ public class Analysis {
         result.score = rootKata.blackScore();
         result.loss = 0.0;
         result.urgency = 0.0;
-        result.endness = 0.0;
+        result.endness = minEndness;
         result.katagoPlayouts = rootKata.rootInfo.visits;
         result.katagoWeightsFile = weightsFile;
         result.weight = 0.0;
-        result.extraInfo = formatExtraInfo(rootKata, "");
+        result.analysis = gson.toJson(rootKata);
+        result.extraInfo = "";
         return result;
     }
 
@@ -532,46 +567,46 @@ public class Analysis {
                 result.score <= 0 && root.getToMove() == Intersection.WHITE) &&
             hasAdvantage) {
             debugInfo.append("Positive score on player move, good move, but don't end problem for now;");
-            // return MAX_ENDNESS;
+            // return maxEndness;
         }
 
         // Failure - significant score drop (loss for the player)
         double scoreLoss = (root.getToMove() == Intersection.BLACK) ? -scoreDelta : scoreDelta;
-        if (scoreLoss >= SCORE_DROP_THRESHOLD) {
+        if (scoreLoss >= scoreDropThreshold) {
             debugInfo.append(String.format("Endness: significant score loss (%.1f);", scoreLoss));
-            return MAX_ENDNESS;
+            return maxEndness;
         }
 
-        double endness = MIN_ENDNESS;
+        double endness = minEndness;
 
         // Value of a tenuki - check if KataGo wants to tenuki
         // Only check on player's move, since on computer's move, tenuki is user's choice
         if (isPlayerMove && wantsTenuki(node)) {
-            if (node.depth <= MIN_DEPTH_FOR_ENDNESS) {
+            if (node.depth <= minDepthForEndness) {
                 debugInfo.append("Endness: computer wants tenuki but depth too low, continue;");
-                return MIN_ENDNESS;
+                return minEndness;
             }
             debugInfo.append("Endness: computer wants to tenuki;");
-            return MAX_ENDNESS;
+            return maxEndness;
         }
 
         // Depth of tree - deeper means more likely to end (gentle acceleration)
-        int depthBeyondMin = Math.max(0, node.depth - MIN_DEPTH_FOR_ENDNESS);
-        double depthRatio = depthBeyondMin / DEPTH_TARGET_MOVES;
-        double depthFactor = Math.pow(depthRatio, DEPTH_POWER);
+        int depthBeyondMin = Math.max(0, node.depth - minDepthForEndness);
+        double depthRatio = depthBeyondMin / depthTargetMoves;
+        double depthFactor = Math.pow(depthRatio, depthPower);
         endness += depthFactor;
         debugInfo.append(String.format("DepthFactor: %.2f;", depthFactor));
 
         // Only check on computer move, to see if player still has sente moves to play
         if (!isPlayerMove && !hasSenteMoves(node)) {
-            if (node.depth <= MIN_DEPTH_FOR_ENDNESS) {
+            if (node.depth <= minDepthForEndness) {
                 debugInfo.append("Endness: no sente but depth too low, continue;");
-                return MIN_ENDNESS;
+                return minEndness;
             }
             // No sente moves, but check if there's a high policy move worth playing
             if (!hasHighPolicyMove(node)) {
                 debugInfo.append("Endness: no sente and no high policy moves;");
-                return MAX_ENDNESS;
+                return maxEndness;
             }
             debugInfo.append("No sente but has high policy move;");
         }
@@ -631,7 +666,7 @@ public class Analysis {
         if (bestTenukiMove == null) {
             // No moves are tenuki move
             // This means the position is very urgent
-            return MAX_URGENCY;
+            return maxUrgency;
         }
 
         // Calculate urgency as the score difference
@@ -667,7 +702,7 @@ public class Analysis {
         }
 
         // Get recent moves for tenuki checking
-        List<Point> recentMoves = getRecentMoves(node, TENUKI_HISTORY_MOVES);
+        List<Point> recentMoves = getRecentMoves(node, tenukiHistoryMoves);
 
         // Use humanPolicy if available, otherwise fall back to regular policy
         List<Double> policy = selectPolicy(node.kres);
@@ -850,14 +885,14 @@ public class Analysis {
      *
      * @param from Starting point
      * @param to Destination point
-     * @return true if the distance is >= TENUKI_DISTANCE_THRESHOLD
+     * @return true if the distance is >= tenukiDistanceThreshold
      */
     private boolean isTenuki(Point from, Point to) {
         double distance = Math.sqrt(
             Math.pow(to.x - from.x, 2) +
             Math.pow(to.y - from.y, 2)
         );
-        return distance >= TENUKI_DISTANCE_THRESHOLD;
+        return distance >= tenukiDistanceThreshold;
     }
 
     /**
@@ -941,7 +976,7 @@ public class Analysis {
         int checkedCount = 0;
 
         for (var pol : topMoves) {
-            if (checkedCount >= MAX_SENTE_CANDIDATES) {
+            if (checkedCount >= maxSenteCandidates) {
                 break;
             }
 
@@ -1020,22 +1055,5 @@ public class Analysis {
         }
 
         return false;
-    }
-
-    /**
-     * Format extra information as JSON with analysis and debug info.
-     *
-     * @param kataResult KataGo analysis result
-     * @param debugInfo Debug messages as a string
-     * @return JSON string with {"analysis": {...}, "debug": "..."}
-     */
-    private String formatExtraInfo(KataAnalysisResult kataResult, String debugInfo) {
-        Gson gson = new Gson();
-
-        Map<String, Object> jsonOutput = new HashMap<>();
-        jsonOutput.put("analysis", kataResult);
-        jsonOutput.put("debug", debugInfo != null ? debugInfo : "");
-
-        return gson.toJson(jsonOutput);
     }
 }

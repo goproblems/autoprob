@@ -51,7 +51,7 @@ public class Analysis {
     private static final int MAX_SENTE_CANDIDATES = 5;
 
     private static final int PRECALCULATION_MAX_DEPTH = 20;
-    private static final int PRECALCULATION_MAX_NODES = 100;
+    private static final int PRECALCULATION_MAX_NODES = 1000;
     private static final int PRECALCULATION_BATCH_SIZE = 10;  // Submit results every N nodes
 
     private final Properties props;
@@ -224,18 +224,25 @@ public class Analysis {
         rootResult.katagoWeightsFile = weightsFile;
         rootResult.weight = 0.0;
         rootResult.extraInfo = formatExtraInfo(rootKata, "");
-        results.add(rootResult);
         nodesCount++;
 
         // BFS queue
         Deque<PrecalcNode> queue = new ArrayDeque<>();
         queue.add(new PrecalcNode(root, rootKata, "", 0));
 
+        int playerColor = root.getToMove();
+
         while (!queue.isEmpty() && nodesCount < maxNodes) {
             PrecalcNode current = queue.poll();
             if (current.depth >= maxDepth) continue;
 
-            List<Double> policy = selectPolicy(current.kata);
+            // Select policy based on whose turn it is:
+            // - Player's turn: use policy (best moves)
+            // - Computer's turn: use humanPolicy (human-like moves)
+            boolean isPlayerTurn = (current.node.getToMove() == playerColor);
+            List<Double> policy = isPlayerTurn
+                ? current.kata.policy
+                : selectPolicy(current.kata);
             if (policy == null) continue;
 
             Point lastMove = current.node.findMove();
@@ -256,6 +263,7 @@ public class Analysis {
                 childNode.kres = childKata;
 
                 System.out.println("Precalc: " + path + " (depth=" + (current.depth + 1) + 
+                    ", " + (isPlayerTurn ? "player" : "computer") +
                     ", policy=" + df.format(pol.policy) + ", queue=" + queue.size() + ", total=" + nodesCount + ")");
 
                 // Build result
@@ -275,8 +283,12 @@ public class Analysis {
                 nodesCount++;
 
                 if (results.size() >= PRECALCULATION_BATCH_SIZE) {
-                    System.out.println("Submitting batch of " + results.size() + " results (total: " + nodesCount + ")");
-                    submitResults(results.toArray(AnalysisResult[]::new));
+                    // Always include root result in every batch submission
+                    ArrayList<AnalysisResult> batch = new ArrayList<>();
+                    batch.add(rootResult);
+                    batch.addAll(results);
+                    System.out.println("Submitting batch of " + batch.size() + " results (total: " + nodesCount + ")");
+                    submitResults(batch.toArray(AnalysisResult[]::new));
                     results.clear();
                 }
 
@@ -286,10 +298,11 @@ public class Analysis {
             }
         }
 
-        if (!results.isEmpty()) {
-            System.out.println("Submitting final batch of " + results.size() + " results (total: " + nodesCount + ")");
-            submitResults(results.toArray(AnalysisResult[]::new));
-        }
+        ArrayList<AnalysisResult> batch = new ArrayList<>();
+        batch.add(rootResult);
+        batch.addAll(results);
+        System.out.println("Submitting final batch of " + batch.size() + " results (total: " + nodesCount + ")");
+        submitResults(batch.toArray(AnalysisResult[]::new));
 
         System.out.println("Precalculation complete: " + nodesCount + " nodes analyzed");
         return new AnalysisResult[0];  // All results submitted via callback

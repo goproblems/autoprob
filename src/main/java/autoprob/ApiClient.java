@@ -118,8 +118,8 @@ public class ApiClient {
         connection.setRequestMethod(method);
         connection.setRequestProperty("X-Api-Key", apiKey);
         connection.setRequestProperty("Accept", "application/json");
-        connection.setConnectTimeout(10000);
-        connection.setReadTimeout(10000);
+        connection.setConnectTimeout(60000);
+        connection.setReadTimeout(60000);
         
         if ("POST".equals(method)) {
             if (debug) {

@@ -92,7 +92,7 @@ public class Analysis {
 
     private void submitResults(AnalysisResult[] results) throws Exception {
         if (resultSubmitter != null && results.length > 0) {
-            int maxRetries = 3;
+            int maxRetries = 10;
             Exception lastException = null;
             for (int attempt = 1; attempt <= maxRetries; attempt++) {
                 try {
@@ -102,7 +102,7 @@ public class Analysis {
                     lastException = e;
                     System.err.println("Submit failed (attempt " + attempt + "/" + maxRetries + "): " + e.getMessage());
                     if (attempt < maxRetries) {
-                        Thread.sleep(10000);
+                        Thread.sleep(30000);
                     }
                 }
             }

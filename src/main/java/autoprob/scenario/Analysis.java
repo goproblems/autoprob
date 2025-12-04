@@ -49,6 +49,7 @@ public class Analysis {
     private final double tenukiDistanceThreshold;
     private final int maxOptimalMoves;
     private final int maxSenteCandidates;
+    private final double minSentePolicy;
     private final int precalculationMaxDepth;
     private final int precalculationMaxNodes;
     private final int precalculationBatchSize;
@@ -78,6 +79,7 @@ public class Analysis {
         this.tenukiDistanceThreshold = Double.parseDouble(props.getProperty("scenario.tenuki_distance_threshold", "6.0"));
         this.maxOptimalMoves = Integer.parseInt(props.getProperty("scenario.max_optimal_moves", "1"));
         this.maxSenteCandidates = Integer.parseInt(props.getProperty("scenario.max_sente_candidates", "5"));
+        this.minSentePolicy = Double.parseDouble(props.getProperty("scenario.min_sente_policy", "0.05"));
         this.precalculationMaxDepth = Integer.parseInt(props.getProperty("scenario.precalculation_max_depth", "20"));
         this.precalculationMaxNodes = Integer.parseInt(props.getProperty("scenario.precalculation_max_nodes", "3000"));
         this.precalculationBatchSize = Integer.parseInt(props.getProperty("scenario.precalculation_batch_size", "10"));
@@ -979,6 +981,11 @@ public class Analysis {
         for (MoveInfo moveInfo : moveInfos) {
             if (checkedCount >= maxSenteCandidates) {
                 break;
+            }
+
+            // Skip if policy is too low
+            if (moveInfo.prior != null && moveInfo.prior < minSentePolicy) {
+                continue;
             }
 
             Point candidatePoint = Intersection.gtp2point(moveInfo.move);

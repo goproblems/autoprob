@@ -92,7 +92,21 @@ public class Analysis {
 
     private void submitResults(AnalysisResult[] results) throws Exception {
         if (resultSubmitter != null && results.length > 0) {
-            resultSubmitter.submit(results);
+            int maxRetries = 3;
+            Exception lastException = null;
+            for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    resultSubmitter.submit(results);
+                    return;
+                } catch (Exception e) {
+                    lastException = e;
+                    System.err.println("Submit failed (attempt " + attempt + "/" + maxRetries + "): " + e.getMessage());
+                    if (attempt < maxRetries) {
+                        Thread.sleep(10000);
+                    }
+                }
+            }
+            throw lastException;
         }
     }
 
@@ -977,14 +991,21 @@ public class Analysis {
         int checkedCount = 0;
         List<String> senteMoves = new ArrayList<>();
         List<String> goteMoves = new ArrayList<>();
+        List<String> lowPolicyMoves = new ArrayList<>();
+        List<String> tenukiMoves = new ArrayList<>();
 
         for (MoveInfo moveInfo : moveInfos) {
             if (checkedCount >= maxSenteCandidates) {
                 break;
             }
 
+            checkedCount++;
+
+            double prior = moveInfo.prior;
+
             // Skip if policy is too low
-            if (moveInfo.prior != null && moveInfo.prior < minSentePolicy) {
+            if (prior < minSentePolicy) {
+                lowPolicyMoves.add(String.format("%s(p=%.2f)", moveInfo.move, prior));
                 continue;
             }
 
@@ -992,12 +1013,12 @@ public class Analysis {
 
             // Skip if the candidate itself is a tenuki
             if (isTenuki(currentMove, candidatePoint)) {
+                tenukiMoves.add(String.format("%s(p=%.2f)", moveInfo.move, prior));
                 continue;
             }
 
-            checkedCount++;
-
             if (moveInfo.pv == null || moveInfo.pv.size() < 2) {
+                goteMoves.add(String.format("%s(p=%.2f)->?", moveInfo.move, prior));
                 continue;  // No PV info for this move
             }
 
@@ -1009,9 +1030,9 @@ public class Analysis {
             // If opponent's response is not tenuki, this is a sente move
             if (!isTenuki(candidatePoint, opponentResponse)) {
                 senteCount++;
-                senteMoves.add(String.format("%s->%s", moveInfo.move, opponentResponseMove));
+                senteMoves.add(String.format("%s(p=%.2f)->%s", moveInfo.move, prior, opponentResponseMove));
             } else {
-                goteMoves.add(String.format("%s->%s", moveInfo.move, opponentResponseMove));
+                goteMoves.add(String.format("%s(p=%.2f)->%s", moveInfo.move, prior, opponentResponseMove));
             }
         }
 
@@ -1022,6 +1043,14 @@ public class Analysis {
         if (!goteMoves.isEmpty()) {
             if (movesInfo.length() > 0) movesInfo.append(" ");
             movesInfo.append("gote:").append(String.join(",", goteMoves));
+        }
+        if (!tenukiMoves.isEmpty()) {
+            if (movesInfo.length() > 0) movesInfo.append(" ");
+            movesInfo.append("tenuki:").append(String.join(",", tenukiMoves));
+        }
+        if (!lowPolicyMoves.isEmpty()) {
+            if (movesInfo.length() > 0) movesInfo.append(" ");
+            movesInfo.append("lowP:").append(String.join(",", lowPolicyMoves));
         }
 
         if (senteCount > 0) {

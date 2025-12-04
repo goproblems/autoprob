@@ -580,7 +580,7 @@ public class Analysis {
         double endness = minEndness;
 
         // Value of a tenuki - check if KataGo wants to tenuki
-        // Only check on player's move, since on computer's move, tenuki is user's choice
+        // Only check on player's move
         if (isPlayerMove && wantsTenuki(node)) {
             if (node.depth <= minDepthForEndness) {
                 debugInfo.append("Endness: computer wants tenuki but depth too low, continue;");
@@ -611,9 +611,9 @@ public class Analysis {
             return maxEndness;
         }
 
-        // TODO: Total loss - change to continuous value instead of threshold
-
         // TODO: Stones lost - judge dead stone ratio by ownership
+        // TODO: Use urgency?
+        // TODO: Total loss - maybe change to continuous value instead of threshold
 
         return endness;
     }
@@ -678,7 +678,7 @@ public class Analysis {
     }
 
     /**
-     * Check if KataGo/human policy wants to tenuki (play elsewhere from current dispute area).
+     * Check if KataGo/human policy wants to tenuki
      * Uses humanPolicy if available, otherwise falls back to moveInfos.
      * Checks against the last N moves to determine if a move is tenuki.
      * Conditions:
@@ -968,27 +968,29 @@ public class Analysis {
         }
 
         // Use moveInfos directly (already searched by KataGo, guaranteed to have PV)
-        // Only check top N moves (maxSenteCandidates), if none of them is sente, consider no sente
+        // And sente checking is objective so not using humanPolicy here
         List<MoveInfo> moveInfos = node.kres.moveInfos;
-        int movesToCheck = Math.min(moveInfos.size(), maxSenteCandidates);
 
         int senteCount = 0;
+        int checkedCount = 0;
         List<String> senteMoves = new ArrayList<>();
         List<String> goteMoves = new ArrayList<>();
-        List<String> tenukiMoves = new ArrayList<>();
 
-        for (int i = 0; i < movesToCheck; i++) {
-            MoveInfo moveInfo = moveInfos.get(i);
+        for (MoveInfo moveInfo : moveInfos) {
+            if (checkedCount >= maxSenteCandidates) {
+                break;
+            }
+
             Point candidatePoint = Intersection.gtp2point(moveInfo.move);
 
-            // Skip if the candidate itself is a tenuki (but still count it)
+            // Skip if the candidate itself is a tenuki
             if (isTenuki(currentMove, candidatePoint)) {
-                tenukiMoves.add(moveInfo.move);
                 continue;
             }
 
+            checkedCount++;
+
             if (moveInfo.pv == null || moveInfo.pv.size() < 2) {
-                goteMoves.add(moveInfo.move + "->?");
                 continue;  // No PV info for this move
             }
 

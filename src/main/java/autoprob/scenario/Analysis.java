@@ -57,8 +57,14 @@ public class Analysis {
     private final boolean precalculationDepthFirst;
     private final boolean ignorePreRootHistory;
     private final double humanSLRootExploreProbWeightless;
+    private final double humanSLRootExploreProbWeightful;
     private final double humanSLCpuctPermanent;
     private final int rootNumSymmetriesToSample;
+    private final double humanSLPlaExploreProbWeightful;
+    private final double humanSLOppExploreProbWeightful;
+    private final boolean useUncertainty;
+    private final double subtreeValueBiasFactor;
+    private final boolean useNoisePruning;
 
     private ResultSubmitter resultSubmitter;
 
@@ -91,8 +97,14 @@ public class Analysis {
         this.precalculationDepthFirst = props.getProperty("scenario.precalculation_strategy", "bfs").equalsIgnoreCase("dfs");
         this.ignorePreRootHistory = Boolean.parseBoolean(props.getProperty("scenario.ignore_pre_root_history", "false"));
         this.humanSLRootExploreProbWeightless = Double.parseDouble(props.getProperty("scenario.human_sl_root_explore_prob_weightless", "0.5"));
+        this.humanSLRootExploreProbWeightful = Double.parseDouble(props.getProperty("scenario.human_sl_root_explore_prob_weightful", "0.0"));
         this.humanSLCpuctPermanent = Double.parseDouble(props.getProperty("scenario.human_sl_cpuct_permanent", "2.0"));
         this.rootNumSymmetriesToSample = Integer.parseInt(props.getProperty("scenario.root_num_symmetries_to_sample", "8"));
+        this.humanSLPlaExploreProbWeightful = Double.parseDouble(props.getProperty("scenario.human_sl_pla_explore_prob_weightful", "0.0"));
+        this.humanSLOppExploreProbWeightful = Double.parseDouble(props.getProperty("scenario.human_sl_opp_explore_prob_weightful", "0.0"));
+        this.useUncertainty = Boolean.parseBoolean(props.getProperty("scenario.use_uncertainty", "false"));
+        this.subtreeValueBiasFactor = Double.parseDouble(props.getProperty("scenario.subtree_value_bias_factor", "0.0"));
+        this.useNoisePruning = Boolean.parseBoolean(props.getProperty("scenario.use_noise_pruning", "false"));
     }
 
     private KataQuery.OverrideSettings buildOverrideSettings(String humanRank) {
@@ -100,8 +112,14 @@ public class Analysis {
         settings.humanSLProfile = "preaz_" + humanRank;
         settings.ignorePreRootHistory = this.ignorePreRootHistory;
         settings.humanSLRootExploreProbWeightless = this.humanSLRootExploreProbWeightless;
+        settings.humanSLRootExploreProbWeightful = this.humanSLRootExploreProbWeightful;
         settings.humanSLCpuctPermanent = this.humanSLCpuctPermanent;
         settings.rootNumSymmetriesToSample = this.rootNumSymmetriesToSample;
+        settings.humanSLPlaExploreProbWeightful = this.humanSLPlaExploreProbWeightful;
+        settings.humanSLOppExploreProbWeightful = this.humanSLOppExploreProbWeightful;
+        settings.useUncertainty = this.useUncertainty;
+        settings.subtreeValueBiasFactor = this.subtreeValueBiasFactor;
+        settings.useNoisePruning = this.useNoisePruning;
         return settings;
     }
 

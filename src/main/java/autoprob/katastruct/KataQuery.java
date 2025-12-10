@@ -76,6 +76,10 @@ public class KataQuery {
 		@Expose
 		public Double humanSLRootExploreProbWeightless;
 
+		@SerializedName("humanSLRootExploreProbWeightful")
+		@Expose
+		public Double humanSLRootExploreProbWeightful;
+
 		@SerializedName("humanSLCpuctPermanent")
 		@Expose
 		public Double humanSLCpuctPermanent;
@@ -83,6 +87,26 @@ public class KataQuery {
 		@SerializedName("rootNumSymmetriesToSample")
 		@Expose
 		public Integer rootNumSymmetriesToSample;
+
+		@SerializedName("humanSLPlaExploreProbWeightful")
+		@Expose
+		public Double humanSLPlaExploreProbWeightful;
+
+		@SerializedName("humanSLOppExploreProbWeightful")
+		@Expose
+		public Double humanSLOppExploreProbWeightful;
+
+		@SerializedName("useUncertainty")
+		@Expose
+		public Boolean useUncertainty;
+
+		@SerializedName("subtreeValueBiasFactor")
+		@Expose
+		public Double subtreeValueBiasFactor;
+
+		@SerializedName("useNoisePruning")
+		@Expose
+		public Boolean useNoisePruning;
 	}
 
     public Node generateNode() {
@@ -153,11 +177,29 @@ public class KataQuery {
 		if (settings.humanSLRootExploreProbWeightless != null) {
 			overrideSettings.humanSLRootExploreProbWeightless = settings.humanSLRootExploreProbWeightless;
 		}
+		if (settings.humanSLRootExploreProbWeightful != null) {
+			overrideSettings.humanSLRootExploreProbWeightful = settings.humanSLRootExploreProbWeightful;
+		}
 		if (settings.humanSLCpuctPermanent != null) {
 			overrideSettings.humanSLCpuctPermanent = settings.humanSLCpuctPermanent;
 		}
 		if (settings.rootNumSymmetriesToSample != null) {
 			overrideSettings.rootNumSymmetriesToSample = settings.rootNumSymmetriesToSample;
+		}
+		if (settings.humanSLPlaExploreProbWeightful != null) {
+			overrideSettings.humanSLPlaExploreProbWeightful = settings.humanSLPlaExploreProbWeightful;
+		}
+		if (settings.humanSLOppExploreProbWeightful != null) {
+			overrideSettings.humanSLOppExploreProbWeightful = settings.humanSLOppExploreProbWeightful;
+		}
+		if (settings.useUncertainty != null) {
+			overrideSettings.useUncertainty = settings.useUncertainty;
+		}
+		if (settings.subtreeValueBiasFactor != null) {
+			overrideSettings.subtreeValueBiasFactor = settings.subtreeValueBiasFactor;
+		}
+		if (settings.useNoisePruning != null) {
+			overrideSettings.useNoisePruning = settings.useNoisePruning;
 		}
 	}
 }

@@ -56,12 +56,13 @@ public class Analysis {
     private final double minEndness;
     private final double depthTargetMoves;
     private final double depthPower;
-    private final double maxUrgency;
     private final int tenukiHistoryMoves;
     private final double tenukiDistanceThreshold;
     private final int maxOptimalMoves;
     private final int maxSenteCandidates;
     private final double minSentePolicy;
+    private final double minUrgencyToContinue;
+    private final int passMoveVisits;
     private final int precalculationMaxDepth;
     private final int precalculationMaxNodes;
     private final int precalculationBatchSize;
@@ -87,12 +88,13 @@ public class Analysis {
         this.minEndness = Double.parseDouble(props.getProperty("scenario.min_endness", "-1.0"));
         this.depthTargetMoves = Double.parseDouble(props.getProperty("scenario.depth_target_moves", "30.0"));
         this.depthPower = Double.parseDouble(props.getProperty("scenario.depth_power", "1.1"));
-        this.maxUrgency = Double.parseDouble(props.getProperty("scenario.max_urgency", "10.0"));
         this.tenukiHistoryMoves = Integer.parseInt(props.getProperty("scenario.tenuki_history_moves", "3"));
         this.tenukiDistanceThreshold = Double.parseDouble(props.getProperty("scenario.tenuki_distance_threshold", "6.0"));
         this.maxOptimalMoves = Integer.parseInt(props.getProperty("scenario.max_optimal_moves", "1"));
         this.maxSenteCandidates = Integer.parseInt(props.getProperty("scenario.max_sente_candidates", "5"));
         this.minSentePolicy = Double.parseDouble(props.getProperty("scenario.min_sente_policy", "0.05"));
+        this.minUrgencyToContinue = Double.parseDouble(props.getProperty("scenario.min_urgency_to_continue", "10.0"));
+        this.passMoveVisits = Integer.parseInt(props.getProperty("scenario.pass_move_visits", "200"));
         this.precalculationMaxDepth = Integer.parseInt(props.getProperty("scenario.precalculation_max_depth", "20"));
         this.precalculationMaxNodes = Integer.parseInt(props.getProperty("scenario.precalculation_max_nodes", "3000"));
         this.precalculationBatchSize = Integer.parseInt(props.getProperty("scenario.precalculation_batch_size", "10"));
@@ -661,7 +663,7 @@ public class Analysis {
             (result.score > 0 && root.getToMove() == Intersection.BLACK ||
                 result.score <= 0 && root.getToMove() == Intersection.WHITE) &&
             hasAdvantage) {
-            debugInfo.append("Positive score on player move, good move, but don't end problem for now;");
+            debugInfo.append("Positive score on player move, good move, but don't end problem for now, continue;");
             // return maxEndness;
         }
 
@@ -673,6 +675,13 @@ public class Analysis {
         }
 
         double endness = minEndness;
+
+        // Calculate urgency to determine if position is important enough to continue
+        double urgency = calculateUrgency(node);
+        if (urgency >= minUrgencyToContinue) {
+            debugInfo.append(String.format("Endness: high urgency (%.2f), continue;", urgency));
+            return minEndness;
+        }
 
         // Value of a tenuki - check if KataGo wants to tenuki
         // Only check on player's move
@@ -692,16 +701,13 @@ public class Analysis {
         endness += depthFactor;
         debugInfo.append(String.format("DepthFactor: %.2f;", depthFactor));
 
+
         // Only check on computer move, to see if player still has sente moves to play
         if (!isPlayerMove && !hasSenteMoves(node)) {
             if (node.depth <= minDepthForEndness) {
                 debugInfo.append("Endness: no sente but depth too low, continue;");
                 return minEndness;
             }
-            // if (!hasHighPolicyMove(node)) {
-            // debugInfo.append("Endness: no sente;");
-            // return maxEndness;
-            // }
             debugInfo.append("Endness: no sente;");
             return maxEndness;
         }
@@ -715,61 +721,40 @@ public class Analysis {
 
     /**
      * Calculate urgency value to determine how important it is to keep playing in this position.
-     * Urgency is defined as the value of a move vs a tenuki.
+     * Urgency is defined as the value of the best move vs pass.
      * High urgency indicates the problem hasn't been resolved and we should keep playing it out.
      *
      * @param node Current node with KataGo analysis (node.kres must be set)
      * @return urgency value: higher means more urgent to continue
      */
     private double calculateUrgency(Node node) {
-        if (node.kres == null || node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+        if (node.kres == null || node.kres.rootInfo == null ||
+            node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
             return 0.0;
         }
 
-        Point currentMove = node.findMove();
-        if (currentMove == null) {
+        // Get the best move
+        try {
+            List<MoveInfo> moves = node.kres.moveInfos;
+            MoveInfo bestMove = moves.get(0);
+            double bestScore = bestMove.scoreLead;
+
+            // Analyze pass move (19, 19 is pass in the game tree)
+            Node passNode = node.addBasicMove(19, 19);
+            NodeAnalyzer nodeAnalyzer = new NodeAnalyzer(props, false);
+            KataAnalysisResult passKata = nodeAnalyzer.analyzeNode(brain, passNode, passMoveVisits,
+                (ArrayList<String>) null, (KataQuery.OverrideSettings) null);
+            double passScore = passKata.rootInfo.scoreLead;
+            double urgency = Math.abs(bestScore - passScore);
+
+            debugInfo.append(String.format("Urgency: %.2f (best=%s sc=%.1f, pass sc=%.1f);",
+                urgency, bestMove.move, bestScore, passScore));
+
+            return urgency;
+        } catch (Exception e) {
+            debugInfo.append("Error calculating urgency");
             return 0.0;
         }
-
-        // moves are sorted by quality
-        List<MoveInfo> moves = node.kres.moveInfos;
-
-        // Find the best move (not tenuki)
-        MoveInfo bestMove = null;
-        for (MoveInfo move : moves) {
-            Point movePoint = Intersection.gtp2point(move.move);
-            if (!isTenuki(currentMove, movePoint)) {
-                bestMove = move;
-                break;
-            }
-        }
-
-        // Find the best tenuki move
-        MoveInfo bestTenukiMove = null;
-        for (MoveInfo move : moves) {
-            Point movePoint = Intersection.gtp2point(move.move);
-            if (isTenuki(currentMove, movePoint)) {
-                bestTenukiMove = move;
-                break;
-            }
-        }
-
-        if (bestMove == null) {
-            return 0.0;
-        }
-
-        if (bestTenukiMove == null) {
-            // No moves are tenuki move
-            // This means the position is very urgent
-            return maxUrgency;
-        }
-
-        // Calculate urgency as the score difference
-        double score = bestMove.scoreLead;
-        double tenukiScore = bestTenukiMove.scoreLead;
-        double urgency = Math.abs(score - tenukiScore);
-
-        return urgency;
     }
 
     /**
@@ -991,50 +976,6 @@ public class Analysis {
     }
 
     /**
-     * Check if there's a high humanPolicy move that's not a tenuki.
-     * Used when there are no sente moves, but we still want to continue
-     * if there's a move humans would likely play.
-     *
-     * @param node Current node
-     * @return true if there's a high policy non-tenuki move
-     */
-    private boolean hasHighPolicyMove(Node node) {
-        if (node.kres == null) {
-            return false;
-        }
-
-        Point currentMove = node.findMove();
-        if (currentMove == null) {
-            return false;
-        }
-
-        // Use humanPolicy if available, otherwise fall back to regular policy
-        List<Double> policy = selectPolicy(node.kres);
-        if (policy == null) {
-            return false;
-        }
-
-        // Get top policy moves
-        List<KataAnalysisResult.Policy> top = node.kres.getTopPolicy(5, policy);
-
-        for (var pol : top) {
-            // Skip if tenuki
-            Point candidateMove = new Point(pol.x, pol.y);
-            if (isTenuki(currentMove, candidateMove)) {
-                continue;
-            }
-
-            if (pol.policy >= minHumanPolicy) {
-                debugInfo.append(String.format("High policy move: %s (hp=%.2f);",
-                    Intersection.toGTPloc(pol.x, pol.y), pol.policy));
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Check if there are any sente moves remaining in the current position.
      * A move is considered sente if the opponent must respond locally (not tenuki).
      * Uses humanPolicy for ordering if available.
@@ -1059,6 +1000,24 @@ public class Analysis {
         }
 
         if (node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+            return false;
+        }
+
+        // Check for ko situation first - ko threats should not count as tenuki
+        if (isKoSituation(node)) {
+            debugInfo.append("Ko situation in sente check, ignore tenuki for ko threats;");
+            // In ko situation, consider all non-low-policy moves as sente (local responses)
+            int senteCount = 0;
+            for (MoveInfo moveInfo : node.kres.moveInfos) {
+                if (moveInfo.prior >= minSentePolicy) {
+                    senteCount++;
+                    if (senteCount > 0) {
+                        debugInfo.append("HasSente(ko);");
+                        return true;
+                    }
+                }
+            }
+            debugInfo.append("NoSente(ko,lowPolicy);");
             return false;
         }
 

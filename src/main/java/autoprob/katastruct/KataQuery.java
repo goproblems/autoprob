@@ -67,6 +67,22 @@ public class KataQuery {
 		@SerializedName("humanSLProfile")
 		@Expose
 		public String humanSLProfile;
+
+		@SerializedName("ignorePreRootHistory")
+		@Expose
+		public Boolean ignorePreRootHistory;
+
+		@SerializedName("humanSLRootExploreProbWeightless")
+		@Expose
+		public Double humanSLRootExploreProbWeightless;
+
+		@SerializedName("humanSLCpuctPermanent")
+		@Expose
+		public Double humanSLCpuctPermanent;
+
+		@SerializedName("rootNumSymmetriesToSample")
+		@Expose
+		public Integer rootNumSymmetriesToSample;
 	}
 
     public Node generateNode() {
@@ -115,5 +131,33 @@ public class KataQuery {
 			overrideSettings = new OverrideSettings();
 		}
 		overrideSettings.humanSLProfile = "preaz_" + rank;
+	}
+
+	/**
+	 * Set override settings. Only the non-null fields in the provided settings will be updated.
+	 * @param settings OverrideSettings object with fields to update (null fields will be ignored)
+	 */
+	public void setOverrideSettings(OverrideSettings settings) {
+		if (settings == null) {
+			return;
+		}
+		if (overrideSettings == null) {
+			overrideSettings = new OverrideSettings();
+		}
+		if (settings.humanSLProfile != null) {
+			overrideSettings.humanSLProfile = settings.humanSLProfile;
+		}
+		if (settings.ignorePreRootHistory != null) {
+			overrideSettings.ignorePreRootHistory = settings.ignorePreRootHistory;
+		}
+		if (settings.humanSLRootExploreProbWeightless != null) {
+			overrideSettings.humanSLRootExploreProbWeightless = settings.humanSLRootExploreProbWeightless;
+		}
+		if (settings.humanSLCpuctPermanent != null) {
+			overrideSettings.humanSLCpuctPermanent = settings.humanSLCpuctPermanent;
+		}
+		if (settings.rootNumSymmetriesToSample != null) {
+			overrideSettings.rootNumSymmetriesToSample = settings.rootNumSymmetriesToSample;
+		}
 	}
 }

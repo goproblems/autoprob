@@ -8,6 +8,7 @@ import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.parse.Parser;
 import autoprob.katastruct.KataAnalysisResult;
+import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
 import com.google.gson.Gson;
 
@@ -54,6 +55,10 @@ public class Analysis {
     private final int precalculationMaxNodes;
     private final int precalculationBatchSize;
     private final boolean precalculationDepthFirst;
+    private final boolean ignorePreRootHistory;
+    private final double humanSLRootExploreProbWeightless;
+    private final double humanSLCpuctPermanent;
+    private final int rootNumSymmetriesToSample;
 
     private ResultSubmitter resultSubmitter;
 
@@ -84,6 +89,20 @@ public class Analysis {
         this.precalculationMaxNodes = Integer.parseInt(props.getProperty("scenario.precalculation_max_nodes", "3000"));
         this.precalculationBatchSize = Integer.parseInt(props.getProperty("scenario.precalculation_batch_size", "10"));
         this.precalculationDepthFirst = props.getProperty("scenario.precalculation_strategy", "bfs").equalsIgnoreCase("dfs");
+        this.ignorePreRootHistory = Boolean.parseBoolean(props.getProperty("scenario.ignore_pre_root_history", "false"));
+        this.humanSLRootExploreProbWeightless = Double.parseDouble(props.getProperty("scenario.human_sl_root_explore_prob_weightless", "0.5"));
+        this.humanSLCpuctPermanent = Double.parseDouble(props.getProperty("scenario.human_sl_cpuct_permanent", "2.0"));
+        this.rootNumSymmetriesToSample = Integer.parseInt(props.getProperty("scenario.root_num_symmetries_to_sample", "8"));
+    }
+
+    private KataQuery.OverrideSettings buildOverrideSettings(String humanRank) {
+        KataQuery.OverrideSettings settings = new KataQuery.OverrideSettings();
+        settings.humanSLProfile = "preaz_" + humanRank;
+        settings.ignorePreRootHistory = this.ignorePreRootHistory;
+        settings.humanSLRootExploreProbWeightless = this.humanSLRootExploreProbWeightless;
+        settings.humanSLCpuctPermanent = this.humanSLCpuctPermanent;
+        settings.rootNumSymmetriesToSample = this.rootNumSymmetriesToSample;
+        return settings;
     }
 
     public void setResultSubmitter(ResultSubmitter submitter) {
@@ -145,17 +164,18 @@ public class Analysis {
         System.out.println("Visits: " + visits);
 
         String humanRank = normalizeRank(request.difficulty);
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank);
 
         // first we analyze the root position, establish a baseline for score and more
-        KataAnalysisResult rootKata = nodeAnalyzer.analyzeNode(brain, root, visits, null, humanRank);
+        KataAnalysisResult rootKata = nodeAnalyzer.analyzeNode(brain, root, visits, null, overrideSettings);
 
         // play the moves in the path, get a new position from that
         Node node = addPath(root, request.path);
         // analyze the parent node, so we know direct loss for the last move
-        KataAnalysisResult momKata = nodeAnalyzer.analyzeNode(brain, node.mom, visits, null, humanRank);
+        KataAnalysisResult momKata = nodeAnalyzer.analyzeNode(brain, node.mom, visits, null, overrideSettings);
 
         // analyze the end position after the path
-        KataAnalysisResult endKata = nodeAnalyzer.analyzeNode(brain, node, visits, null, humanRank);
+        KataAnalysisResult endKata = nodeAnalyzer.analyzeNode(brain, node, visits, null, overrideSettings);
         node.kres = endKata;
 
         // get last fragment for model
@@ -223,6 +243,7 @@ public class Analysis {
 
         int visits = determineVisits();
         String humanRank = normalizeRank(request.difficulty);
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank);
         int maxDepth = precalculationMaxDepth;
         int maxNodes = precalculationMaxNodes;
 
@@ -234,7 +255,7 @@ public class Analysis {
         int nodesCount = 0;
 
         // Analyze root
-        KataAnalysisResult rootKata = nodeAnalyzer.analyzeNode(brain, root, visits, null, humanRank);
+        KataAnalysisResult rootKata = nodeAnalyzer.analyzeNode(brain, root, visits, null, overrideSettings);
         root.kres = rootKata;
 
         AnalysisResult rootResult = buildRootAnalysisResult(request.difficulty, rootKata, weightsFile);
@@ -244,7 +265,7 @@ public class Analysis {
         KataAnalysisResult startKata = rootKata;
         if (!startPath.isEmpty()) {
             startNode = addPath(root, startPath);
-            startKata = nodeAnalyzer.analyzeNode(brain, startNode, visits, null, humanRank);
+            startKata = nodeAnalyzer.analyzeNode(brain, startNode, visits, null, overrideSettings);
             startNode.kres = startKata;
         }
 
@@ -281,7 +302,7 @@ public class Analysis {
 
                 // Analyze child
                 Node childNode = current.node.addBasicMove(pol.x, pol.y);
-                KataAnalysisResult childKata = nodeAnalyzer.analyzeNode(brain, childNode, visits, null, humanRank);
+                KataAnalysisResult childKata = nodeAnalyzer.analyzeNode(brain, childNode, visits, null, overrideSettings);
                 childNode.kres = childKata;
 
                 System.out.println("Precalc: " + path + " (depth=" + (current.depth + 1) + 
@@ -369,8 +390,9 @@ public class Analysis {
         MoveInfo mi = endKata.getMoveInfo(mv);
         Integer moveVisits = mi != null ? mi.visits : null;
 
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank);
         Node responseNode = node.addBasicMove(pol.x, pol.y);
-        KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, humanRank);
+        KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
         responseNode.kres = responseKata;
 
         double weight = moveVisits != null ? (double) moveVisits : 0.0;
@@ -399,9 +421,13 @@ public class Analysis {
         int visits = determineVisits();
         var nodeAnalyzer = new NodeAnalyzer(props);
 
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(rank);
+        // It is necessary to set ignorePreRootHistory to true here to avoid bias from move order in response analysis for ai rank
+        overrideSettings.ignorePreRootHistory = true;
+
         Point movePoint = Intersection.gtp2point(move.move);
         Node responseNode = node.addBasicMove(movePoint.x, movePoint.y);
-        KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, rank);
+        KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
         responseNode.kres = responseKata;
 
         AnalysisResult responseResult = buildAnalysisResult(result.path + "," + move.move, result.rank,
@@ -456,9 +482,10 @@ public class Analysis {
             }
 
             // Create the node for this optimal move and analyze it
+            KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank);
             Point movePoint = Intersection.gtp2point(optimalMove.move);
             Node optimalNode = momNode.addBasicMove(movePoint.x, movePoint.y);
-            KataAnalysisResult optimalKata = nodeAnalyzer.analyzeNode(brain, optimalNode, visits, null, humanRank);
+            KataAnalysisResult optimalKata = nodeAnalyzer.analyzeNode(brain, optimalNode, visits, null, overrideSettings);
             optimalNode.kres = optimalKata;
 
             AnalysisResult optimalResult = buildAnalysisResult(optimalPath, rank, optimalNode,

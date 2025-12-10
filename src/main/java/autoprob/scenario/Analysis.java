@@ -25,6 +25,17 @@ import java.util.Properties;
  * Orchestrates running KataGo analysis for API scenarios.
  */
 public class Analysis {
+    public enum HumanLikeStyle {
+        OBJECTIVE,
+        HUMAN,
+        // Ensuring all likely human moves are analyzed
+        HUMAN_ANALYZED,
+        // Heavily bias the search to anticipate human-like sequences rather than KataGo sequences.
+        HUMAN_BIASED,
+        // Bias the search to anticipate human-like sequences rather than KataGo sequences, but only for the opponent.
+        HUMAN_OPPONENT_BIASED
+    }
+
     private static final DecimalFormat df = new DecimalFormat("0.00");
 
     private static final String DEFAULT_HUMAN_RANK = "10k";
@@ -55,16 +66,7 @@ public class Analysis {
     private final int precalculationMaxNodes;
     private final int precalculationBatchSize;
     private final boolean precalculationDepthFirst;
-    private final boolean ignorePreRootHistory;
-    private final double humanSLRootExploreProbWeightless;
-    private final double humanSLRootExploreProbWeightful;
-    private final double humanSLCpuctPermanent;
-    private final int rootNumSymmetriesToSample;
-    private final double humanSLPlaExploreProbWeightful;
-    private final double humanSLOppExploreProbWeightful;
-    private final boolean useUncertainty;
-    private final double subtreeValueBiasFactor;
-    private final boolean useNoisePruning;
+    private final double precalculationMinPolicy;
 
     private ResultSubmitter resultSubmitter;
 
@@ -95,31 +97,63 @@ public class Analysis {
         this.precalculationMaxNodes = Integer.parseInt(props.getProperty("scenario.precalculation_max_nodes", "3000"));
         this.precalculationBatchSize = Integer.parseInt(props.getProperty("scenario.precalculation_batch_size", "10"));
         this.precalculationDepthFirst = props.getProperty("scenario.precalculation_strategy", "bfs").equalsIgnoreCase("dfs");
-        this.ignorePreRootHistory = Boolean.parseBoolean(props.getProperty("scenario.ignore_pre_root_history", "false"));
-        this.humanSLRootExploreProbWeightless = Double.parseDouble(props.getProperty("scenario.human_sl_root_explore_prob_weightless", "0.5"));
-        this.humanSLRootExploreProbWeightful = Double.parseDouble(props.getProperty("scenario.human_sl_root_explore_prob_weightful", "0.0"));
-        this.humanSLCpuctPermanent = Double.parseDouble(props.getProperty("scenario.human_sl_cpuct_permanent", "2.0"));
-        this.rootNumSymmetriesToSample = Integer.parseInt(props.getProperty("scenario.root_num_symmetries_to_sample", "8"));
-        this.humanSLPlaExploreProbWeightful = Double.parseDouble(props.getProperty("scenario.human_sl_pla_explore_prob_weightful", "0.0"));
-        this.humanSLOppExploreProbWeightful = Double.parseDouble(props.getProperty("scenario.human_sl_opp_explore_prob_weightful", "0.0"));
-        this.useUncertainty = Boolean.parseBoolean(props.getProperty("scenario.use_uncertainty", "false"));
-        this.subtreeValueBiasFactor = Double.parseDouble(props.getProperty("scenario.subtree_value_bias_factor", "0.0"));
-        this.useNoisePruning = Boolean.parseBoolean(props.getProperty("scenario.use_noise_pruning", "false"));
+        this.precalculationMinPolicy = Double.parseDouble(props.getProperty("scenario.precalculation_min_policy", "0.1"));
     }
 
-    private KataQuery.OverrideSettings buildOverrideSettings(String humanRank) {
+    private KataQuery.OverrideSettings buildOverrideSettings(String humanRank, HumanLikeStyle style) {
         KataQuery.OverrideSettings settings = new KataQuery.OverrideSettings();
         settings.humanSLProfile = "preaz_" + humanRank;
-        settings.ignorePreRootHistory = this.ignorePreRootHistory;
-        settings.humanSLRootExploreProbWeightless = this.humanSLRootExploreProbWeightless;
-        settings.humanSLRootExploreProbWeightful = this.humanSLRootExploreProbWeightful;
-        settings.humanSLCpuctPermanent = this.humanSLCpuctPermanent;
-        settings.rootNumSymmetriesToSample = this.rootNumSymmetriesToSample;
-        settings.humanSLPlaExploreProbWeightful = this.humanSLPlaExploreProbWeightful;
-        settings.humanSLOppExploreProbWeightful = this.humanSLOppExploreProbWeightful;
-        settings.useUncertainty = this.useUncertainty;
-        settings.subtreeValueBiasFactor = this.subtreeValueBiasFactor;
-        settings.useNoisePruning = this.useNoisePruning;
+
+        switch (style) {
+            case OBJECTIVE -> {
+                settings.ignorePreRootHistory = true;
+                settings.rootNumSymmetriesToSample = 1;
+            }
+            case HUMAN -> {
+                // Normally analysis ignores history to be unbiased by move order, but humans definitely behave differently based on recent moves
+                settings.ignorePreRootHistory = false;
+                // Set rootNumSymmetriesToSample to 2, or to 8 instead of the default 1. This will slightly add latency but improve the quality of the human policy by averaging more symmetries, which might be good when relying so heavily on the raw human policy without any search.
+                settings.rootNumSymmetriesToSample = 8;
+            }
+            case HUMAN_ANALYZED -> {
+                // Set humanSLRootExploreProbWeightless to 0.5 (spend about 50% of playouts to explore human moves, in a weightless way that doesn't bias KataGo's evaluations).
+                settings.humanSLRootExploreProbWeightless = 0.5;
+                settings.humanSLRootExploreProbWeightful = 0.0;
+                // Set humanSLCpuctPermanent to 2.0 or similar (when exploring human moves, ensure high-human-policy moves get many visits even if they lose a lot).
+                // Set it to something lower if you want to reduce visits for moves that are judged to be very bad.
+                settings.humanSLCpuctPermanent = 2.0;
+                settings.humanSLPlaExploreProbWeightful = 0.0;
+                settings.humanSLOppExploreProbWeightful = 0.0;
+            }
+            case HUMAN_BIASED -> {
+                // Heavily bias the search to anticipate human-like sequences rather than KataGo sequences.
+                // Set humanSLPlaExploreProbWeightful and humanSLOppExploreProbWeightful to 0.9 (spend about 90% of visits at every node using the human policy, in a weightful way that does bias KataGo's evaluations).
+                settings.humanSLRootExploreProbWeightless = 0.0;
+                settings.humanSLRootExploreProbWeightful = 0.5;
+                settings.humanSLCpuctPermanent = 1.0;
+                settings.humanSLPlaExploreProbWeightful = 0.9;
+                settings.humanSLOppExploreProbWeightful = 0.9;
+                settings.useUncertainty = false;
+                settings.subtreeValueBiasFactor = 0.0;
+                settings.useNoisePruning = false;
+            }
+            case HUMAN_OPPONENT_BIASED -> {
+                // Bias the search to anticipate human-like sequences rather than KataGo sequences, but only for the opponent.
+                // Set humanSLOppExploreProbWeightful to 0.8 (spend about 80% of visits at every node using the human policy, in a weightful way that does bias KataGo's values, but only for the opponent!).
+                // Set useUncertainty to false and subtreeValueBiasFactor to 0.0 and useNoisePruning to false (important, disables a few search features that add strength but are highly likely to interfere with this kind of weightful biasing).
+                // Set useNoisePruning to false is probably the most important of these - it adds the least strength in normal usage but might interfere the most. One could experiment with still enabling the other two for strength.
+                settings.humanSLRootExploreProbWeightless = 0.0;
+                settings.humanSLRootExploreProbWeightful = 0.0;
+                settings.humanSLCpuctPermanent = 0.5;
+                settings.humanSLPlaExploreProbWeightful = 0.0;
+                settings.humanSLOppExploreProbWeightful = 0.8;
+                settings.useUncertainty = false;
+                settings.subtreeValueBiasFactor = 0.0;
+                settings.useNoisePruning = false;
+            }
+        }
+
+        System.out.println("OverrideSettings [style=" + style + ", rank=" + humanRank + "]: " + gson.toJson(settings));
         return settings;
     }
 
@@ -182,7 +216,7 @@ public class Analysis {
         System.out.println("Visits: " + visits);
 
         String humanRank = normalizeRank(request.difficulty);
-        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank);
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.OBJECTIVE);
 
         // first we analyze the root position, establish a baseline for score and more
         KataAnalysisResult rootKata = nodeAnalyzer.analyzeNode(brain, root, visits, null, overrideSettings);
@@ -261,7 +295,7 @@ public class Analysis {
 
         int visits = determineVisits();
         String humanRank = normalizeRank(request.difficulty);
-        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank);
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.OBJECTIVE);
         int maxDepth = precalculationMaxDepth;
         int maxNodes = precalculationMaxNodes;
 
@@ -310,7 +344,7 @@ public class Analysis {
 
             for (var pol : current.kata.getTopPolicy(10, policy)) {
                 if (nodesCount >= maxNodes) break;
-                if (pol.policy < minHumanPolicy) break;
+                if (pol.policy < precalculationMinPolicy) break;
 
                 // Skip tenuki
                 if (lastMove != null && isTenuki(lastMove, new Point(pol.x, pol.y))) continue;
@@ -408,7 +442,8 @@ public class Analysis {
         MoveInfo mi = endKata.getMoveInfo(mv);
         Integer moveVisits = mi != null ? mi.visits : null;
 
-        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank);
+        // Use OBJECTIVE style for pure objective analysis
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.OBJECTIVE);
         Node responseNode = node.addBasicMove(pol.x, pol.y);
         KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
         responseNode.kres = responseKata;
@@ -439,7 +474,8 @@ public class Analysis {
         int visits = determineVisits();
         var nodeAnalyzer = new NodeAnalyzer(props);
 
-        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(rank);
+        // Use OBJECTIVE style for pure objective analysis
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(rank, HumanLikeStyle.OBJECTIVE);
         // It is necessary to set ignorePreRootHistory to true here to avoid bias from move order in response analysis for ai rank
         overrideSettings.ignorePreRootHistory = true;
 
@@ -500,7 +536,7 @@ public class Analysis {
             }
 
             // Create the node for this optimal move and analyze it
-            KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank);
+            KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.OBJECTIVE);
             Point movePoint = Intersection.gtp2point(optimalMove.move);
             Node optimalNode = momNode.addBasicMove(movePoint.x, movePoint.y);
             KataAnalysisResult optimalKata = nodeAnalyzer.analyzeNode(brain, optimalNode, visits, null, overrideSettings);

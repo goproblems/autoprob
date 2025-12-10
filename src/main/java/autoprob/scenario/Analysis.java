@@ -216,7 +216,7 @@ public class Analysis {
         System.out.println("Visits: " + visits);
 
         String humanRank = normalizeRank(request.difficulty);
-        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.OBJECTIVE);
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.HUMAN);
 
         // first we analyze the root position, establish a baseline for score and more
         KataAnalysisResult rootKata = nodeAnalyzer.analyzeNode(brain, root, visits, null, overrideSettings);
@@ -235,7 +235,7 @@ public class Analysis {
         String weightsFile = (fullModelPath.substring(fullModelPath.lastIndexOf('/') + 1)).substring(fullModelPath.lastIndexOf('\\') + 1);
 
         AnalysisResult result = buildAnalysisResult(request.path, request.difficulty, node,
-            endKata, momKata, root, rootKata, weightsFile, 0.0);
+            endKata, momKata, root, rootKata, weightsFile, 0.0, visits);
         result.analysis = gson.toJson(endKata);
         result.extraInfo = debugInfo.toString();
 
@@ -243,7 +243,7 @@ public class Analysis {
         ArrayList<AnalysisResult> results = new ArrayList<>();
 
         // Always add root node analysis for calculating total loss for scenario node
-        AnalysisResult rootResult = buildRootAnalysisResult(request.difficulty, rootKata, weightsFile);
+        AnalysisResult rootResult = buildRootAnalysisResult(request.difficulty, rootKata, weightsFile, visits);
         results.add(rootResult);
         results.add(result);
 
@@ -295,7 +295,7 @@ public class Analysis {
 
         int visits = determineVisits();
         String humanRank = normalizeRank(request.difficulty);
-        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.OBJECTIVE);
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.HUMAN);
         int maxDepth = precalculationMaxDepth;
         int maxNodes = precalculationMaxNodes;
 
@@ -310,7 +310,7 @@ public class Analysis {
         KataAnalysisResult rootKata = nodeAnalyzer.analyzeNode(brain, root, visits, null, overrideSettings);
         root.kres = rootKata;
 
-        AnalysisResult rootResult = buildRootAnalysisResult(request.difficulty, rootKata, weightsFile);
+        AnalysisResult rootResult = buildRootAnalysisResult(request.difficulty, rootKata, weightsFile, visits);
         nodesCount++;
 
         Node startNode = root;
@@ -363,7 +363,7 @@ public class Analysis {
 
                 // Build result
                 AnalysisResult result = buildAnalysisResult(path, request.difficulty, childNode,
-                    childKata, current.kata, root, rootKata, weightsFile, pol.policy);
+                    childKata, current.kata, root, rootKata, weightsFile, pol.policy, visits);
                 result.analysis = gson.toJson(childKata);
                 result.extraInfo = debugInfo.toString();
                 results.add(result);
@@ -439,18 +439,16 @@ public class Analysis {
 
     private void addResponseMove(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String humanRank, KataAnalysisResult.Policy pol, int visits, NodeAnalyzer nodeAnalyzer) throws Exception {
         String mv = Intersection.toGTPloc(pol.x, pol.y);
-        MoveInfo mi = endKata.getMoveInfo(mv);
-        Integer moveVisits = mi != null ? mi.visits : null;
 
-        // Use OBJECTIVE style for pure objective analysis
-        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.OBJECTIVE);
+        // Use HUMAN style for analysis
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.HUMAN);
         Node responseNode = node.addBasicMove(pol.x, pol.y);
         KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
         responseNode.kres = responseKata;
 
-        double weight = moveVisits != null ? (double) moveVisits : 0.0;
+        double weight = pol.policy;
         AnalysisResult responseResult = buildAnalysisResult(result.path + "," + mv, result.rank,
-            responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, weight);
+            responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, weight, visits);
         responseResult.analysis = gson.toJson(responseKata);
         responseResult.extraInfo = debugInfo.toString();
 
@@ -474,8 +472,8 @@ public class Analysis {
         int visits = determineVisits();
         var nodeAnalyzer = new NodeAnalyzer(props);
 
-        // Use OBJECTIVE style for pure objective analysis
-        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(rank, HumanLikeStyle.OBJECTIVE);
+        // Use HUMAN style for analysis
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(rank, HumanLikeStyle.HUMAN);
         // It is necessary to set ignorePreRootHistory to true here to avoid bias from move order in response analysis for ai rank
         overrideSettings.ignorePreRootHistory = true;
 
@@ -485,7 +483,7 @@ public class Analysis {
         responseNode.kres = responseKata;
 
         AnalysisResult responseResult = buildAnalysisResult(result.path + "," + move.move, result.rank,
-            responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, (double) move.visits);
+            responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, (double) move.visits, visits);
         responseResult.analysis = gson.toJson(responseKata);
         responseResult.extraInfo = debugInfo.toString();
 
@@ -536,14 +534,14 @@ public class Analysis {
             }
 
             // Create the node for this optimal move and analyze it
-            KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.OBJECTIVE);
+            KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.HUMAN);
             Point movePoint = Intersection.gtp2point(optimalMove.move);
             Node optimalNode = momNode.addBasicMove(movePoint.x, movePoint.y);
             KataAnalysisResult optimalKata = nodeAnalyzer.analyzeNode(brain, optimalNode, visits, null, overrideSettings);
             optimalNode.kres = optimalKata;
 
             AnalysisResult optimalResult = buildAnalysisResult(optimalPath, rank, optimalNode,
-                optimalKata, momKata, root, rootKata, weightsFile, (double) optimalMoveVisits);
+                optimalKata, momKata, root, rootKata, weightsFile, (double) optimalMoveVisits, visits);
             optimalResult.analysis = gson.toJson(optimalKata);
             optimalResult.extraInfo = debugInfo.toString();
 
@@ -594,7 +592,7 @@ public class Analysis {
         return kres.humanPolicy != null ? kres.humanPolicy : kres.policy;
     }
 
-    private AnalysisResult buildRootAnalysisResult(String rank, KataAnalysisResult rootKata, String weightsFile) {
+    private AnalysisResult buildRootAnalysisResult(String rank, KataAnalysisResult rootKata, String katagoWeightsFile, int katagoPlayouts) {
         AnalysisResult result = new AnalysisResult();
         result.path = "";
         result.rank = rank;
@@ -602,8 +600,8 @@ public class Analysis {
         result.loss = 0.0;
         result.urgency = 0.0;
         result.endness = minEndness;
-        result.katagoPlayouts = rootKata.rootInfo.visits;
-        result.katagoWeightsFile = weightsFile;
+        result.katagoPlayouts = katagoPlayouts;
+        result.katagoWeightsFile = katagoWeightsFile;
         result.weight = 0.0;
         result.analysis = gson.toJson(rootKata);
         result.extraInfo = "";
@@ -613,15 +611,15 @@ public class Analysis {
     private AnalysisResult buildAnalysisResult(String path, String rank, Node node,
                                                KataAnalysisResult nodeKata, KataAnalysisResult parentKata,
                                                Node root, KataAnalysisResult rootKata,
-                                               String weightsFile, double weight) {
+                                               String katagoWeightsFile, double weight, int katagoPlayouts) {
         AnalysisResult result = new AnalysisResult();
         result.path = path;
         result.rank = rank;
         result.score = nodeKata.blackScore();
         result.loss = nodeKata.blackScore() - parentKata.blackScore();
         result.urgency = calculateUrgency(node);
-        result.katagoPlayouts = nodeKata.rootInfo.visits;
-        result.katagoWeightsFile = weightsFile;
+        result.katagoPlayouts = katagoPlayouts;
+        result.katagoWeightsFile = katagoWeightsFile;
         result.weight = weight;
 
         debugInfo.setLength(0);

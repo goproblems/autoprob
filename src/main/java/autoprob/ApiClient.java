@@ -94,9 +94,11 @@ public class ApiClient {
         }
         
         String urlString = buildUrl(endpointKey, pathParams, queryString, props);
-        
-        System.out.println("Calling API URL: " + urlString);
-        
+
+        if (Boolean.parseBoolean(props.getProperty("api.debug", "false"))) {
+            System.out.println("Calling API URL: " + urlString);
+        }
+
         if (printCurl) {
             StringBuilder curlCmd = new StringBuilder("curl -X " + method + " \\\n");
             curlCmd.append("  \"" + urlString + "\" \\\n");

@@ -42,7 +42,9 @@ public class ScenarioHandler {
                     if (!response.isSuccess() || response.getData() == null) {
                         int status = response != null ? response.getStatusCode() : -1;
                         if (status == 204 || status == 404) {
-                            System.out.println("No pending analysis requests. Sleeping...");
+                            if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                                System.out.println("No pending analysis requests. Sleeping...");
+                            }
                         } else {
                             System.out.println("Failed to fetch analysis request. Status: " + status +
                                     ", message: " + response.getErrorMessage());
@@ -66,7 +68,14 @@ public class ScenarioHandler {
                         submission.results = batchResults;
                         String body = gson.toJson(submission);
                         System.out.println("Submitting " + batchResults.length + " results");
-                        System.out.println("Submitting JSON: " + body);
+                        if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                            System.out.println("Submitting JSON: " + body);
+                        } else {
+                            for (int i = 0; i < batchResults.length; i++) {
+                                AnalysisResult res = batchResults[i];
+                                System.out.println(" Result " + i + " " + res.toStringBrief());
+                            }
+                        }
                         ApiClient.ApiResponse<Object> submitResponse = apiClient.makePostRequest(
                                 "api.analysis.requests.submit", pathParams, body, Object.class, props);
                         if (submitResponse.isSuccess()) {

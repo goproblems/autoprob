@@ -84,7 +84,7 @@ public class ApiClient {
     
     public <T> ApiResponse<T> makeApiRequest(String endpointKey, String method, 
             Map<String, String> pathParams, String queryString, String requestBody, 
-            Class<T> responseType, Properties props) throws Exception {
+            java.lang.reflect.Type responseType, Properties props) throws Exception {
         boolean debug = Boolean.parseBoolean(props.getProperty("debug", "false"));
         boolean printCurl = Boolean.parseBoolean(props.getProperty("curl", "false"));
 
@@ -161,6 +161,11 @@ public class ApiClient {
     
     public <T> ApiResponse<T> makeGetRequest(String endpointKey, Map<String, String> pathParams, 
             String queryString, Class<T> responseType, Properties props) throws Exception {
+        return makeApiRequest(endpointKey, "GET", pathParams, queryString, null, responseType, props);
+    }
+    
+    public <T> ApiResponse<T> makeGetRequest(String endpointKey, Map<String, String> pathParams, 
+            String queryString, java.lang.reflect.Type responseType, Properties props) throws Exception {
         return makeApiRequest(endpointKey, "GET", pathParams, queryString, null, responseType, props);
     }
     

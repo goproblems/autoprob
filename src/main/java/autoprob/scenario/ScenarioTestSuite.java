@@ -35,7 +35,7 @@ public class ScenarioTestSuite {
     private static final String CYAN = "\033[36m";
     private static final String RESET = "\033[0m";
 
-    private record FailedTest(int caseId, String path, List<String> failures) {}
+    private record FailedTest(int caseId, String path, List<String> failures, ScenarioCase.Tolerances tolerances) {}
 
     public ScenarioTestSuite(Properties props) {
         this.props = props;
@@ -75,6 +75,24 @@ public class ScenarioTestSuite {
             throw e;
         }
 
+        String caseIdStr = props.getProperty("caseid");
+        if (caseIdStr != null && !caseIdStr.isEmpty()) {
+            try {
+                int targetCaseId = Integer.parseInt(caseIdStr);
+                allCases = allCases.stream()
+                    .filter(c -> c.id == targetCaseId)
+                    .toList();
+                if (allCases.isEmpty()) {
+                    System.err.println("No case found with ID: " + targetCaseId);
+                    return;
+                }
+                System.out.println("Running tests for case ID: " + targetCaseId);
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid caseid format: " + caseIdStr);
+                return;
+            }
+        }
+
         List<ScenarioCase> testCases = allCases.stream()
                 .filter(c -> c.isActive && c.isTestCase)
                 .toList();
@@ -105,8 +123,9 @@ public class ScenarioTestSuite {
                     continue;
                 }
 
-                System.out.println("Scenario: " + testCase.scenario.sgf +
-                                 (testCase.description != null ? " - " + testCase.description : ""));
+                System.out.println(YELLOW + "Case: " + testCase.id +
+                                 (testCase.description != null ? " - " + testCase.description : "") + RESET);
+                System.out.println(YELLOW + "Path: " + testCase.path + RESET);
 
                 for (ScenarioCase.Expectation expectation : testCase.expectations) {
                     currentTest++;
@@ -115,12 +134,12 @@ public class ScenarioTestSuite {
                     int progress = (currentTest * 100) / totalTests;
                     int barLength = 30;
                     int filled = (progress * barLength) / 100;
-                    StringBuilder progressBar = new StringBuilder("[");
+                    StringBuilder progressBar = new StringBuilder(YELLOW + "[");
                     for (int i = 0; i < barLength; i++) {
                         progressBar.append(i < filled ? "=" : " ");
                     }
-                    progressBar.append("] ").append(progress).append("%");
-                    System.out.println("\rTest " + currentTest + "/" + totalTests + " " + progressBar);
+                    progressBar.append("] ").append(progress).append("%" + RESET);
+                    System.out.println(YELLOW + "\rTest " + currentTest + "/" + totalTests + " " + RESET + progressBar);
 
                     // Run analysis
                     AnalysisRequest request = new AnalysisRequest();
@@ -187,7 +206,7 @@ public class ScenarioTestSuite {
                     if (diff > tolerance) {
                         passed = false;
                         failures.add("endness: expected " + df.format(expectation.expected.endness) + 
-                                   ", got " + df.format(result.endness));
+                                   ", got " + df.format(result.endness) + " (diff: " + df.format(diff) + ", tolerance: " + df.format(tolerance) + ")");
                     }
                 }
 
@@ -197,7 +216,7 @@ public class ScenarioTestSuite {
                     if (diff > tolerance) {
                         passed = false;
                         failures.add("urgency: expected " + df.format(expectation.expected.urgency) + 
-                                   ", got " + df.format(result.urgency));
+                                   ", got " + df.format(result.urgency) + " (diff: " + df.format(diff) + ", tolerance: " + df.format(tolerance) + ")");
                     }
                 }
 
@@ -208,17 +227,17 @@ public class ScenarioTestSuite {
                     if (diff > tolerance) {
                         passed = false;
                         failures.add("totalLoss: expected " + df.format(expectation.expected.totalLoss) + 
-                                   ", got " + df.format(totalLoss));
+                                   ", got " + df.format(totalLoss) + " (diff: " + df.format(diff) + ", tolerance: " + df.format(tolerance) + ")");
                     }
                 }
 
                 if (passed) {
                     passedTests++;
-                    System.out.println(GREEN + "  Test passed - Case ID: " + testCase.id + RESET);
+                    System.out.println(GREEN + "Test passed - Case ID: " + testCase.id + RESET);
                 } else {
                     failedTests++;
-                    System.out.println(RED + "  Test failed - Case ID: " + testCase.id + RESET);
-                    failedTestDetails.add(new FailedTest(testCase.id, expectation.path, new ArrayList<>(failures)));
+                    System.out.println(RED + "Test failed - Case ID: " + testCase.id + RESET);
+                    failedTestDetails.add(new FailedTest(testCase.id, expectation.path, new ArrayList<>(failures), tol));
                 }
             }
         }
@@ -230,7 +249,9 @@ public class ScenarioTestSuite {
             System.out.println("======================");
             System.out.println("Total tests: " + totalTests);
             System.out.println(GREEN + "Passed: " + passedTests + " (" + (passedTests * 100 / totalTests) + "%)" + RESET);
-            System.out.println(RED + "Failed: " + failedTests + " (" + (failedTests * 100 / totalTests) + "%)" + RESET);
+            if (failedTests > 0) {
+                System.out.println(RED + "Failed: " + failedTests + " (" + (failedTests * 100 / totalTests) + "%)" + RESET);
+            }
 
             if (!failedTestDetails.isEmpty()) {
                 System.out.println("\n======================");

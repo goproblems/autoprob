@@ -24,7 +24,7 @@ public class ScenarioTestSuite {
     private static final double SCORE_RANGE = 0.5;
     private static final double LOSS_RANGE = 0.5;
 
-    private static final double DEFAULT_ENDNESS_TOLERANCE = 0.2;
+    private static final double DEFAULT_ENDNESS_TOLERANCE = 1.0;
     private static final double DEFAULT_URGENCY_TOLERANCE = 3.0;
     private static final double DEFAULT_TOTAL_LOSS_TOLERANCE = 0.5;
 

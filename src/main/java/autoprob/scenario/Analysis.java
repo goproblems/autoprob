@@ -42,6 +42,9 @@ public class Analysis {
     private static final String VISITS_PROPERTY = "scenario.analysis.visits";
     private static final String FALLBACK_VISITS_PROPERTY = "search.visits";
 
+    // Small offset added to depthFactor to prevent endness from being exactly 0
+    private static final double DEPTH_FACTOR_OFFSET = 0.0001;
+
     private final Properties props;
     private final KataBrain brain;
     private final Parser parser = new Parser();
@@ -697,7 +700,7 @@ public class Analysis {
         // Depth of tree - deeper means more likely to end (gentle acceleration)
         int depthBeyondMin = Math.max(0, node.depth - minDepthForEndness);
         double depthRatio = depthBeyondMin / depthTargetMoves;
-        double depthFactor = Math.pow(depthRatio, depthPower);
+        double depthFactor = Math.pow(depthRatio, depthPower) + DEPTH_FACTOR_OFFSET;
         endness += depthFactor;
         debugInfo.append(String.format("DepthFactor: %.2f;", depthFactor));
 

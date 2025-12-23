@@ -53,6 +53,8 @@ public class Analysis {
 
     // Configurable parameters loaded from properties
     private final double minHumanPolicy;
+    private final boolean includeOptimalMoves;
+    private final boolean includeRootAnalysis;
     private final int minDepthForEndness;
     private final double scoreDropThreshold;
     private final double maxEndness;
@@ -85,6 +87,8 @@ public class Analysis {
 
         // Load configurable parameters from properties
         this.minHumanPolicy = Double.parseDouble(props.getProperty("scenario.min_response_policy", "0.05"));
+        this.includeOptimalMoves = Boolean.parseBoolean(props.getProperty("scenario.include_optimal_moves", "false"));
+        this.includeRootAnalysis = Boolean.parseBoolean(props.getProperty("scenario.include_root_analysis", "false"));
         this.minDepthForEndness = Integer.parseInt(props.getProperty("scenario.min_depth_for_endness", "5"));
         this.scoreDropThreshold = Double.parseDouble(props.getProperty("scenario.score_drop_threshold", "15.0"));
         this.maxEndness = Double.parseDouble(props.getProperty("scenario.max_endness", "1.0"));
@@ -226,6 +230,21 @@ public class Analysis {
         // first we analyze the root position, establish a baseline for score and more
         KataAnalysisResult rootKata = nodeAnalyzer.analyzeNode(brain, root, visits, null, overrideSettings);
 
+        // get last fragment for model
+        String fullModelPath = props.getProperty("kata.model");
+        String weightsFile = (fullModelPath.substring(fullModelPath.lastIndexOf('/') + 1)).substring(fullModelPath.lastIndexOf('\\') + 1);
+
+        // If path is empty, only analyze root node
+        if (request.path == null || request.path.isEmpty()) {
+            System.out.println("Empty path - analyzing root node only");
+            AnalysisResult rootResult = buildRootAnalysisResult(request.difficulty, rootKata, weightsFile, visits);
+            rootResult.isAnalyzed = true;
+
+            AnalysisResult[] resultArray = new AnalysisResult[] { rootResult };
+            submitResults(resultArray);
+            return resultArray;
+        }
+
         // play the moves in the path, get a new position from that
         Node node = addPath(root, request.path);
         // analyze the parent node, so we know direct loss for the last move
@@ -235,29 +254,37 @@ public class Analysis {
         KataAnalysisResult endKata = nodeAnalyzer.analyzeNode(brain, node, visits, null, overrideSettings);
         node.kres = endKata;
 
-        // get last fragment for model
-        String fullModelPath = props.getProperty("kata.model");
-        String weightsFile = (fullModelPath.substring(fullModelPath.lastIndexOf('/') + 1)).substring(fullModelPath.lastIndexOf('\\') + 1);
-
         AnalysisResult result = buildAnalysisResult(request.path, request.difficulty, node,
             endKata, momKata, root, rootKata, weightsFile, 0.0, visits);
         result.analysis = gson.toJson(endKata);
         result.extraInfo = debugInfo.toString();
+        result.isAnalyzed = true;
 
         // make extendable list of possible results
         ArrayList<AnalysisResult> results = new ArrayList<>();
 
-        // Always add root node analysis for calculating total loss for scenario node
-        AnalysisResult rootResult = buildRootAnalysisResult(request.difficulty, rootKata, weightsFile, visits);
-        results.add(rootResult);
+        // Add root node analysis if enabled (for calculating total loss for scenario node in the same run, can reduce total loss errors)
+        if (includeRootAnalysis) {
+            AnalysisResult rootResult = buildRootAnalysisResult(request.difficulty, rootKata, weightsFile, visits);
+            rootResult.isAnalyzed = true;
+            results.add(rootResult);
+        }
+
         results.add(result);
 
-        // Add optimal moves from parent node (momKata) - these are the best moves KataGo recommends at that position
-        addOptimalMoves(node.mom, momKata, root, rootKata, request.path, request.difficulty, weightsFile, results);
+        // Determine if current move is human move or computer move
+        boolean isHumanMove = (node.getToMove() != root.getToMove());
+
+        // Add optimal moves from parent node if enabled
+        if (includeOptimalMoves) {
+            addOptimalMoves(node.mom, momKata, root, rootKata, request.path, request.difficulty, weightsFile, results);
+        }
 
         // if not an end move, we can add possible response moves from katago
-        if (result.endness < 0.0) {
-            if (humanRank.equals("ai")) {
+        // Only add response moves for HUMAN moves
+        // For human moves, always add responses regardless of endness value
+        if (isHumanMove) {
+            if (humanRank.equals("max")) {
                 addResponseResults(brain, node, root, rootKata, result, results, endKata, humanRank);
             }
             else {
@@ -295,7 +322,7 @@ public class Analysis {
 
         System.out.println("Precalculation mode: strategy=" + (precalculationDepthFirst ? "dfs" : "bfs") +
             ", startPath=" + (startPath.isEmpty() ? "(root)" : startPath) +
-            ", maxDepth=" + precalculationMaxDepth + 
+            ", maxDepth=" + precalculationMaxDepth +
             ", maxNodes=" + precalculationMaxNodes + ", batchSize=" + precalculationBatchSize);
 
         int visits = determineVisits();
@@ -371,6 +398,7 @@ public class Analysis {
                     childKata, current.kata, root, rootKata, weightsFile, pol.policy, visits);
                 result.analysis = gson.toJson(childKata);
                 result.extraInfo = debugInfo.toString();
+                result.isAnalyzed = true;
                 results.add(result);
                 nodesCount++;
 
@@ -409,13 +437,15 @@ public class Analysis {
         List<KataAnalysisResult.Policy> top = endKata.getTopPolicy(10, endKata.humanPolicy); // gets all, sorted
         int visits = determineVisits();
         var nodeAnalyzer = new NodeAnalyzer(props);
-        int sizeBefore = results.size();
         Point currentMove = node.findMove();
 
-        // run through these in order, if they are high enough policy and in a good location, add to responses
+        List<KataAnalysisResult.Policy> validCandidates = new ArrayList<>();
+
+        // Collect all valid candidate moves
         for (var pol : top) {
             String mv = Intersection.toGTPloc(pol.x, pol.y);
-            System.out.println("human response: " + mv + " pol: " + df.format(pol.policy));
+            System.out.println("computer response candidate: " + mv + " pol: " + df.format(pol.policy));
+
             if (pol.policy < minHumanPolicy) {
                 System.out.println("  too low policy, skipping");
                 continue;
@@ -426,38 +456,102 @@ public class Analysis {
                 continue;
             }
 
-            addResponseMove(brain, node, root, rootKata, result, results, endKata, humanRank, pol, visits, nodeAnalyzer);
+            validCandidates.add(pol);
         }
 
-        // No response added due to policy/tenuki filters, force add the first non-tenuki move
-        if (results.size() == sizeBefore) {
+        // If no valid candidates due to filters, force add first non-tenuki move
+        if (validCandidates.isEmpty()) {
             for (var pol : top) {
                 if (currentMove != null && isTenuki(currentMove, new Point(pol.x, pol.y))) {
                     continue;
                 }
-                System.out.println("Forcing response (no valid moves): " + Intersection.toGTPloc(pol.x, pol.y) + " pol: " + df.format(pol.policy));
-                addResponseMove(brain, node, root, rootKata, result, results, endKata, humanRank, pol, visits, nodeAnalyzer);
-                return;
+                System.out.println("Forcing response (no valid candidates): " + Intersection.toGTPloc(pol.x, pol.y) + " pol: " + df.format(pol.policy));
+                validCandidates.add(pol);
+                break;
+            }
+        }
+
+        // Select one candidate to analyze based on humanPolicy
+        KataAnalysisResult.Policy selectedToAnalyze = selectCandidateByWeight(validCandidates);
+        System.out.println("  Selected to analyze: " + Intersection.toGTPloc(selectedToAnalyze.x, selectedToAnalyze.y) +
+                         " (policy: " + df.format(selectedToAnalyze.policy) + ")");
+
+        // Analyze selected candidate, add others as unanalyzed
+        for (var pol : validCandidates) {
+            String mv = Intersection.toGTPloc(pol.x, pol.y);
+            String responsePath = result.path + "," + mv;
+
+            if (pol == selectedToAnalyze) {
+                // Fully analyze the selected response
+                System.out.println("  Analyzing computer response: " + mv);
+                KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.HUMAN);
+                Node responseNode = node.addBasicMove(pol.x, pol.y);
+                KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
+                responseNode.kres = responseKata;
+
+                double weight = pol.policy;
+                AnalysisResult responseResult = buildAnalysisResult(responsePath, result.rank,
+                    responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, weight, visits);
+                responseResult.analysis = gson.toJson(responseKata);
+                responseResult.extraInfo = debugInfo.toString();
+                responseResult.isAnalyzed = true;
+
+                results.add(responseResult);
+            } else {
+                // Add remaining candidates as unanalyzed
+                System.out.println("  Adding unanalyzed candidate: " + mv + " (weight only)");
+                AnalysisResult candidateResult = new AnalysisResult();
+                candidateResult.path = responsePath;
+                candidateResult.rank = result.rank;
+                candidateResult.weight = pol.policy;
+                candidateResult.katagoWeightsFile = result.katagoWeightsFile;
+                candidateResult.isAnalyzed = false;
+                candidateResult.loss = 0.0;
+                candidateResult.score = 0.0;
+                candidateResult.urgency = 0.0;
+                candidateResult.endness = minEndness;
+                candidateResult.katagoPlayouts = 0;
+
+                results.add(candidateResult);
             }
         }
     }
 
-    private void addResponseMove(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String humanRank, KataAnalysisResult.Policy pol, int visits, NodeAnalyzer nodeAnalyzer) throws Exception {
-        String mv = Intersection.toGTPloc(pol.x, pol.y);
+    /**
+     * Select one candidate from the list based on their policy weights.
+     * Uses weighted random selection with proper handling of edge cases.
+     *
+     * @param candidates List of candidate moves with their policies
+     * @return Selected candidate
+     */
+    private KataAnalysisResult.Policy selectCandidateByWeight(List<KataAnalysisResult.Policy> candidates) {
+        if (candidates.isEmpty()) {
+            throw new IllegalArgumentException("Cannot select from empty candidate list");
+        }
+        if (candidates.size() == 1) {
+            return candidates.get(0);
+        }
 
-        // Use HUMAN style for analysis
-        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.HUMAN);
-        Node responseNode = node.addBasicMove(pol.x, pol.y);
-        KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
-        responseNode.kres = responseKata;
+        // Calculate total weight
+        double totalWeight = 0.0;
+        for (var candidate : candidates) {
+            totalWeight += candidate.policy;
+        }
 
-        double weight = pol.policy;
-        AnalysisResult responseResult = buildAnalysisResult(result.path + "," + mv, result.rank,
-            responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, weight, visits);
-        responseResult.analysis = gson.toJson(responseKata);
-        responseResult.extraInfo = debugInfo.toString();
+        // Generate random value in [0, totalWeight)
+        double random = Math.random() * totalWeight;
 
-        results.add(responseResult);
+        // Select candidate based on cumulative weight
+        double cumulative = 0.0;
+        for (var candidate : candidates) {
+            cumulative += candidate.policy;
+            if (random < cumulative) {
+                return candidate;
+            }
+        }
+
+        // Fallback the first candidate
+        return candidates.get(0);
     }
 
     private void addResponseResults(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String rank) throws Exception {
@@ -491,6 +585,7 @@ public class Analysis {
             responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, (double) move.visits, visits);
         responseResult.analysis = gson.toJson(responseKata);
         responseResult.extraInfo = debugInfo.toString();
+        responseResult.isAnalyzed = true;
 
         results.add(responseResult);
     }
@@ -549,6 +644,7 @@ public class Analysis {
                 optimalKata, momKata, root, rootKata, weightsFile, (double) optimalMoveVisits, visits);
             optimalResult.analysis = gson.toJson(optimalKata);
             optimalResult.extraInfo = debugInfo.toString();
+            optimalResult.isAnalyzed = true;
 
             results.add(optimalResult);
         }

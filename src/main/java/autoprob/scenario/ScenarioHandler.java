@@ -20,7 +20,8 @@ public class ScenarioHandler {
         this.sleepMs = Long.parseLong(props.getProperty("scenario.poll.interval.ms", "5000"));
     }
 
-    private static class ScenarioResultSubmission {
+    private static class ScenarioResultSubmitBody {
+        Integer requestId;  // Optional field for request tracking
         AnalysisResult[] results;
     }
 
@@ -61,10 +62,10 @@ public class ScenarioHandler {
 
                     Map<String, String> pathParams = new HashMap<>();
                     pathParams.put("scenarioId", String.valueOf(request.scenario.id));
-                    pathParams.put("id", String.valueOf(request.id));
 
                     analysis.setResultSubmitter(batchResults -> {
-                        ScenarioResultSubmission submission = new ScenarioResultSubmission();
+                        ScenarioResultSubmitBody submission = new ScenarioResultSubmitBody();
+                        submission.requestId = request.id;
                         submission.results = batchResults;
                         String body = gson.toJson(submission);
                         System.out.println("Submitting " + batchResults.length + " results");

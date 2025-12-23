@@ -36,6 +36,14 @@ public class QueryBuilder {
 		kq.includeOwnership = true;
 		kq.includeMovesOwnership = false;
 		kq.includeOwnershipStdev = true;
+		// Use komi from root node's SGF if available, otherwise default to 7.5
+		Node root = node.getRoot();
+		try {
+			String komiStr = root.getXtra("KM");
+			kq.komi = (komiStr != null) ? Double.valueOf(komiStr) : 7.5;
+		} catch (NumberFormatException e) {
+			kq.komi = 7.5;
+		}
 		int toMove = node.getToMove();
 		kq.initialPlayer = Intersection.color2katagoname(toMove);
 
@@ -85,6 +93,14 @@ public class QueryBuilder {
 		kq.includeOwnership = true;
 		kq.includeMovesOwnership = false;
 		kq.includeOwnershipStdev = true;
+		// Use komi from root node's SGF if available, otherwise default to 7.5
+		Node root = node.getRoot();
+		try {
+			String komiStr = root.getXtra("KM");
+			kq.komi = (komiStr != null) ? Double.valueOf(komiStr) : 7.5;
+		} catch (NumberFormatException e) {
+			kq.komi = 7.5;
+		}
 		Node mom = node.mom;
 		int toMove = mom.getToMove();
 		kq.initialPlayer = Intersection.color2katagoname(toMove);

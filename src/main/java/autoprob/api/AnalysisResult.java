@@ -17,6 +17,7 @@ public class AnalysisResult {
     public String katagoWeightsFile;
     public String extraInfo;
     public String analysis;
+    public Boolean isAnalyzed;
 
     private static final DecimalFormat df = new DecimalFormat("0.00");
 

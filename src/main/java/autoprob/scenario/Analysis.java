@@ -459,15 +459,13 @@ public class Analysis {
             validCandidates.add(pol);
         }
 
-        // If no valid candidates due to filters, force add first non-tenuki move
+        // If no valid candidates due to filters, force add highest policy move (even if tenuki)
         if (validCandidates.isEmpty()) {
-            for (var pol : top) {
-                if (currentMove != null && isTenuki(currentMove, new Point(pol.x, pol.y))) {
-                    continue;
-                }
-                System.out.println("Forcing response (no valid candidates): " + Intersection.toGTPloc(pol.x, pol.y) + " pol: " + df.format(pol.policy));
+            if (!top.isEmpty()) {
+                var pol = top.get(0); // Highest policy move
+                String forcedMove = Intersection.toGTPloc(pol.x, pol.y);
+                System.out.println("Forcing response (no valid candidates, allowing tenuki): " + forcedMove + " pol: " + df.format(pol.policy));
                 validCandidates.add(pol);
-                break;
             }
         }
 

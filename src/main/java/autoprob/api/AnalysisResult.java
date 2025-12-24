@@ -31,6 +31,7 @@ public class AnalysisResult {
                 ", rank='" + rank + '\'' +
                 ", weight=" + df.format(weight) +
                 ", katagoPlayouts=" + katagoPlayouts +
+                ", isAnalyzed=" + isAnalyzed +
                 '}';
     }
 }

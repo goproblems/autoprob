@@ -23,5 +23,6 @@ public class AnalysisRequest {
         public String createdAt;
         public String imageUrl;
         public String toMove;
+        public String[] analyzedRootRanks;
     }
 }

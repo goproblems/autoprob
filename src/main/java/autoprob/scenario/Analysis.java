@@ -54,7 +54,6 @@ public class Analysis {
     // Configurable parameters loaded from properties
     private final double minHumanPolicy;
     private final boolean includeOptimalMoves;
-    private final boolean includeRootAnalysis;
     private final int minDepthForEndness;
     private final double scoreDropThreshold;
     private final double maxEndness;
@@ -88,7 +87,6 @@ public class Analysis {
         // Load configurable parameters from properties
         this.minHumanPolicy = Double.parseDouble(props.getProperty("scenario.min_response_policy", "0.05"));
         this.includeOptimalMoves = Boolean.parseBoolean(props.getProperty("scenario.include_optimal_moves", "false"));
-        this.includeRootAnalysis = Boolean.parseBoolean(props.getProperty("scenario.include_root_analysis", "false"));
         this.minDepthForEndness = Integer.parseInt(props.getProperty("scenario.min_depth_for_endness", "5"));
         this.scoreDropThreshold = Double.parseDouble(props.getProperty("scenario.score_drop_threshold", "15.0"));
         this.maxEndness = Double.parseDouble(props.getProperty("scenario.max_endness", "1.0"));
@@ -263,8 +261,18 @@ public class Analysis {
         // make extendable list of possible results
         ArrayList<AnalysisResult> results = new ArrayList<>();
 
-        // Add root node analysis if enabled (for calculating total loss for scenario node in the same run, can reduce total loss errors)
-        if (includeRootAnalysis) {
+        // Add root result if no analyzed node for this difficulty
+        boolean rootAnalyzed = false;
+        if (request.scenario.analyzedRootRanks != null) {
+            for (String analyzedRank : request.scenario.analyzedRootRanks) {
+                if (analyzedRank.equals(request.difficulty)) {
+                    rootAnalyzed = true;
+                    break;
+                }
+            }
+        }
+        if (!rootAnalyzed) {
+            System.out.println("Adding root result (No analyzed difficulty=" + request.difficulty + " node found)");
             AnalysisResult rootResult = buildRootAnalysisResult(request.difficulty, rootKata, weightsFile, visits);
             rootResult.isAnalyzed = true;
             results.add(rootResult);
@@ -752,7 +760,9 @@ public class Analysis {
                                    KataAnalysisResult rootKata) {
         // Success - player move with positive score AND gained advantage from root
         boolean isPlayerMove = (node.getToMove() != root.getToMove());
+        // TODO: if we check score drop on frontend, we may not need rootKata here to reduce one analysis
         double scoreDelta = result.score - rootKata.blackScore(); // From black's perspective
+        double displayLoss = (root.getToMove() == Intersection.BLACK) ? -scoreDelta : scoreDelta;
         boolean hasAdvantage = (root.getToMove() == Intersection.BLACK && scoreDelta > 0) ||
                                (root.getToMove() == Intersection.WHITE && scoreDelta < 0);
 
@@ -764,21 +774,25 @@ public class Analysis {
             // return maxEndness;
         }
 
-        // Significant score change
-        double scoreLoss = (root.getToMove() == Intersection.BLACK) ? -scoreDelta : scoreDelta;
-        if (Math.abs(scoreLoss) >= scoreDropThreshold) {
-            debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreLoss));
-            return maxEndness;
-        }
-
-        double endness = minEndness;
-
         // Calculate urgency to determine if position is important enough to continue
         double urgency = calculateUrgency(node);
         if (urgency >= minUrgencyToContinue) {
             debugInfo.append(String.format("Endness: high urgency (%.2f), continue;", urgency));
             return minEndness;
         }
+
+        // Significant score change
+        if (Math.abs(displayLoss) >= scoreDropThreshold) {
+            // End on: (1) player victory, or (2) computer move after player failure
+            if ((isPlayerMove && displayLoss < 0) || (!isPlayerMove && displayLoss > 0)) {
+                debugInfo.append(String.format("Endness: significant score change (%.1f);", displayLoss));
+                return maxEndness;
+            }
+            // Don't end on: (1) player failure (need computer response), or (2) computer move in victory case
+            debugInfo.append(String.format("Significant score change (%.1f), continuing;", displayLoss));
+        }
+
+        double endness = minEndness;
 
         // Value of a tenuki - check if KataGo wants to tenuki
         // Only check on player's move

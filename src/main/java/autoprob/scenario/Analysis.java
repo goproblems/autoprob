@@ -43,7 +43,7 @@ public class Analysis {
     private static final String FALLBACK_VISITS_PROPERTY = "search.visits";
 
     // Small offset added to depthFactor to prevent endness from being exactly 0
-    private static final double DEPTH_FACTOR_OFFSET = 0.0001;
+    private static final double DEPTH_FACTOR_OFFSET = 0.01;
 
     private final Properties props;
     private final KataBrain brain;
@@ -58,6 +58,7 @@ public class Analysis {
     private final double scoreDropThreshold;
     private final double maxEndness;
     private final double minEndness;
+    private final double ownershipThreshold;
     private final double depthTargetMoves;
     private final double depthPower;
     private final int tenukiHistoryMoves;
@@ -91,6 +92,7 @@ public class Analysis {
         this.scoreDropThreshold = Double.parseDouble(props.getProperty("scenario.score_drop_threshold", "15.0"));
         this.maxEndness = Double.parseDouble(props.getProperty("scenario.max_endness", "1.0"));
         this.minEndness = Double.parseDouble(props.getProperty("scenario.min_endness", "-1.0"));
+        this.ownershipThreshold = Double.parseDouble(props.getProperty("scenario.ownership_threshold", "0.6"));
         this.depthTargetMoves = Double.parseDouble(props.getProperty("scenario.depth_target_moves", "30.0"));
         this.depthPower = Double.parseDouble(props.getProperty("scenario.depth_power", "1.1"));
         this.tenukiHistoryMoves = Integer.parseInt(props.getProperty("scenario.tenuki_history_moves", "3"));
@@ -783,13 +785,18 @@ public class Analysis {
 
         // Significant score change
         if (Math.abs(displayLoss) >= scoreDropThreshold) {
-            // End on: (1) player victory, or (2) computer move after player failure
-            if ((isPlayerMove && displayLoss < 0) || (!isPlayerMove && displayLoss > 0)) {
-                debugInfo.append(String.format("Endness: significant score change (%.1f);", displayLoss));
-                return maxEndness;
+            // Check ownership of human moves in path to determine if stones are clearly owned by opponent
+            if (!checkHumanMovesOwnership(node, root)) {
+                debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", displayLoss));
+            } else {
+                // End on: (1) player victory, or (2) computer move after player failure
+                if ((isPlayerMove && displayLoss < 0) || (!isPlayerMove && displayLoss > 0)) {
+                    debugInfo.append(String.format("Endness: significant score change (%.1f);", displayLoss));
+                    return maxEndness;
+                }
+                // Don't end on: (1) player failure (need computer response), or (2) computer move in victory case
+                debugInfo.append(String.format("Significant score change (%.1f), continuing;", displayLoss));
             }
-            // Don't end on: (1) player failure (need computer response), or (2) computer move in victory case
-            debugInfo.append(String.format("Significant score change (%.1f), continuing;", displayLoss));
         }
 
         double endness = minEndness;
@@ -828,6 +835,80 @@ public class Analysis {
         // TODO: Total loss - maybe change to continuous value instead of threshold
 
         return endness;
+    }
+
+    /**
+     * Check if human moves in the path have clear ownership by the opponent.
+     * This is used to determine if stones added by human moves are clearly captured/dead.
+     *
+     * @param node Current node (end of path)
+     * @param root Root node (start of path)
+     * @return true if human moves have clear opponent ownership (should trigger endness),
+     *         false if ownership is unclear (should not trigger endness)
+     */
+    private boolean checkHumanMovesOwnership(Node node, Node root) {
+        if (node.kres == null || node.kres.ownership == null) {
+            debugInfo.append("No ownership data, assuming unclear;");
+            return false;
+        }
+
+        List<Point> humanMovePositions = new ArrayList<>();
+        Node current = node;
+        int playerColor = root.getToMove();
+
+        while (current != null && current != root) {
+            boolean isHumanMove = (current.getToMove() != playerColor);
+            if (isHumanMove) {
+                Point move = current.findMove();
+                if (move != null && move.x >= 0 && move.x < 19 && move.y >= 0 && move.y < 19) {
+                    humanMovePositions.add(move);
+                }
+            }
+            current = current.mom;
+        }
+
+        if (humanMovePositions.isEmpty()) {
+            debugInfo.append("No human moves found;");
+            return false;
+        }
+
+        double totalOwnership = 0.0;
+        int validPositions = 0;
+
+        for (Point pos : humanMovePositions) {
+            int index = pos.x + pos.y * 19;
+            if (index >= 0 && index < node.kres.ownership.size()) {
+                double ownership = node.kres.ownership.get(index);
+                totalOwnership += ownership;
+                validPositions++;
+            }
+        }
+
+        if (validPositions == 0) {
+            debugInfo.append("No valid ownership positions;");
+            return false;
+        }
+
+        double avgOwnership = totalOwnership / validPositions;
+
+        // Check if ownership clearly belongs to opponent
+        // Ownership: +1 (black owns) to -1 (white owns)
+        boolean clearlyOpponentOwned;
+        if (playerColor == Intersection.BLACK) {
+            // Human played black stones, opponent is white
+            // Check if avg ownership < -threshold (white owns these positions)
+            clearlyOpponentOwned = avgOwnership < -ownershipThreshold;
+        } else {
+            // Human played white stones, opponent is black
+            // Check if avg ownership > threshold (black owns these positions)
+            clearlyOpponentOwned = avgOwnership > ownershipThreshold;
+        }
+
+        String playerColorStr = (playerColor == Intersection.BLACK) ? "B" : "W";
+        debugInfo.append(String.format("Ownership check: %d human moves (player=%s), avg=%.2f, threshold=%.2f, clear=%s;",
+            validPositions, playerColorStr, avgOwnership, ownershipThreshold, clearlyOpponentOwned));
+
+        return clearlyOpponentOwned;
     }
 
     /**

@@ -35,7 +35,7 @@ public class ScenarioTestSuite {
     private static final String CYAN = "\033[36m";
     private static final String RESET = "\033[0m";
 
-    private record FailedTest(int caseId, String path, List<String> failures, ScenarioCase.Tolerances tolerances) {}
+    private record FailedTest(int caseId, String description, String path, List<String> failures, ScenarioCase.Tolerances tolerances) {}
 
     public ScenarioTestSuite(Properties props) {
         this.props = props;
@@ -237,7 +237,7 @@ public class ScenarioTestSuite {
                 } else {
                     failedTests++;
                     System.out.println(RED + "Test failed - Case ID: " + testCase.id + RESET);
-                    failedTestDetails.add(new FailedTest(testCase.id, expectation.path, new ArrayList<>(failures), tol));
+                    failedTestDetails.add(new FailedTest(testCase.id, testCase.description, expectation.path, new ArrayList<>(failures), tol));
                 }
             }
         }
@@ -258,7 +258,8 @@ public class ScenarioTestSuite {
                 System.out.println(RED + "Failed Test Details" + RESET);
                 System.out.println("======================");
                 for (FailedTest failed : failedTestDetails) {
-                    System.out.println("\nCase ID: " + failed.caseId);
+                    System.out.println("\nCase ID: " + failed.caseId +
+                                     (failed.description != null ? " - " + failed.description : ""));
                     System.out.println("  Path: " + failed.path);
                     for (String failure : failed.failures) {
                         System.out.println("    - " + failure);

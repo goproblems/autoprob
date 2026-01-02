@@ -928,7 +928,27 @@ public class Analysis {
         // Get the best move
         try {
             List<MoveInfo> moves = node.kres.moveInfos;
-            MoveInfo bestMove = moves.get(0);
+            Point currentMove = node.findMove();
+            List<Point> recentMoves = (currentMove != null) ? getRecentMoves(node, tenukiHistoryMoves) : new ArrayList<>();
+
+            // Find the best non-tenuki move
+            MoveInfo bestMove = null;
+            for (MoveInfo moveInfo : moves) {
+                Point candidatePoint = Intersection.gtp2point(moveInfo.move);
+
+                if (!recentMoves.isEmpty() && isTenukiFromRecent(candidatePoint, recentMoves)) {
+                    continue;
+                }
+
+                bestMove = moveInfo;
+                break;
+            }
+
+            if (bestMove == null) {
+                debugInfo.append("Urgency: 0.00 (all candisate moves are tenuki);");
+                return 0.0;
+            }
+
             double bestScore = bestMove.scoreLead;
 
             // Analyze pass move (19, 19 is pass in the game tree)
@@ -939,7 +959,7 @@ public class Analysis {
             double passScore = passKata.rootInfo.scoreLead;
             double urgency = Math.abs(bestScore - passScore);
 
-            debugInfo.append(String.format("Urgency: %.2f (best=%s sc=%.1f, pass sc=%.1f);",
+            debugInfo.append(String.format("Urgency: %.2f (best non-tenuki=%s sc=%.1f, pass sc=%.1f);",
                 urgency, bestMove.move, bestScore, passScore));
 
             return urgency;
@@ -1326,7 +1346,8 @@ public class Analysis {
 
     /**
      * Detect if the current position involves a ko situation.
-     * Checks if the last move is related to ko.
+     * Checks if the current or recent moves (2 moves back, 3 moves total) are related to ko.
+     * This handles ko fight sequences: ko capture -> ko threat -> respond to threat.
      *
      * @param node Current node
      * @return true if ko situation detected
@@ -1342,12 +1363,19 @@ public class Analysis {
             return true;
         }
 
-        // Check parent node if available - previous move might have been a ko
-        if (node.mom != null && node.mom.board != null) {
-            Point prevMove = node.mom.findMove();
-            if (prevMove != null && node.mom.board.isKo(prevMove)) {
-                return true;
+        Node current = node.mom;
+        int movesBack = 0;
+        int maxMovesBack = 2;
+
+        while (current != null && movesBack < maxMovesBack) {
+            if (current.board != null) {
+                Point prevMove = current.findMove();
+                if (prevMove != null && current.board.isKo(prevMove)) {
+                    return true;
+                }
             }
+            current = current.mom;
+            movesBack++;
         }
 
         return false;

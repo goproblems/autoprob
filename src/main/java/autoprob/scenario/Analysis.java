@@ -265,9 +265,9 @@ public class Analysis {
 
         // Add root result if no analyzed node for this difficulty
         boolean rootAnalyzed = false;
-        if (request.scenario.analyzedRootRanks != null) {
-            for (String analyzedRank : request.scenario.analyzedRootRanks) {
-                if (analyzedRank.equals(request.difficulty)) {
+        if (request.scenario.analyzedRootDifficulties != null) {
+            for (String analyzedDifficulty : request.scenario.analyzedRootDifficulties) {
+                if (analyzedDifficulty.equals(request.difficulty)) {
                     rootAnalyzed = true;
                     break;
                 }
@@ -498,7 +498,7 @@ public class Analysis {
                 responseNode.kres = responseKata;
 
                 double weight = pol.policy;
-                AnalysisResult responseResult = buildAnalysisResult(responsePath, result.rank,
+                AnalysisResult responseResult = buildAnalysisResult(responsePath, result.difficulty,
                     responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, weight, visits);
                 responseResult.analysis = gson.toJson(responseKata);
                 responseResult.extraInfo = debugInfo.toString();
@@ -510,7 +510,7 @@ public class Analysis {
                 System.out.println("  Adding unanalyzed candidate: " + mv + " (weight only)");
                 AnalysisResult candidateResult = new AnalysisResult();
                 candidateResult.path = responsePath;
-                candidateResult.rank = result.rank;
+                candidateResult.difficulty = result.difficulty;
                 candidateResult.weight = pol.policy;
                 candidateResult.katagoWeightsFile = result.katagoWeightsFile;
                 candidateResult.isAnalyzed = false;
@@ -589,7 +589,7 @@ public class Analysis {
         KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
         responseNode.kres = responseKata;
 
-        AnalysisResult responseResult = buildAnalysisResult(result.path + "," + move.move, result.rank,
+        AnalysisResult responseResult = buildAnalysisResult(result.path + "," + move.move, result.difficulty,
             responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, (double) move.visits, visits);
         responseResult.analysis = gson.toJson(responseKata);
         responseResult.extraInfo = debugInfo.toString();
@@ -701,10 +701,10 @@ public class Analysis {
         return kres.humanPolicy != null ? kres.humanPolicy : kres.policy;
     }
 
-    private AnalysisResult buildRootAnalysisResult(String rank, KataAnalysisResult rootKata, String katagoWeightsFile, int katagoPlayouts) {
+    private AnalysisResult buildRootAnalysisResult(String difficulty, KataAnalysisResult rootKata, String katagoWeightsFile, int katagoPlayouts) {
         AnalysisResult result = new AnalysisResult();
         result.path = "";
-        result.rank = rank;
+        result.difficulty = difficulty;
         result.score = rootKata.blackScore();
         result.loss = 0.0;
         result.urgency = 0.0;
@@ -717,13 +717,13 @@ public class Analysis {
         return result;
     }
 
-    private AnalysisResult buildAnalysisResult(String path, String rank, Node node,
+    private AnalysisResult buildAnalysisResult(String path, String difficulty, Node node,
                                                KataAnalysisResult nodeKata, KataAnalysisResult parentKata,
                                                Node root, KataAnalysisResult rootKata,
                                                String katagoWeightsFile, double weight, int katagoPlayouts) {
         AnalysisResult result = new AnalysisResult();
         result.path = path;
-        result.rank = rank;
+        result.difficulty = difficulty;
         result.score = nodeKata.blackScore();
         result.loss = nodeKata.blackScore() - parentKata.blackScore();
         result.urgency = calculateUrgency(node);
@@ -749,6 +749,32 @@ public class Analysis {
     }
 
     /**
+     * Validate endness value according to success/failure rules.
+     * Success (endness > 0) is only allowed on human move.
+     * Failure (endness > 0) is only allowed on computer move.
+     *
+     * @param endness The calculated endness value
+     * @param isHumanMove Whether current move is human's move
+     * @param scoreDelta The score change from human's perspective (positive = human gained)
+     * @return Validated endness value
+     */
+    private double validateEndness(double endness, boolean isHumanMove, double scoreDelta) {
+        if (endness <= 0) {
+            return endness;
+        }
+        boolean isSuccess = scoreDelta >= -0.1;
+        if (isSuccess && isHumanMove) {
+            return endness;
+        }
+        if (!isSuccess && !isHumanMove) {
+            return endness;
+        }
+        debugInfo.append(String.format("Endness blocked: %s on %s move (success only on human move, failure only on computer move);",
+            isSuccess ? "success" : "failure", isHumanMove ? "human" : "computer"));
+        return minEndness;
+    }
+
+    /**
      * Calculate endness value to determine if the problem should end.
      * Considers multiple factors according to the spec.
      *
@@ -760,15 +786,16 @@ public class Analysis {
      */
     private double calculateEndness(AnalysisResult result, Node node, Node root,
                                    KataAnalysisResult rootKata) {
-        // Success - player move with positive score AND gained advantage from root
-        boolean isPlayerMove = (node.getToMove() != root.getToMove());
+        // Determine if this is a human move or computer move
+        boolean isHumanMove = (node.getToMove() != root.getToMove());
         // TODO: if we check score drop on frontend, we may not need rootKata here to reduce one analysis
-        double scoreDelta = result.score - rootKata.blackScore(); // From black's perspective
-        double displayLoss = (root.getToMove() == Intersection.BLACK) ? -scoreDelta : scoreDelta;
-        boolean hasAdvantage = (root.getToMove() == Intersection.BLACK && scoreDelta > 0) ||
-                               (root.getToMove() == Intersection.WHITE && scoreDelta < 0);
+        double scoreDeltaBp = result.score - rootKata.blackScore(); // From black's perspective
+        // scoreDelta from human's perspective (positive = human gained advantage)
+        double scoreDelta = (root.getToMove() == Intersection.BLACK) ? scoreDeltaBp : -scoreDeltaBp;
+        boolean hasAdvantage = (root.getToMove() == Intersection.BLACK && scoreDeltaBp > 0) ||
+                               (root.getToMove() == Intersection.WHITE && scoreDeltaBp < 0);
 
-        if (isPlayerMove &&
+        if (isHumanMove &&
             (result.score > 0 && root.getToMove() == Intersection.BLACK ||
                 result.score <= 0 && root.getToMove() == Intersection.WHITE) &&
             hasAdvantage) {
@@ -784,18 +811,16 @@ public class Analysis {
         }
 
         // Significant score change
-        if (Math.abs(displayLoss) >= scoreDropThreshold) {
+        if (Math.abs(scoreDelta) >= scoreDropThreshold) {
             // Check ownership of human moves in path to determine if stones are clearly owned by opponent
             if (!checkHumanMovesOwnership(node, root)) {
-                debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", displayLoss));
+                debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
             } else {
-                // End on: (1) player victory, or (2) computer move after player failure
-                if ((isPlayerMove && displayLoss < 0) || (!isPlayerMove && displayLoss > 0)) {
-                    debugInfo.append(String.format("Endness: significant score change (%.1f);", displayLoss));
-                    return maxEndness;
+                if ((isHumanMove && scoreDelta > 0) || (!isHumanMove && scoreDelta < 0)) {
+                    debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
+                    return validateEndness(maxEndness, isHumanMove, scoreDelta);
                 }
-                // Don't end on: (1) player failure (need computer response), or (2) computer move in victory case
-                debugInfo.append(String.format("Significant score change (%.1f), continuing;", displayLoss));
+                debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
             }
         }
 
@@ -803,13 +828,13 @@ public class Analysis {
 
         // Value of a tenuki - check if KataGo wants to tenuki
         // Only check on player's move
-        if (isPlayerMove && wantsTenuki(node)) {
+        if (isHumanMove && wantsTenuki(node)) {
             if (node.depth <= minDepthForEndness) {
                 debugInfo.append("Endness: computer wants tenuki but depth too low, continue;");
                 return minEndness;
             }
             debugInfo.append("Endness: computer wants to tenuki;");
-            return maxEndness;
+            return validateEndness(maxEndness, isHumanMove, scoreDelta);
         }
 
         // Depth of tree - deeper means more likely to end (gentle acceleration)
@@ -819,22 +844,19 @@ public class Analysis {
         endness += depthFactor;
         debugInfo.append(String.format("DepthFactor: %.2f;", depthFactor));
 
-
         // Only check on computer move, to see if player still has sente moves to play
-        if (!isPlayerMove && !hasSenteMoves(node)) {
+        if (!isHumanMove && !hasSenteMoves(node)) {
             if (node.depth <= minDepthForEndness) {
                 debugInfo.append("Endness: no sente but depth too low, continue;");
                 return minEndness;
             }
             debugInfo.append("Endness: no sente;");
-            return maxEndness;
+            return validateEndness(maxEndness, isHumanMove, scoreDelta);
         }
 
-        // TODO: Stones lost - judge dead stone ratio by ownership
-        // TODO: Use urgency?
         // TODO: Total loss - maybe change to continuous value instead of threshold
 
-        return endness;
+        return validateEndness(endness, isHumanMove, scoreDelta);
     }
 
     /**

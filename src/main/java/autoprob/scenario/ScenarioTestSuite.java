@@ -35,7 +35,7 @@ public class ScenarioTestSuite {
     private static final String CYAN = "\033[36m";
     private static final String RESET = "\033[0m";
 
-    private record FailedTest(int caseId, String description, String path, List<String> failures, ScenarioCase.Tolerances tolerances) {}
+    private record FailedTest(int caseId, String description, String path, int invasionId, String difficulty, List<String> failures, ScenarioCase.Tolerances tolerances, String extraInfo) {}
 
     public ScenarioTestSuite(Properties props) {
         this.props = props;
@@ -234,10 +234,14 @@ public class ScenarioTestSuite {
                 if (passed) {
                     passedTests++;
                     System.out.println(GREEN + "Test passed - Case ID: " + testCase.id + RESET);
+                    String url = buildResearchUrl(testCase.scenario.id, testCase.difficulty, expectation.path);
+                    System.out.println(GREEN + "URL: " + url + RESET);
                 } else {
                     failedTests++;
                     System.out.println(RED + "Test failed - Case ID: " + testCase.id + RESET);
-                    failedTestDetails.add(new FailedTest(testCase.id, testCase.description, expectation.path, new ArrayList<>(failures), tol));
+                    String url = buildResearchUrl(testCase.scenario.id, testCase.difficulty, expectation.path);
+                    System.out.println(RED + "URL: " + url + RESET);
+                    failedTestDetails.add(new FailedTest(testCase.id, testCase.description, expectation.path, testCase.scenario.id, testCase.difficulty, new ArrayList<>(failures), tol, result.extraInfo));
                 }
             }
         }
@@ -262,7 +266,14 @@ public class ScenarioTestSuite {
                                      (failed.description != null ? " - " + failed.description : ""));
                     System.out.println("  Path: " + failed.path);
                     for (String failure : failed.failures) {
-                        System.out.println("    - " + failure);
+                        System.out.println("    " + YELLOW + "- " + failure + RESET);
+                    }
+                    // Build and display the research URL
+                    String url = buildResearchUrl(failed.invasionId, failed.difficulty, failed.path);
+                    System.out.println("  " + YELLOW + "URL: " + url + RESET);
+                    // Display debug info if available
+                    if (failed.extraInfo != null && !failed.extraInfo.isEmpty()) {
+                        System.out.println("  Debug Info: " + failed.extraInfo);
                     }
                 }
             }
@@ -272,8 +283,25 @@ public class ScenarioTestSuite {
         }
     }
 
-    private static final String invasion1 = "(;GM[1]FF[4]CA[UTF-8]AP[Drago:4.33]SZ[19]KM[9.5]AB[db][eb][nb][ob][hc][lc][qd][he][le][qe][ef][gf][if][pf][jg][lg][ch][eh][jh][kh][ph][pj][pk][ql][pm][qn][mo][oo][dp][gp][hp][ip][jp][np][op][dq][iq][kq][nq][pq][dr][or]AW[fb][hb][pb][cc][ec][fc][ic][jc][oc][qc][rc][dd][nd][pd][je][cf][jf][kf][lf][nf][kg][nh][nj][ok][ol][pl][mp][pp][qp][eq][gq][hq][jq][mq][er][ir][jr][kr][lr][nr][ms]PL[W])";
+    /**
+     * Build research URL for a given invasion ID, difficulty and path.
+     *
+     * @param invasionId The invasion ID
+     * @param difficulty The difficulty level
+     * @param path The path in A1 format (e.g., "A1,B2,C3")
+     * @return The research URL
+     */
+    private String buildResearchUrl(int invasionId, String difficulty, String path) {
+        String baseUrl = props.getProperty("baseurl", "https://staging.goproblems.com/");
+        if (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        // URL encode the path: replace commas with %2C
+        String encodedPath = path != null ? path.replace(",", "%2C") : "";
+        return baseUrl + "/invasions/" + invasionId + "/research?difficulty=" + difficulty + "&path=" + encodedPath;
+    }
 
+    private static final String invasion1 = "(;GM[1]FF[4]CA[UTF-8]AP[Drago:4.33]SZ[19]KM[9.5]AB[db][eb][nb][ob][hc][lc][qd][he][le][qe][ef][gf][if][pf][jg][lg][ch][eh][jh][kh][ph][pj][pk][ql][pm][qn][mo][oo][dp][gp][hp][ip][jp][np][op][dq][iq][kq][nq][pq][dr][or]AW[fb][hb][pb][cc][ec][fc][ic][jc][oc][qc][rc][dd][nd][pd][je][cf][jf][kf][lf][nf][kg][nh][nj][ok][ol][pl][mp][pp][qp][eq][gq][hq][jq][mq][er][ir][jr][kr][lr][nr][ms]PL[W])";
     public record ScenTest(String sgf, String path, double score, double loss, String responseMove, String rank) {}
 
     public void runSuite() throws Exception {
@@ -300,11 +328,11 @@ public class ScenarioTestSuite {
 
                 AnalysisResult[] results = analysis.analyze(req);
                 AnalysisResult result = results[0]; // base move
-                if (result.rank.equals(test.rank)) {
+                if (result.difficulty.equals(test.rank)) {
                     System.out.println("Test passed for expected rank: " + test.rank);
                 } else {
                     System.out.println("Test failed for expected rank: " + test.rank +
-                            ", got: " + result.rank);
+                            ", got: " + result.difficulty);
                 }
                 double resultScore = result.score;
                 if (Math.abs(resultScore - test.score) < SCORE_RANGE) {

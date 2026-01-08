@@ -11,7 +11,7 @@ public class AnalysisResult {
     public Double score;
     public Double urgency;
     public Double endness;
-    public String rank;
+    public String difficulty;
     public Double weight;
     public Integer katagoPlayouts;
     public String katagoWeightsFile;
@@ -28,7 +28,7 @@ public class AnalysisResult {
                 ", score=" + df.format(score) +
                 ", urgency=" + df.format(urgency) +
                 ", endness=" + df.format(endness) +
-                ", rank='" + rank + '\'' +
+                ", difficulty='" + difficulty + '\'' +
                 ", weight=" + df.format(weight) +
                 ", katagoPlayouts=" + katagoPlayouts +
                 ", isAnalyzed=" + isAnalyzed +

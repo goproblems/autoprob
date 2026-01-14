@@ -799,7 +799,7 @@ public class Analysis {
             (result.score > 0 && root.getToMove() == Intersection.BLACK ||
                 result.score <= 0 && root.getToMove() == Intersection.WHITE) &&
             hasAdvantage) {
-            debugInfo.append("Positive score on player move, good move, but don't end problem for now, continue;");
+            // debugInfo.append("Positive score on player move, good move, but don't end problem for now, continue;");
             // return maxEndness;
         }
 
@@ -813,7 +813,7 @@ public class Analysis {
         // Significant score change
         if (Math.abs(scoreDelta) >= scoreDropThreshold) {
             // Check ownership of human moves in path to determine if stones are clearly owned by opponent
-            if (!checkHumanMovesOwnership(node, root)) {
+            if (scoreDelta < -scoreDropThreshold && !checkHumanMovesOwnership(node, root)) {
                 debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
             } else {
                 if ((isHumanMove && scoreDelta > 0) || (!isHumanMove && scoreDelta < 0)) {
@@ -1037,7 +1037,8 @@ public class Analysis {
 
         // Best move must be tenuki (far from all recent moves)
         if (!isTenukiFromRecent(bestMovePoint, recentMoves)) {
-            debugInfo.append(String.format("Best humanPolicy move %s is not tenuki;", bestMoveStr));
+            debugInfo.append(String.format("Best humanPolicy move %s (policy=%.4f) is not tenuki;",
+                    bestMoveStr, bestMove.policy));
             return false;
         }
 

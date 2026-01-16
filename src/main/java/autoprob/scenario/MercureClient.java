@@ -40,6 +40,13 @@ public class MercureClient {
         this.props = props;
     }
 
+    private String maskToken(String token) {
+        if (token == null) {
+            return "null";
+        }
+        return "[MASKED]";
+    }
+
     private String getMercureBaseUrl() {
         String mercureBaseUrl = props.getProperty(MERCURE_BASEURL, "").trim();
         if (!mercureBaseUrl.isEmpty()) {
@@ -76,13 +83,6 @@ public class MercureClient {
                             System.out.println("Authentication error, will refresh token on reconnect");
                             jwtToken = null;
                             tokenExpiryTime = 0;
-                        }
-                        System.out.println("Reconnecting in 5 seconds...");
-                        try {
-                            Thread.sleep(5000);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                            break;
                         }
                     }
                 }
@@ -134,7 +134,7 @@ public class MercureClient {
         String password = props.getProperty(AUTH_PASSWORD);
 
         if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
-            throw new IllegalStateException("Authentication credentials not configured. Set " + 
+            throw new IllegalStateException("Authentication credentials not configured. Set " +
                 AUTH_USERNAME + " and " + AUTH_PASSWORD + " in properties.");
         }
 
@@ -197,7 +197,7 @@ public class MercureClient {
 
         String token = jsonResponse.get("token").getAsString();
         if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
-            System.out.println("Token obtained: " + token.substring(0, Math.min(50, token.length())) + "...");
+            System.out.println("Token obtained: " + maskToken(token));
         }
 
         return token;
@@ -217,7 +217,7 @@ public class MercureClient {
             subscribeUrl.append("&authorization=").append(jwtToken);
         }
 
-        System.out.println("Connecting to Mercure hub: " + hubUrl + "?topic=" + encodedTopic + "&authorization=" + jwtToken);
+        System.out.println("Connecting to Mercure hub: " + hubUrl + "?topic=" + encodedTopic + "&authorization=" + maskToken(jwtToken));
 
         URL url = URI.create(subscribeUrl.toString()).toURL();
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
@@ -227,7 +227,7 @@ public class MercureClient {
 
         connection.setDoInput(true);
         connection.setConnectTimeout(30000);
-        connection.setReadTimeout(0);
+        connection.setReadTimeout(30000);
 
         int responseCode = connection.getResponseCode();
         if (responseCode != 200) {
@@ -236,39 +236,61 @@ public class MercureClient {
 
         System.out.println("Connected to Mercure hub. Listening for events...");
 
+        long connectionStartTime = System.currentTimeMillis();
+        long lastDataReceivedTime = connectionStartTime;
+        final long MAX_IDLE_TIME_MS = 30 * 60 * 1000; // 30 minutes without any data = reconnect to verify
+
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
 
             StringBuilder eventData = new StringBuilder();
             String line;
-            long lastTokenCheckTime = System.currentTimeMillis();
 
-            while (running && (line = reader.readLine()) != null) {
-                // System.out.println("SSE received line: [" + line + "]");
-
-                long now = System.currentTimeMillis();
-                if (now - lastTokenCheckTime > 60000) {
-                    lastTokenCheckTime = now;
-                    if (now >= (tokenExpiryTime - TOKEN_REFRESH_BUFFER_MS)) {
-                        System.out.println("Token expiring soon, reconnecting to refresh...");
+            while (running) {
+                try {
+                    line = reader.readLine();
+                    if (line == null) {
+                        System.out.println("Connection closed by server");
                         break;
                     }
-                }
 
-                if (line.isEmpty()) {
-                    if (eventData.length() > 0) {
-                        processEvent(eventData.toString().trim(), onNotification);
-                        eventData.setLength(0);
+                    long now = System.currentTimeMillis();
+                    lastDataReceivedTime = now;
+                    // System.out.println("SSE received line: [" + line + "]");
+
+                    if (line.isEmpty()) {
+                        if (eventData.length() > 0) {
+                            processEvent(eventData.toString().trim(), onNotification);
+                            eventData.setLength(0);
+                        }
+                    } else if (line.startsWith("data:")) {
+                        if (eventData.length() > 0) {
+                            eventData.append("\n");
+                        }
+                        eventData.append(line.substring(5).trim());
                     }
-                } else if (line.startsWith("data:")) {
-                    if (eventData.length() > 0) {
-                        eventData.append("\n");
+                } catch (java.net.SocketTimeoutException e) {
+                    long now = System.currentTimeMillis();
+
+                    if (now >= (tokenExpiryTime - TOKEN_REFRESH_BUFFER_MS)) {
+                        System.out.println("Token expiring soon, reconnecting to refresh token...");
+                        break;
                     }
-                    eventData.append(line.substring(5).trim());
+
+                    long idleTime = now - lastDataReceivedTime;
+                    if (idleTime > MAX_IDLE_TIME_MS) {
+                        System.out.println("No data received for " + (idleTime / 60000) + " minutes, reconnecting to verify connection...");
+                        break;
+                    }
+
+                    if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                        System.out.println("Connection active");
+                    }
                 }
             }
         } finally {
             connection.disconnect();
+            System.out.println("Disconnected from Mercure hub");
         }
     }
 

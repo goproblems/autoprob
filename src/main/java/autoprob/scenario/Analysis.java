@@ -192,8 +192,6 @@ public class Analysis {
 
     /**
      * Runs KataGo on the supplied request path and summarizes the outcome.
-     * If depth > 0 and path is empty, runs in precalculation mode to precalculate the game tree.
-     * Otherwise, analyzes the given path.
      */
     public AnalysisResult[] analyze(AnalysisRequest request) throws Exception {
         Objects.requireNonNull(request, "request");
@@ -212,7 +210,7 @@ public class Analysis {
     }
 
     /**
-     * Analyzes a specific path (original behavior).
+     * Analyzes a specific path
      */
     private AnalysisResult[] analyzePath(AnalysisRequest request) throws Exception {
         var nodeAnalyzer = new NodeAnalyzer(props);
@@ -788,20 +786,9 @@ public class Analysis {
                                    KataAnalysisResult rootKata) {
         // Determine if this is a human move or computer move
         boolean isHumanMove = (node.getToMove() != root.getToMove());
-        // TODO: if we check score drop on frontend, we may not need rootKata here to reduce one analysis
         double scoreDeltaBp = result.score - rootKata.blackScore(); // From black's perspective
         // scoreDelta from human's perspective (positive = human gained advantage)
         double scoreDelta = (root.getToMove() == Intersection.BLACK) ? scoreDeltaBp : -scoreDeltaBp;
-        boolean hasAdvantage = (root.getToMove() == Intersection.BLACK && scoreDeltaBp > 0) ||
-                               (root.getToMove() == Intersection.WHITE && scoreDeltaBp < 0);
-
-        if (isHumanMove &&
-            (result.score > 0 && root.getToMove() == Intersection.BLACK ||
-                result.score <= 0 && root.getToMove() == Intersection.WHITE) &&
-            hasAdvantage) {
-            // debugInfo.append("Positive score on player move, good move, but don't end problem for now, continue;");
-            // return maxEndness;
-        }
 
         // Calculate urgency to determine if position is important enough to continue
         double urgency = calculateUrgency(node);
@@ -830,7 +817,7 @@ public class Analysis {
                     // Ownership endness logic:
                     // - Stones clearly live: allow ending
                     // - Stones belong to opponent but not clearly dead: continue
-                    // - Stones clearly dead: allow ending (definitely captured)
+                    // - Stones clearly dead: allow ending
                     if (opponentOwned && !clearlyDead) {
                         debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
                     } else {
@@ -1011,10 +998,9 @@ public class Analysis {
      * Uses humanPolicy if available, otherwise falls back to moveInfos.
      * Checks against the last N moves to determine if a move is tenuki.
      * Conditions:
-     * 1. Best move (by humanPolicy) is far from recent moves (distance check)
+     * 1. Best move (by humanPolicy) is tenuki
      * 2. All high policy moves are tenuki
      * 3. Not a ko situation (ko threats don't count as tenuki)
-     *
      * @param node Current node
      * @return true if wants to tenuki, false otherwise
      */
@@ -1349,13 +1335,6 @@ public class Analysis {
 
         return senteCount > 0;
 
-        // --- Old implementation using humanPolicy ---
-        // Use humanPolicy if available, otherwise fall back to regular policy
-        // List<Double> policy = selectPolicy(node.kres);
-        // if (policy == null || node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
-        //     return false;
-        // }
-        // // Get top moves sorted by policy
         // List<KataAnalysisResult.Policy> topMoves = node.kres.getTopPolicy(10, policy);
         // for (var pol : topMoves) {
         //     if (checkedCount >= maxSenteCandidates) break;

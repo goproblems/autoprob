@@ -29,7 +29,7 @@ import autoprob.katastruct.KataQuery;
  */
 
 public class QueryBuilder {
-	
+
 	// assumes no branching!
 	public KataQuery buildQuery(Node node) {
 		var kq = new KataQuery();
@@ -38,12 +38,7 @@ public class QueryBuilder {
 		kq.includeOwnershipStdev = true;
 		// Use komi from root node's SGF if available, otherwise default to 7.5
 		Node root = node.getRoot();
-		try {
-			String komiStr = root.getXtra("KM");
-			kq.komi = (komiStr != null) ? Double.valueOf(komiStr) : 7.5;
-		} catch (NumberFormatException e) {
-			kq.komi = 7.5;
-		}
+		kq.komi = getKomi(root);
 		int toMove = node.getToMove();
 		kq.initialPlayer = Intersection.color2katagoname(toMove);
 
@@ -83,10 +78,10 @@ public class QueryBuilder {
         	}
         	n = n.favoriteSon();
         }
-        
+
 		return kq;
 	}
-	
+
 	// add single move from mom to us
 	public KataQuery buildQueryFromMom(Node node) {
 		var kq = new KataQuery();
@@ -95,12 +90,7 @@ public class QueryBuilder {
 		kq.includeOwnershipStdev = true;
 		// Use komi from root node's SGF if available, otherwise default to 7.5
 		Node root = node.getRoot();
-		try {
-			String komiStr = root.getXtra("KM");
-			kq.komi = (komiStr != null) ? Double.valueOf(komiStr) : 7.5;
-		} catch (NumberFormatException e) {
-			kq.komi = 7.5;
-		}
+		kq.komi = getKomi(root);
 		Node mom = node.mom;
 		int toMove = mom.getToMove();
 		kq.initialPlayer = Intersection.color2katagoname(toMove);
@@ -126,7 +116,22 @@ public class QueryBuilder {
 		MoveAction moveAction = node.getMoveAction();
 		Point loc = moveAction.loc;
 		kq.moves.add(Arrays.asList(moveAction.stone == Intersection.BLACK ? "B" : "W", Intersection.toGTPloc(loc.x, loc.y, b.boardY)));
-        
+
 		return kq;
+	}
+
+	/**
+	 * Get komi value from root node's SGF, default to 7.5
+	 *
+	 * @param root Root node to extract komi from
+	 * @return Komi value
+	 */
+	private double getKomi(Node root) {
+		try {
+			String komiStr = root.getXtra("KM");
+			return (komiStr != null) ? Double.valueOf(komiStr) : 7.5;
+		} catch (NumberFormatException e) {
+			return 7.5;
+		}
 	}
 }

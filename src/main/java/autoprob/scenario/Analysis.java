@@ -813,8 +813,36 @@ public class Analysis {
         // Significant score change
         if (Math.abs(scoreDelta) >= scoreDropThreshold) {
             // Check ownership of human moves in path to determine if stones are clearly owned by opponent
-            if (scoreDelta < -scoreDropThreshold && !checkHumanMovesOwnership(node, root)) {
-                debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
+            if (scoreDelta < -scoreDropThreshold) {
+                double avgOwnership = calculateHumanMovesOwnership(node, root);
+                if (!Double.isNaN(avgOwnership)) {
+                    int playerColor = root.getToMove();
+                    boolean opponentOwned;
+                    boolean clearlyDead;
+                    if (playerColor == Intersection.BLACK) {
+                        opponentOwned = avgOwnership < 0;
+                        clearlyDead = avgOwnership < -ownershipThreshold;
+                    } else {
+                        opponentOwned = avgOwnership > 0;
+                        clearlyDead = avgOwnership > ownershipThreshold;
+                    }
+
+                    // Ownership endness logic:
+                    // - Stones clearly live: allow ending
+                    // - Stones belong to opponent but not clearly dead: continue
+                    // - Stones clearly dead: allow ending (definitely captured)
+                    if (opponentOwned && !clearlyDead) {
+                        debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
+                    } else {
+                        if ((isHumanMove && scoreDelta > 0) || (!isHumanMove && scoreDelta < 0)) {
+                            debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
+                            return validateEndness(maxEndness, isHumanMove, scoreDelta);
+                        }
+                        debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
+                    }
+                } else {
+                    debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
+                }
             } else {
                 if ((isHumanMove && scoreDelta > 0) || (!isHumanMove && scoreDelta < 0)) {
                     debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
@@ -860,18 +888,18 @@ public class Analysis {
     }
 
     /**
-     * Check if human moves in the path have clear ownership by the opponent.
-     * This is used to determine if stones added by human moves are clearly captured/dead.
+     * Calculate average ownership of human moves in the path.
+     * Ownership: +1 (black owns) to -1 (white owns)
+     * This is used to determine if stones added by human moves are clearly dead.
      *
      * @param node Current node (end of path)
      * @param root Root node (start of path)
-     * @return true if human moves have clear opponent ownership (should trigger endness),
-     *         false if ownership is unclear (should not trigger endness)
+     * @return Average ownership value
      */
-    private boolean checkHumanMovesOwnership(Node node, Node root) {
+    private double calculateHumanMovesOwnership(Node node, Node root) {
         if (node.kres == null || node.kres.ownership == null) {
             debugInfo.append("No ownership data, assuming unclear;");
-            return false;
+            return Double.NaN;
         }
 
         List<Point> humanMovePositions = new ArrayList<>();
@@ -891,7 +919,7 @@ public class Analysis {
 
         if (humanMovePositions.isEmpty()) {
             debugInfo.append("No human moves found;");
-            return false;
+            return Double.NaN;
         }
 
         double totalOwnership = 0.0;
@@ -908,29 +936,16 @@ public class Analysis {
 
         if (validPositions == 0) {
             debugInfo.append("No valid ownership positions;");
-            return false;
+            return Double.NaN;
         }
 
         double avgOwnership = totalOwnership / validPositions;
 
-        // Check if ownership clearly belongs to opponent
-        // Ownership: +1 (black owns) to -1 (white owns)
-        boolean clearlyOpponentOwned;
-        if (playerColor == Intersection.BLACK) {
-            // Human played black stones, opponent is white
-            // Check if avg ownership < -threshold (white owns these positions)
-            clearlyOpponentOwned = avgOwnership < -ownershipThreshold;
-        } else {
-            // Human played white stones, opponent is black
-            // Check if avg ownership > threshold (black owns these positions)
-            clearlyOpponentOwned = avgOwnership > ownershipThreshold;
-        }
-
         String playerColorStr = (playerColor == Intersection.BLACK) ? "B" : "W";
-        debugInfo.append(String.format("Ownership check: %d human moves (player=%s), avg=%.2f, threshold=%.2f, clear=%s;",
-            validPositions, playerColorStr, avgOwnership, ownershipThreshold, clearlyOpponentOwned));
+        debugInfo.append(String.format("Ownership: %d moves (player=%s), avg=%.2f;",
+            validPositions, playerColorStr, avgOwnership));
 
-        return clearlyOpponentOwned;
+        return avgOwnership;
     }
 
     /**

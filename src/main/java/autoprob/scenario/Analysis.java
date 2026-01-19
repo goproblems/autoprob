@@ -793,6 +793,13 @@ public class Analysis {
         // Calculate urgency to determine if position is important enough to continue
         double urgency = calculateUrgency(node);
         if (urgency >= minUrgencyToContinue) {
+            // Even a move with high urgency, still need to end if the game has already lost too much
+            final double MAX_LOSING_SCORE_AFTER_TENUKI = 5.0;
+            if (scoreDelta < - (urgency + MAX_LOSING_SCORE_AFTER_TENUKI)) {
+                debugInfo.append(String.format("Endness: high urgency (%.2f) but game has already lost %.1f, ending;",
+                    urgency, -scoreDelta));
+                return validateEndness(maxEndness, isHumanMove, scoreDelta);
+            }
             debugInfo.append(String.format("Endness: high urgency (%.2f), continue;", urgency));
             return minEndness;
         }

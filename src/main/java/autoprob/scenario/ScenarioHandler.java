@@ -85,6 +85,11 @@ public class ScenarioHandler {
                 } else {
                     System.out.println("No pending analysis requests. Waiting for notification...");
                 }
+                if (status == 401) {
+                    System.out.println("Unauthorized access. Stopping scenario handler.");
+                    Thread.currentThread().interrupt();
+                    break;
+                }
                 break;
             }
 
@@ -125,6 +130,11 @@ public class ScenarioHandler {
                         } else {
                             System.out.println("Failed to fetch analysis request. Status: " + status +
                                     ", message: " + response.getErrorMessage());
+                        }
+                        if (status == 401) {
+                            System.out.println("Unauthorized access. Stopping scenario handler.");
+                            Thread.currentThread().interrupt();
+                            break;
                         }
                         Thread.sleep(sleepMs);
                         continue;

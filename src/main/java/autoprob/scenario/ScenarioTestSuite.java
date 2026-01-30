@@ -302,12 +302,12 @@ public class ScenarioTestSuite {
     }
 
     private static final String invasion1 = "(;GM[1]FF[4]CA[UTF-8]AP[Drago:4.33]SZ[19]KM[9.5]AB[db][eb][nb][ob][hc][lc][qd][he][le][qe][ef][gf][if][pf][jg][lg][ch][eh][jh][kh][ph][pj][pk][ql][pm][qn][mo][oo][dp][gp][hp][ip][jp][np][op][dq][iq][kq][nq][pq][dr][or]AW[fb][hb][pb][cc][ec][fc][ic][jc][oc][qc][rc][dd][nd][pd][je][cf][jf][kf][lf][nf][kg][nh][nj][ok][ol][pl][mp][pp][qp][eq][gq][hq][jq][mq][er][ir][jr][kr][lr][nr][ms]PL[W])";
-    public record ScenTest(String sgf, String path, double score, double loss, String responseMove, String rank) {}
+    public record ScenTest(String sgf, String path, double score, double loss, String responseMove, String rank, boolean ends) {}
 
     public void runSuite() throws Exception {
         ScenTest[] tests = {
 //                new ScenTest(invasion1, "B2", 6.5, 9.0, "C5", "ai"),
-                new ScenTest(invasion1, "B2", 6.5, 9.0, "C5", "15k"),
+                new ScenTest(invasion1, "C7,C5,C10,D9,C9,D7,D8,E8,C8,E9,D6,E7,C6,E4,B12,B13,B11,C13,B5,B4,D5,C4,B6", 6.5, 9.0, "C5", "15k", true),
 //                new ScenTest(invasion1, "C7", 2.5, 0.5),
         };
 
@@ -316,7 +316,8 @@ public class ScenarioTestSuite {
         // iterate through tests
         int cnt = 0;
         for (ScenTest test : tests) {
-            System.out.println("Running scenario test #" + (cnt));
+            // print current test number and path; concatenate properly
+            System.out.println("Running scenario \u001B[32mtest\u001B[0m #" + cnt + ", path: " + test.path);
 
             Analysis analysis = new Analysis(props, brain);
             try {
@@ -329,7 +330,7 @@ public class ScenarioTestSuite {
                 AnalysisResult[] results = analysis.analyze(req);
                 AnalysisResult result = results[0]; // base move
                 if (result.difficulty.equals(test.rank)) {
-                    System.out.println("Test passed for expected rank: " + test.rank);
+                    System.out.println("Test passed ✔ for expected rank: " + test.rank);
                 } else {
                     System.out.println("Test failed for expected rank: " + test.rank +
                             ", got: " + result.difficulty);

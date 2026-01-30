@@ -216,7 +216,7 @@ public class Analysis {
         var nodeAnalyzer = new NodeAnalyzer(props);
 
         Node root = parser.parse(request.scenario.sgf);
-        System.out.println(root.board);
+        System.out.println(root.board); // draws the board out
         System.out.println("To move: " + (root.getToMove() == Intersection.BLACK ? "black" : "white"));
 
         int visits = determineVisits();
@@ -245,6 +245,11 @@ public class Analysis {
 
         // play the moves in the path, get a new position from that
         Node node = addPath(root, request.path);
+        if (Boolean.parseBoolean(props.getProperty("scenario.output_path_sgf", "false"))) {
+            String sgf = "(" + root.outputSGF(true) + ")";
+            System.out.println(sgf); // draws the board out
+        }
+
         // analyze the parent node, so we know direct loss for the last move
         KataAnalysisResult momKata = nodeAnalyzer.analyzeNode(brain, node.mom, visits, null, overrideSettings);
 
@@ -257,6 +262,10 @@ public class Analysis {
         result.analysis = gson.toJson(endKata);
         result.extraInfo = debugInfo.toString();
         result.isAnalyzed = true;
+
+        if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
+            System.out.println("dbg: " + debugInfo);
+        }
 
         // make extendable list of possible results
         ArrayList<AnalysisResult> results = new ArrayList<>();
@@ -410,6 +419,10 @@ public class Analysis {
                 results.add(result);
                 nodesCount++;
 
+                if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
+                    System.out.println("dbg: " + debugInfo);
+                }
+
                 if (results.size() >= precalculationBatchSize) {
                     // Always include root result in every batch submission
                     ArrayList<AnalysisResult> batch = new ArrayList<>();
@@ -502,6 +515,10 @@ public class Analysis {
                 responseResult.extraInfo = debugInfo.toString();
                 responseResult.isAnalyzed = true;
 
+                if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
+                    System.out.println("dbg: " + debugInfo);
+                }
+
                 results.add(responseResult);
             } else {
                 // Add remaining candidates as unanalyzed
@@ -593,6 +610,10 @@ public class Analysis {
         responseResult.extraInfo = debugInfo.toString();
         responseResult.isAnalyzed = true;
 
+        if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
+            System.out.println("dbg: " + debugInfo);
+        }
+
         results.add(responseResult);
     }
 
@@ -651,6 +672,10 @@ public class Analysis {
             optimalResult.analysis = gson.toJson(optimalKata);
             optimalResult.extraInfo = debugInfo.toString();
             optimalResult.isAnalyzed = true;
+
+            if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
+                System.out.println("dbg: " + debugInfo);
+            }
 
             results.add(optimalResult);
         }
@@ -739,10 +764,16 @@ public class Analysis {
     private Node addPath(Node node, String path) throws Exception {
         // path is a comma separated list of moves like "C4,D19,E4"
         String[] moves = path.split(",");
+        Point lastMove = null;
         for (String move : moves) {
             Point p = Intersection.gtp2point(move);
             node = node.addBasicMove(p.x, p.y);
+            lastMove = p;
         }
+
+        System.out.println("board after moves: "); // draws the board out
+        System.out.println(node.board.toString(lastMove)); // draws the board out
+
         return node;
     }
 

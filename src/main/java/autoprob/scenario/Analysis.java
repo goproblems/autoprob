@@ -827,6 +827,9 @@ public class Analysis {
         double urgency = calculateUrgency(node);
         debugInfo.append("urgency: ").append(df.format(urgency)).append("; ");
 
+        double avgOwnership = calculateHumanMovesOwnership(node, root);
+        debugInfo.append("avgOwnership: ").append(df.format(avgOwnership)).append("; ");
+
         // if too few moves, don't end no matter the state
         int minMovesToEnd = Integer.parseInt(props.getProperty("scenario.min_moves", "5"));
         if (node.depth < minMovesToEnd) {
@@ -842,7 +845,7 @@ public class Analysis {
 //                    urgency, -scoreDelta));
 //                return validateEndness(maxEndness, isHumanMove, scoreDelta);
 //            }
-            debugInfo.append(String.format("Endness: low urgency (%.2f);", urgency));
+            debugInfo.append(String.format("Endness: low urgency (%.2f); ", urgency));
             return 1.0 + (urgency > 0.1 ? 1 / urgency : 5);
         }
 
@@ -850,7 +853,6 @@ public class Analysis {
         if (Math.abs(scoreDelta) >= scoreDropThreshold) {
             // Check ownership of human moves in path to determine if stones are clearly owned by opponent
             if (scoreDelta < -scoreDropThreshold) {
-                double avgOwnership = calculateHumanMovesOwnership(node, root);
                 if (!Double.isNaN(avgOwnership)) {
                     int playerColor = root.getToMove();
                     boolean opponentOwned;

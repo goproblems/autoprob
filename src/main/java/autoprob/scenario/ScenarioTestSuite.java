@@ -320,6 +320,22 @@ public class ScenarioTestSuite {
             PL[W]
             )
             """;
+    private static final String invasion4 = """
+(;GM[1]
+FF[4]
+AP[Drago:4.33]
+CA[UTF-8]
+SZ[19]
+KM[6.5]
+AB[nb][ob][oc][pd][me][of][qf][og][ph][qh][ri][rj][rk][jl][kl][ll]
+[ml][hm][im][om][in][ln][nn][ho][io][oo][qo][ro][bp][cp][gp][np]
+[pp][qp][dq][fq][gq][pq][br][cr][dr][er]
+AW[mb][fc][mc][nc][dd][nd][ne][nf][ng][nh][oh][oi][pi][nj][pj][jk]
+[kk][lk][mk][hl][il][nl][ol][pl][ql][gm][qm][cn][gn][hn][pn][qn]
+[rn][co][go][po][dp][ep][fp][bq][cq][eq]
+PL[B]
+)
+            """;
     public record ScenTest(String sgf, String path, double score, double loss, String responseMove, String rank, boolean ends) {}
 
     public void runSuite() throws Exception {
@@ -328,6 +344,7 @@ public class ScenarioTestSuite {
                 new ScenTest(invasion1, "C7,C5,C10,D9,C9,D7,D8,E8,C8,E9,D6,E7,C6,E4,B12,B13,B11,C13,B5,B4,D5,C4,B6", 6.5, 9.0, "C5", "15k", true),
                 new ScenTest(invasion1, "F5", 6.5, 9.0, "C5", "15k", false),
                 new ScenTest(invasion2, "R8,R11,R6,Q6,S6", 6.5, 9.0, "C5", "15k", false),
+//                new ScenTest(invasion4, "G8,J9,F8,F7,E7", 6.5, 9.0, "C5", "15k", false),
         };
 
         KataBrain brain = new KataBrain(props);

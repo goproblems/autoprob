@@ -302,19 +302,38 @@ public class ScenarioTestSuite {
     }
 
     private static final String invasion1 = "(;GM[1]FF[4]CA[UTF-8]AP[Drago:4.33]SZ[19]KM[9.5]AB[db][eb][nb][ob][hc][lc][qd][he][le][qe][ef][gf][if][pf][jg][lg][ch][eh][jh][kh][ph][pj][pk][ql][pm][qn][mo][oo][dp][gp][hp][ip][jp][np][op][dq][iq][kq][nq][pq][dr][or]AW[fb][hb][pb][cc][ec][fc][ic][jc][oc][qc][rc][dd][nd][pd][je][cf][jf][kf][lf][nf][kg][nh][nj][ok][ol][pl][mp][pp][qp][eq][gq][hq][jq][mq][er][ir][jr][kr][lr][nr][ms]PL[W])";
+    private static final String invasion2 = """
+            (;GM[1]
+            FF[4]
+            AP[Drago:4.33]
+            CA[UTF-8]
+            SZ[19]
+            KM[7.5]
+            AB[gb][ib][jb][fc][hc][ic][oc][pc][ed][fd][id][qd][de][je][ke][cf]
+            [df][kf][qf][gg][hg][ig][kg][bh][ch][eh][kh][di][ei][fi][gi][ki]
+            [gj][gk][hk][kk][il][jl][am][bm][gm][km][cn][en][gn][ao][bo][co]
+            [qo][bp][gp][hp][cq][pq][ar][br][cr]
+            AW[ea][ga][ha][db][fb][kb][dc][ec][jc][lc][nc][dd][gd][hd][jd][ld]
+            [nd][od][be][ce][ee][ie][ff][gf][hf][if][jf][bg][jg][ih][jh][ci]
+            [ji][cj][ej][hj][ek][ik][jk][bl][cl][cm][em][dn][fn][do][fo][cp]
+            [dp][dq][dr][fr][hr][ir][bs][cs]
+            PL[W]
+            )
+            """;
     public record ScenTest(String sgf, String path, double score, double loss, String responseMove, String rank, boolean ends) {}
 
     public void runSuite() throws Exception {
         ScenTest[] tests = {
 //                new ScenTest(invasion1, "B2", 6.5, 9.0, "C5", "ai"),
                 new ScenTest(invasion1, "C7,C5,C10,D9,C9,D7,D8,E8,C8,E9,D6,E7,C6,E4,B12,B13,B11,C13,B5,B4,D5,C4,B6", 6.5, 9.0, "C5", "15k", true),
-//                new ScenTest(invasion1, "C7", 2.5, 0.5),
+                new ScenTest(invasion1, "F5", 6.5, 9.0, "C5", "15k", false),
+                new ScenTest(invasion2, "R8,R11,R6,Q6,S6", 6.5, 9.0, "C5", "15k", false),
         };
 
         KataBrain brain = new KataBrain(props);
 
         // iterate through tests
-        int cnt = 0;
+        int cnt = 0, failures = 0;
         for (ScenTest test : tests) {
             // print current test number and path; concatenate properly
             System.out.println("Running scenario \u001B[32mtest\u001B[0m #" + cnt + ", path: " + test.path);
@@ -351,7 +370,8 @@ public class ScenarioTestSuite {
                 if (ends == test.ends) {
                     System.out.println("✅ for endness: " + result.endness);
                 } else {
-                    System.out.println("❌ for expected endness: " + result.endness);
+                    System.out.println("❌ for endness: " + result.endness);
+                    failures++;
                 }
 //                double resultScore = result.score;
 //                if (Math.abs(resultScore - test.score) < SCORE_RANGE) {
@@ -385,6 +405,12 @@ public class ScenarioTestSuite {
                 e.printStackTrace();
             }
             cnt++;
+        }
+
+        if (failures > 0) {
+            System.out.println("Total failures: " + failures + " out of " + tests.length + " tests.");
+        } else {
+            System.out.println("All " + cnt + " tests passed! ✅");
         }
 
         brain.stopKataBrain();

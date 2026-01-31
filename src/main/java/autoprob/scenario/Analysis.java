@@ -826,6 +826,14 @@ public class Analysis {
         // Calculate urgency to determine if position is important enough to continue
         double urgency = calculateUrgency(node);
         debugInfo.append("urgency: ").append(df.format(urgency)).append("; ");
+
+        // if too few moves, don't end no matter the state
+        int minMovesToEnd = Integer.parseInt(props.getProperty("scenario.min_moves", "5"));
+        if (node.depth < minMovesToEnd) {
+            debugInfo.append("cannot end before moves: ").append(node.depth).append("; ");
+            return -1;
+        }
+
         if (urgency < minUrgencyToContinue) {
 //            // Even a move with high urgency, still need to end if the game has already lost too much
 //            final double MAX_LOSING_SCORE_AFTER_TENUKI = 5.0;

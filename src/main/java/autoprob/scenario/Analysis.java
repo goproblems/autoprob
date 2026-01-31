@@ -299,8 +299,7 @@ public class Analysis {
 
         // if not an end move, we can add possible response moves from katago
         // Only add response moves for HUMAN moves
-        // For human moves, always add responses regardless of endness value
-        if (isHumanMove) {
+        if (isHumanMove && result.endness < 0) {
             if (humanRank.equals("max")) {
                 addResponseResults(brain, node, root, rootKata, result, results, endKata, humanRank);
             }
@@ -756,6 +755,7 @@ public class Analysis {
 
         debugInfo.setLength(0);
         result.endness = calculateEndness(result, node, root, rootKata);
+        debugInfo.append(" endness: ").append(df.format(result.endness)).append("; ");
 
         return result;
     }
@@ -817,22 +817,25 @@ public class Analysis {
                                    KataAnalysisResult rootKata) {
         // Determine if this is a human move or computer move
         boolean isHumanMove = (node.getToMove() != root.getToMove());
+        debugInfo.append("human: ").append(isHumanMove).append("; ");
         double scoreDeltaBp = result.score - rootKata.blackScore(); // From black's perspective
         // scoreDelta from human's perspective (positive = human gained advantage)
         double scoreDelta = (root.getToMove() == Intersection.BLACK) ? scoreDeltaBp : -scoreDeltaBp;
+        debugInfo.append("score delta: ").append(df.format(scoreDelta)).append("; ");
 
         // Calculate urgency to determine if position is important enough to continue
         double urgency = calculateUrgency(node);
-        if (urgency >= minUrgencyToContinue) {
-            // Even a move with high urgency, still need to end if the game has already lost too much
-            final double MAX_LOSING_SCORE_AFTER_TENUKI = 5.0;
-            if (scoreDelta < - (urgency + MAX_LOSING_SCORE_AFTER_TENUKI)) {
-                debugInfo.append(String.format("Endness: high urgency (%.2f) but game has already lost %.1f, ending;",
-                    urgency, -scoreDelta));
-                return validateEndness(maxEndness, isHumanMove, scoreDelta);
-            }
-            debugInfo.append(String.format("Endness: high urgency (%.2f), continue;", urgency));
-            return minEndness;
+        debugInfo.append("urgency: ").append(df.format(urgency)).append("; ");
+        if (urgency < minUrgencyToContinue) {
+//            // Even a move with high urgency, still need to end if the game has already lost too much
+//            final double MAX_LOSING_SCORE_AFTER_TENUKI = 5.0;
+//            if (scoreDelta < - (urgency + MAX_LOSING_SCORE_AFTER_TENUKI)) {
+//                debugInfo.append(String.format("Endness: high urgency (%.2f) but game has already lost %.1f, ending;",
+//                    urgency, -scoreDelta));
+//                return validateEndness(maxEndness, isHumanMove, scoreDelta);
+//            }
+            debugInfo.append(String.format("Endness: low urgency (%.2f);", urgency));
+            return 1.0 + (urgency > 0.1 ? 1 / urgency : 5);
         }
 
         // Significant score change

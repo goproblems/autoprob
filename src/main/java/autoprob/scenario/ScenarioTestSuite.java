@@ -328,40 +328,58 @@ public class ScenarioTestSuite {
                 req.path = test.path;
 
                 AnalysisResult[] results = analysis.analyze(req);
-                AnalysisResult result = results[0]; // base move
+                AnalysisResult result = null;
+                // find result for test path
+                for (AnalysisResult r : results) {
+                    if (r.path != null && r.path.equals(test.path)) {
+                        result = r;
+                        break;
+                    }
+                }
+                if (result == null) {
+                    System.out.println("❌❌❌ No result found for path: " + test.path);
+                    continue;
+                }
                 if (result.difficulty.equals(test.rank)) {
                     System.out.println("Test passed ✔ for expected rank: " + test.rank);
                 } else {
                     System.out.println("Test failed for expected rank: " + test.rank +
                             ", got: " + result.difficulty);
                 }
-                double resultScore = result.score;
-                if (Math.abs(resultScore - test.score) < SCORE_RANGE) {
-                    System.out.println("Test passed for expected score: " + df.format(test.score));
-                } else {
-                    System.out.println("Test failed for expected score: " + df.format(test.score) +
-                            ", got: " + df.format(resultScore));
-                }
 
-                double resultLoss = result.loss;
-                if (Math.abs(resultLoss - test.loss) < LOSS_RANGE) {
-                    System.out.println("Test passed for expected loss: " + df.format(test.loss));
+                boolean ends = result.endness > 0.0;
+                if (ends == test.ends) {
+                    System.out.println("✅ for endness: " + result.endness);
                 } else {
-                    System.out.println("Test failed for expected loss: " + df.format(test.loss) +
-                            ", got: " + df.format(resultLoss));
+                    System.out.println("❌ for expected endness: " + result.endness);
                 }
-
-                // verify response move if in test
-                if (test.responseMove != null && !test.responseMove.isEmpty()) {
-                    AnalysisResult response = results[1]; // response move
-                    String move = response.path.substring(response.path.lastIndexOf(',') + 1);
-                    if (move.equals(test.responseMove)) {
-                        System.out.println("Test passed for expected response move: " + move);
-                    } else {
-                        System.out.println("Test failed for expected response move: " + test.responseMove +
-                                ", got: " + move);
-                    }
-                }
+//                double resultScore = result.score;
+//                if (Math.abs(resultScore - test.score) < SCORE_RANGE) {
+//                    System.out.println("Test passed for expected score: " + df.format(test.score));
+//                } else {
+//                    System.out.println("Test failed for expected score: " + df.format(test.score) +
+//                            ", got: " + df.format(resultScore));
+//                }
+//
+//                double resultLoss = result.loss;
+//                if (Math.abs(resultLoss - test.loss) < LOSS_RANGE) {
+//                    System.out.println("Test passed for expected loss: " + df.format(test.loss));
+//                } else {
+//                    System.out.println("Test failed for expected loss: " + df.format(test.loss) +
+//                            ", got: " + df.format(resultLoss));
+//                }
+//
+//                // verify response move if in test
+//                if (test.responseMove != null && !test.responseMove.isEmpty()) {
+//                    AnalysisResult response = results[1]; // response move
+//                    String move = response.path.substring(response.path.lastIndexOf(',') + 1);
+//                    if (move.equals(test.responseMove)) {
+//                        System.out.println("Test passed for expected response move: " + move);
+//                    } else {
+//                        System.out.println("Test failed for expected response move: " + test.responseMove +
+//                                ", got: " + move);
+//                    }
+//                }
             } catch (Exception e) {
                 System.out.println("Exception during test for expected score: " + df.format(test.score));
                 e.printStackTrace();

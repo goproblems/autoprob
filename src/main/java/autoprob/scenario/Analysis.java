@@ -111,7 +111,9 @@ public class Analysis {
 
     private KataQuery.OverrideSettings buildOverrideSettings(String humanRank, HumanLikeStyle style) {
         KataQuery.OverrideSettings settings = new KataQuery.OverrideSettings();
-        settings.humanSLProfile = "preaz_" + humanRank;
+        if (!humanRank.equals("max")) {
+            settings.humanSLProfile = "preaz_" + humanRank;
+        }
 
         switch (style) {
             case OBJECTIVE -> {
@@ -754,7 +756,7 @@ public class Analysis {
         result.weight = weight;
 
         debugInfo.setLength(0);
-        result.endness = calculateEndness(result, node, root, rootKata);
+        result.endness = calculateEndness(result, node, root, rootKata, difficulty);
         debugInfo.append(" endness: ").append(df.format(result.endness)).append("; ");
 
         return result;
@@ -811,10 +813,11 @@ public class Analysis {
      * @param node Current node
      * @param root Root node
      * @param rootKata KataGo analysis of root node
+     * @param difficulty The difficulty level (e.g., "max", "10k", "5d")
      * @return endness value: > 0 means should end, <= 0 means continue
      */
     private double calculateEndness(AnalysisResult result, Node node, Node root,
-                                   KataAnalysisResult rootKata) {
+                                   KataAnalysisResult rootKata, String difficulty) {
         // Determine if this is a human move or computer move
         boolean isHumanMove = (node.getToMove() != root.getToMove());
         debugInfo.append("human: ").append(isHumanMove).append("; ");
@@ -892,9 +895,14 @@ public class Analysis {
 
         double endness = minEndness;
 
-        // Value of a tenuki - check if KataGo wants to tenuki
+        // Value of a tenuki - check if computer wants to tenuki
         // Only check on player's move
-        if (isHumanMove && wantsTenuki(node)) {
+        // For "max" difficulty, use moveInfos
+        // For other difficulties, use policy
+        boolean wantsTenukiResult = difficulty.equals("max")
+            ? wantsTenukiByMoveInfos(node)
+            : wantsTenuki(node);
+        if (isHumanMove && wantsTenukiResult) {
             if (node.depth <= minDepthForEndness) {
                 debugInfo.append("Endness: computer wants tenuki but depth too low, continue;");
                 return minEndness;
@@ -1042,6 +1050,46 @@ public class Analysis {
             debugInfo.append("Error calculating urgency");
             return 0.0;
         }
+    }
+
+    /**
+     * Check if KataGo's best move is tenuki.
+     * Uses moveInfos[0] which is more accurate than raw policy after search.
+     * Used for "max" difficulty level.
+     *
+     * @param node Current node
+     * @return true if best move is tenuki, false otherwise
+     */
+    private boolean wantsTenukiByMoveInfos(Node node) {
+        Point currentMove = node.findMove();
+        if (currentMove == null || node.kres == null) {
+            return false;
+        }
+
+        // Check for ko situation first - ko threats should not count as tenuki
+        if (isKoSituation(node)) {
+            debugInfo.append("Ko situation (moveInfos), ignore tenuki;");
+            return false;
+        }
+
+        if (node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+            return false;
+        }
+
+        List<Point> recentMoves = getRecentMoves(node, tenukiHistoryMoves);
+
+        MoveInfo bestMove = node.kres.moveInfos.get(0);
+        Point bestMovePoint = Intersection.gtp2point(bestMove.move);
+
+        if (isTenukiFromRecent(bestMovePoint, recentMoves)) {
+            debugInfo.append(String.format("Wants Tenuki(moveInfos): best=%s visits=%d;",
+                bestMove.move, bestMove.visits));
+            return true;
+        }
+
+        debugInfo.append(String.format("Best moveInfos move %s (visits=%d) is not tenuki;",
+            bestMove.move, bestMove.visits));
+        return false;
     }
 
     /**

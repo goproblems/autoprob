@@ -579,17 +579,34 @@ public class Analysis {
     }
 
     private void addResponseResults(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String rank) throws Exception {
-        // for now just use previous kata results to get possible moves
-        // TODO: add multiple
-        MoveInfo move = endKata.moveInfos.get(0);
-
+        // Use moveInfos to find response moves (post-search, strongest)
         Point currentMove = node.findMove();
-        if (currentMove != null) {
-            Point movePoint = Intersection.gtp2point(move.move);
-            if (isTenuki(currentMove, movePoint)) {
-                System.out.println("Best move is tenuki, not adding response");
-                return;
+
+        // Collect non-tenuki candidates from moveInfos
+        List<MoveInfo> validCandidates = new ArrayList<>();
+        for (MoveInfo candidate : endKata.moveInfos) {
+            Point candidatePoint = Intersection.gtp2point(candidate.move);
+            System.out.println("computer response candidate (max level): " + candidate.move
+                + " visits: " + candidate.visits + " prior: " + df.format(candidate.prior));
+
+            if (candidate.prior < minHumanPolicy) {
+                System.out.println("  too low prior, skipping");
+                continue;
             }
+
+            if (currentMove != null && isTenuki(currentMove, candidatePoint)) {
+                System.out.println("  tenuki move, skipping");
+                continue;
+            }
+
+            validCandidates.add(candidate);
+        }
+
+        // If all moves are tenuki, end the problem
+        if (validCandidates.isEmpty()) {
+            System.out.println("All moveInfos moves are tenuki, end problem");
+            result.endness = maxEndness;
+            return;
         }
 
         int visits = determineVisits();
@@ -600,22 +617,48 @@ public class Analysis {
         // It is necessary to set ignorePreRootHistory to true here to avoid bias from move order in response analysis for ai rank
         overrideSettings.ignorePreRootHistory = true;
 
-        Point movePoint = Intersection.gtp2point(move.move);
-        Node responseNode = node.addBasicMove(movePoint.x, movePoint.y);
-        KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
-        responseNode.kres = responseKata;
+        // Analyze the first (best) candidate, add others as unanalyzed
+        for (int i = 0; i < validCandidates.size(); i++) {
+            MoveInfo move = validCandidates.get(i);
+            String responsePath = result.path + "," + move.move;
 
-        AnalysisResult responseResult = buildAnalysisResult(result.path + "," + move.move, result.difficulty,
-            responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, (double) move.visits, visits);
-        responseResult.analysis = gson.toJson(responseKata);
-        responseResult.extraInfo = debugInfo.toString();
-        responseResult.isAnalyzed = true;
+            if (i == 0) {
+                // Fully analyze the best response
+                System.out.println("  Analyzing computer response (max level): " + move.move);
+                Point movePoint = Intersection.gtp2point(move.move);
+                Node responseNode = node.addBasicMove(movePoint.x, movePoint.y);
+                KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
+                responseNode.kres = responseKata;
 
-        if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
-            System.out.println("dbg: " + debugInfo);
+                AnalysisResult responseResult = buildAnalysisResult(responsePath, result.difficulty,
+                    responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, (double) move.visits, visits);
+                responseResult.analysis = gson.toJson(responseKata);
+                responseResult.extraInfo = debugInfo.toString();
+                responseResult.isAnalyzed = true;
+
+                if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
+                    System.out.println("dbg: " + debugInfo);
+                }
+
+                results.add(responseResult);
+            } else {
+                // Add remaining candidates as unanalyzed
+                System.out.println("  Adding unanalyzed candidate (max level): " + move.move + " (visits: " + move.visits + ")");
+                AnalysisResult candidateResult = new AnalysisResult();
+                candidateResult.path = responsePath;
+                candidateResult.difficulty = result.difficulty;
+                candidateResult.weight = (double) move.visits;
+                candidateResult.katagoWeightsFile = result.katagoWeightsFile;
+                candidateResult.isAnalyzed = false;
+                candidateResult.loss = 0.0;
+                candidateResult.score = 0.0;
+                candidateResult.urgency = 0.0;
+                candidateResult.endness = minEndness;
+                candidateResult.katagoPlayouts = 0;
+
+                results.add(candidateResult);
+            }
         }
-
-        results.add(responseResult);
     }
 
     /**

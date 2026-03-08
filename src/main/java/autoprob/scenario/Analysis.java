@@ -234,6 +234,14 @@ public class Analysis {
         String fullModelPath = props.getProperty("kata.model");
         String weightsFile = (fullModelPath.substring(fullModelPath.lastIndexOf('/') + 1)).substring(fullModelPath.lastIndexOf('\\') + 1);
 
+        // If root analysis failed, return error result
+        if (rootKata.isError()) {
+            AnalysisResult errorResult = buildErrorAnalysisResult(request.path, request.difficulty, weightsFile, visits, rootKata.error);
+            AnalysisResult[] resultArray = new AnalysisResult[] { errorResult };
+            submitResults(resultArray);
+            return resultArray;
+        }
+
         // If path is empty, only analyze root node
         if (request.path == null || request.path.isEmpty()) {
             System.out.println("Empty path - analyzing root node only");
@@ -255,8 +263,23 @@ public class Analysis {
         // analyze the parent node, so we know direct loss for the last move
         KataAnalysisResult momKata = nodeAnalyzer.analyzeNode(brain, node.mom, visits, null, overrideSettings);
 
+        if (momKata.isError()) {
+            AnalysisResult errorResult = buildErrorAnalysisResult(request.path, request.difficulty, weightsFile, visits, momKata.error);
+            AnalysisResult[] resultArray = new AnalysisResult[] { errorResult };
+            submitResults(resultArray);
+            return resultArray;
+        }
+
         // analyze the end position after the path
         KataAnalysisResult endKata = nodeAnalyzer.analyzeNode(brain, node, visits, null, overrideSettings);
+
+        if (endKata.isError()) {
+            AnalysisResult errorResult = buildErrorAnalysisResult(request.path, request.difficulty, weightsFile, visits, endKata.error);
+            AnalysisResult[] resultArray = new AnalysisResult[] { errorResult };
+            submitResults(resultArray);
+            return resultArray;
+        }
+
         node.kres = endKata;
 
         AnalysisResult result = buildAnalysisResult(request.path, request.difficulty, node,
@@ -781,6 +804,23 @@ public class Analysis {
         result.weight = 0.0;
         result.analysis = gson.toJson(rootKata);
         result.extraInfo = "";
+        return result;
+    }
+
+    private AnalysisResult buildErrorAnalysisResult(String path, String difficulty, String katagoWeightsFile, int katagoPlayouts, String errorMessage) {
+        AnalysisResult result = new AnalysisResult();
+        result.path = path;
+        result.difficulty = difficulty;
+        result.score = 0.0;
+        result.loss = 0.0;
+        result.urgency = 0.0;
+        result.endness = maxEndness;
+        result.katagoPlayouts = katagoPlayouts;
+        result.katagoWeightsFile = katagoWeightsFile;
+        result.weight = 0.0;
+        result.analysis = errorMessage;
+        result.extraInfo = errorMessage;
+        result.isAnalyzed = true;
         return result;
     }
 

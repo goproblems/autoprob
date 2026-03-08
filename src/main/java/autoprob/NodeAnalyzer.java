@@ -90,6 +90,10 @@ public class NodeAnalyzer {
 		brain.doQuery(query);
 		KataAnalysisResult kres = brain.getResult(query.id, query.analyzeTurns.get(0));
 
+		if (kres.isError()) {
+			return kres;
+		}
+
 		if (dbgNal)
 			System.out.println("> NAL parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", for " + kres.rootInfo.currentPlayer);
 				

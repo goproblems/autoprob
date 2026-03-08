@@ -73,6 +73,8 @@ public class Analysis {
     private final int precalculationBatchSize;
     private final boolean precalculationDepthFirst;
     private final double precalculationMinPolicy;
+    private final double maxScoreDropMaxMode;
+    private final int minResponseVisitsMaxMode;
 
     private ResultSubmitter resultSubmitter;
 
@@ -107,6 +109,8 @@ public class Analysis {
         this.precalculationBatchSize = Integer.parseInt(props.getProperty("scenario.precalculation_batch_size", "10"));
         this.precalculationDepthFirst = props.getProperty("scenario.precalculation_strategy", "bfs").equalsIgnoreCase("dfs");
         this.precalculationMinPolicy = Double.parseDouble(props.getProperty("scenario.precalculation_min_policy", "0.1"));
+        this.maxScoreDropMaxMode = Double.parseDouble(props.getProperty("scenario.max_score_drop_max_mode", "0.5"));
+        this.minResponseVisitsMaxMode = Integer.parseInt(props.getProperty("scenario.min_response_visits_max_mode", "50"));
     }
 
     private KataQuery.OverrideSettings buildOverrideSettings(String humanRank, HumanLikeStyle style) {
@@ -326,7 +330,7 @@ public class Analysis {
         // Only add response moves for HUMAN moves
         if (isHumanMove && result.endness < 0) {
             if (humanRank.equals("max")) {
-                addResponseResults(brain, node, root, rootKata, result, results, endKata, humanRank);
+                addResponseResultsMaxRank(brain, node, root, rootKata, result, results, endKata, humanRank);
             }
             else {
                 addResponseResultsHumanRank(brain, node, root, rootKata, result, results, endKata, humanRank);
@@ -601,24 +605,24 @@ public class Analysis {
         return candidates.get(0);
     }
 
-    private void addResponseResults(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String rank) throws Exception {
+    private void addResponseResultsMaxRank(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String rank) throws Exception {
         // Use moveInfos to find response moves (post-search, strongest)
         Point currentMove = node.findMove();
 
-        // Collect non-tenuki candidates from moveInfos
+        // Collect valid candidates from moveInfos
+        double scoreBaseline = endKata.moveInfos.get(0).scoreLead;
         List<MoveInfo> validCandidates = new ArrayList<>();
         for (MoveInfo candidate : endKata.moveInfos) {
             Point candidatePoint = Intersection.gtp2point(candidate.move);
-            System.out.println("computer response candidate (max level): " + candidate.move
-                + " visits: " + candidate.visits + " prior: " + df.format(candidate.prior));
+            double scoreDelta = Math.abs(candidate.scoreLead - scoreBaseline);
+            boolean isTenukiMove = currentMove != null && isTenuki(currentMove, candidatePoint);
 
-            if (candidate.prior < minHumanPolicy) {
-                System.out.println("  too low prior, skipping");
-                continue;
+            if (candidate.visits > 5) {
+                System.out.println("-- max mode response " + candidate.move + " scoreDelta: " + df.format(scoreDelta)
+                    + " visits: " + candidate.visits + (isTenukiMove ? " (tenuki)" : ""));
             }
 
-            if (currentMove != null && isTenuki(currentMove, candidatePoint)) {
-                System.out.println("  tenuki move, skipping");
+            if (scoreDelta > maxScoreDropMaxMode || isTenukiMove || candidate.visits < minResponseVisitsMaxMode) {
                 continue;
             }
 

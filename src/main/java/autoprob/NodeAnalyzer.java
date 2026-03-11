@@ -34,6 +34,15 @@ public class NodeAnalyzer {
 	}
 
 	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, ArrayList<String> moves, String humanSLrank) throws Exception {
+		KataQuery.OverrideSettings overrideSettings = null;
+		if (humanSLrank != null) {
+			overrideSettings = new KataQuery.OverrideSettings();
+			overrideSettings.humanSLProfile = "preaz_" + humanSLrank;
+		}
+		return analyzeNode(brain, node, visits, moves, overrideSettings);
+	}
+
+	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, ArrayList<String> moves, KataQuery.OverrideSettings overrideSettings) throws Exception {
 		Gson gson = new Gson();
 
 		QueryBuilder qb = new QueryBuilder();
@@ -47,11 +56,16 @@ public class NodeAnalyzer {
 		} else {
 			query = qb.buildQueryFromMom(node);
 		}
-		
+
 		query.id = "keng" + node.depth + "_" + Math.random();
 		query.maxVisits = visits;
 		query.includePolicy = true;
-		query.setHumanSLrank(humanSLrank); // default rank
+
+		// Set override settings if provided
+		if (overrideSettings != null) {
+			query.setOverrideSettings(overrideSettings);
+		}
+
 		// required moves set?
 		if (moves != null && moves.size() > 0) {
 			var am = new AllowMove();
@@ -75,6 +89,10 @@ public class NodeAnalyzer {
 		
 		brain.doQuery(query);
 		KataAnalysisResult kres = brain.getResult(query.id, query.analyzeTurns.get(0));
+
+		if (kres.isError()) {
+			return kres;
+		}
 
 		if (dbgNal)
 			System.out.println("> NAL parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", for " + kres.rootInfo.currentPlayer);

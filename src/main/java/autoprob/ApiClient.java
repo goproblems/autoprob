@@ -84,7 +84,7 @@ public class ApiClient {
     
     public <T> ApiResponse<T> makeApiRequest(String endpointKey, String method, 
             Map<String, String> pathParams, String queryString, String requestBody, 
-            Class<T> responseType, Properties props) throws Exception {
+            java.lang.reflect.Type responseType, Properties props) throws Exception {
         boolean debug = Boolean.parseBoolean(props.getProperty("debug", "false"));
         boolean printCurl = Boolean.parseBoolean(props.getProperty("curl", "false"));
 
@@ -94,9 +94,11 @@ public class ApiClient {
         }
         
         String urlString = buildUrl(endpointKey, pathParams, queryString, props);
-        
-        System.out.println("Calling API URL: " + urlString);
-        
+
+        if (Boolean.parseBoolean(props.getProperty("api.debug", "false"))) {
+            System.out.println("Calling API URL: " + urlString);
+        }
+
         if (printCurl) {
             StringBuilder curlCmd = new StringBuilder("curl -X " + method + " \\\n");
             curlCmd.append("  \"" + urlString + "\" \\\n");
@@ -118,8 +120,8 @@ public class ApiClient {
         connection.setRequestMethod(method);
         connection.setRequestProperty("X-Api-Key", apiKey);
         connection.setRequestProperty("Accept", "application/json");
-        connection.setConnectTimeout(10000);
-        connection.setReadTimeout(10000);
+        connection.setConnectTimeout(60000);
+        connection.setReadTimeout(60000);
         
         if ("POST".equals(method)) {
             if (debug) {
@@ -159,6 +161,11 @@ public class ApiClient {
     
     public <T> ApiResponse<T> makeGetRequest(String endpointKey, Map<String, String> pathParams, 
             String queryString, Class<T> responseType, Properties props) throws Exception {
+        return makeApiRequest(endpointKey, "GET", pathParams, queryString, null, responseType, props);
+    }
+    
+    public <T> ApiResponse<T> makeGetRequest(String endpointKey, Map<String, String> pathParams, 
+            String queryString, java.lang.reflect.Type responseType, Properties props) throws Exception {
         return makeApiRequest(endpointKey, "GET", pathParams, queryString, null, responseType, props);
     }
     

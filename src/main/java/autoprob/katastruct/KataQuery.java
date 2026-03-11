@@ -67,6 +67,46 @@ public class KataQuery {
 		@SerializedName("humanSLProfile")
 		@Expose
 		public String humanSLProfile;
+
+		@SerializedName("ignorePreRootHistory")
+		@Expose
+		public Boolean ignorePreRootHistory;
+
+		@SerializedName("humanSLRootExploreProbWeightless")
+		@Expose
+		public Double humanSLRootExploreProbWeightless;
+
+		@SerializedName("humanSLRootExploreProbWeightful")
+		@Expose
+		public Double humanSLRootExploreProbWeightful;
+
+		@SerializedName("humanSLCpuctPermanent")
+		@Expose
+		public Double humanSLCpuctPermanent;
+
+		@SerializedName("rootNumSymmetriesToSample")
+		@Expose
+		public Integer rootNumSymmetriesToSample;
+
+		@SerializedName("humanSLPlaExploreProbWeightful")
+		@Expose
+		public Double humanSLPlaExploreProbWeightful;
+
+		@SerializedName("humanSLOppExploreProbWeightful")
+		@Expose
+		public Double humanSLOppExploreProbWeightful;
+
+		@SerializedName("useUncertainty")
+		@Expose
+		public Boolean useUncertainty;
+
+		@SerializedName("subtreeValueBiasFactor")
+		@Expose
+		public Double subtreeValueBiasFactor;
+
+		@SerializedName("useNoisePruning")
+		@Expose
+		public Boolean useNoisePruning;
 	}
 
     public Node generateNode() {
@@ -115,5 +155,51 @@ public class KataQuery {
 			overrideSettings = new OverrideSettings();
 		}
 		overrideSettings.humanSLProfile = "preaz_" + rank;
+	}
+
+	/**
+	 * Set override settings. Only the non-null fields in the provided settings will be updated.
+	 * @param settings OverrideSettings object with fields to update (null fields will be ignored)
+	 */
+	public void setOverrideSettings(OverrideSettings settings) {
+		if (settings == null) {
+			return;
+		}
+		if (overrideSettings == null) {
+			overrideSettings = new OverrideSettings();
+		}
+		if (settings.humanSLProfile != null) {
+			overrideSettings.humanSLProfile = settings.humanSLProfile;
+		}
+		if (settings.ignorePreRootHistory != null) {
+			overrideSettings.ignorePreRootHistory = settings.ignorePreRootHistory;
+		}
+		if (settings.humanSLRootExploreProbWeightless != null) {
+			overrideSettings.humanSLRootExploreProbWeightless = settings.humanSLRootExploreProbWeightless;
+		}
+		if (settings.humanSLRootExploreProbWeightful != null) {
+			overrideSettings.humanSLRootExploreProbWeightful = settings.humanSLRootExploreProbWeightful;
+		}
+		if (settings.humanSLCpuctPermanent != null) {
+			overrideSettings.humanSLCpuctPermanent = settings.humanSLCpuctPermanent;
+		}
+		if (settings.rootNumSymmetriesToSample != null) {
+			overrideSettings.rootNumSymmetriesToSample = settings.rootNumSymmetriesToSample;
+		}
+		if (settings.humanSLPlaExploreProbWeightful != null) {
+			overrideSettings.humanSLPlaExploreProbWeightful = settings.humanSLPlaExploreProbWeightful;
+		}
+		if (settings.humanSLOppExploreProbWeightful != null) {
+			overrideSettings.humanSLOppExploreProbWeightful = settings.humanSLOppExploreProbWeightful;
+		}
+		if (settings.useUncertainty != null) {
+			overrideSettings.useUncertainty = settings.useUncertainty;
+		}
+		if (settings.subtreeValueBiasFactor != null) {
+			overrideSettings.subtreeValueBiasFactor = settings.subtreeValueBiasFactor;
+		}
+		if (settings.useNoisePruning != null) {
+			overrideSettings.useNoisePruning = settings.useNoisePruning;
+		}
 	}
 }

@@ -61,6 +61,8 @@ public class GoTool {
             runSiteProblemCommand(props);
         } else if (command.equals("testscenario")) {
             runTestScenarioCommand(props);
+        } else if (command.equals("testscenariocase")) {
+            runTestScenarioCaseCommand(props);
         } else if (command.equals("scenariohandler")) {
             runScenarioHandlerCommand(props);
         } else {
@@ -85,6 +87,12 @@ public class GoTool {
         System.out.println("Running scenario tests...");
         ScenarioTestSuite suite = new ScenarioTestSuite(props);
         suite.runSuite();
+    }
+
+    private void runTestScenarioCaseCommand(Properties props) throws Exception {
+        System.out.println("Running API scenario test cases...");
+        ScenarioTestSuite suite = new ScenarioTestSuite(props);
+        suite.runAPISuite();
     }
 
     private void runScenarioHandlerCommand(Properties props) throws Exception {

@@ -19,6 +19,7 @@ public class KataBrain {
 	private boolean debugPrintKatago = false;
 	private BufferedReader reader;
 	private Map<String, KataAnalysisResult> results = new Hashtable<>();
+	private Map<String, String> errors = new Hashtable<>();
 	private static final DecimalFormat df = new DecimalFormat("0.00");
 	public String modelPath;
 	private Thread thread;
@@ -117,9 +118,14 @@ public class KataBrain {
 		int total = 0;
 		boolean started = false;
 		while ((line = reader.readLine()) != null) {
-			if (line.startsWith("{\"error")) {
-				System.out.println("bad analysis: " + line);
-				//TODO: process error
+			if (line.contains("{\"error")) {
+				String errorId = extractJsonStringValue(line, "id");
+				if (errorId != null) {
+					System.out.println("bad analysis: " + line);
+					synchronized (this) {
+						errors.put(errorId, line);
+					}
+				}
 				continue;
 			}
 			if (line.contains("Uncaught exception")) {
@@ -165,7 +171,7 @@ public class KataBrain {
 	public void doQuery(KataQuery query) throws Exception {
 		Gson gson = new Gson();
 		String qjson = gson.toJson(query, KataQuery.class);
-//		System.out.println("KENG (" + "x" + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
+		// System.out.println("KENG (" + "x" + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
 		
 		PrintWriter pw = new PrintWriter(process.getOutputStream());
 		pw.println(qjson);
@@ -173,12 +179,19 @@ public class KataBrain {
 	}
 
 	// tries until finds it
-	// TODO: respond to errors
 	public KataAnalysisResult getResult(String id, int targetTurn) {
 //		System.out.println("brain fetching: " + id + " : " + targetTurn);
 		String nm = id + targetTurn; // lookup
 		while (true) {
 			synchronized (this) {
+				if (errors.containsKey(id)) {
+					String errorMsg = errors.remove(id);
+					KataAnalysisResult errorResult = new KataAnalysisResult();
+					errorResult.id = id;
+					errorResult.turnNumber = targetTurn;
+					errorResult.error = errorMsg;
+					return errorResult;
+				}
 				// getting the value removes it from our map
 				if (results.containsKey(nm)) {
 //					System.out.println("brain found: " + id + " : " + targetTurn);
@@ -190,5 +203,16 @@ public class KataBrain {
 			} catch (InterruptedException e) {
 			}
 		}
+	}
+
+	/** Extract a string value for a given key from a JSON-like string, e.g. "id":"abc" → abc */
+	private static String extractJsonStringValue(String text, String key) {
+		String search = "\"" + key + "\":\"";
+		int start = text.indexOf(search);
+		if (start < 0) return null;
+		start += search.length();
+		int end = text.indexOf("\"", start);
+		if (end < 0) return null;
+		return text.substring(start, end);
 	}
 }

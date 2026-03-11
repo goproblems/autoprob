@@ -177,6 +177,29 @@ public class Board implements Cloneable {
         return sb.toString();
     }
 
+    public String toString(Point highlight) {
+        StringBuffer sb = new StringBuffer();
+        for (int j = 0; j < 19; j++) {
+            if (j > 0) sb.append('\n');
+            for (int i = 0; i < 19; i++) {
+                int stn = board[i][j].stone;
+
+                boolean highThisOne = false;
+                if (highlight != null && highlight.x == i && highlight.y == j) {
+                    highThisOne = true;
+                }
+                if (highThisOne) sb.append("\u001B[36m");
+
+                if (stn == Intersection.BLACK) sb.append('X');
+                else if (stn == Intersection.WHITE) sb.append('O');
+                else sb.append('.');
+
+                if (highThisOne) sb.append("\u001B[0m");
+            }
+        }
+        return sb.toString();
+    }
+
     /**
      * if this spot is surround by opponent stones everywhere
      * but one intersection, it's part of a ko

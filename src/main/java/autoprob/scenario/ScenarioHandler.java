@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class ScenarioHandler {
     // Client version sent to the API. Bump when releasing a new version.
-    public static final int CLIENT_VERSION = 2;
+    public static final int CLIENT_VERSION = 3;
 
     private final Properties props;
     private final long sleepMs;

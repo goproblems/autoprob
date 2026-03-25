@@ -291,6 +291,11 @@ public class MercureClient {
         } finally {
             connection.disconnect();
             System.out.println("Disconnected from Mercure hub");
+            // Trigger refetch after any disconnection (token refresh, server close, idle timeout)
+            if (running) {
+                System.out.println("Triggering refetch of pending requests after disconnection...");
+                onNotification.run();
+            }
         }
     }
 

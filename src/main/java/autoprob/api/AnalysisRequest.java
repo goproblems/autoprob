@@ -24,5 +24,6 @@ public class AnalysisRequest {
         public String imageUrl;
         public String toMove;
         public String[] analyzedRootDifficulties;
+        public ScenarioMetadata metadata;
     }
 }

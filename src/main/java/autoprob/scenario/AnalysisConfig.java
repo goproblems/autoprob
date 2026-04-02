@@ -19,6 +19,7 @@ public class AnalysisConfig {
     // --- Overridable parameters (from configOverrides spec) ---
     public double minHumanPolicy;
     public boolean includeOptimalMoves;
+    public int minMoves;
     public int minDepthForEndness;
     public double scoreDropThreshold;
     public double maxEndness;
@@ -33,6 +34,7 @@ public class AnalysisConfig {
     public double minUrgencyToContinue;
     public double maxScoreDropMaxMode;
     public int minResponseVisitsMaxMode;
+    public double komi;
 
     // --- Non-overridable parameters (not exposed to problem creators) ---
     public int maxOptimalMoves;
@@ -54,6 +56,7 @@ public class AnalysisConfig {
         AnalysisConfig c = new AnalysisConfig();
         c.minHumanPolicy = Double.parseDouble(props.getProperty("scenario.min_response_policy", "0.05"));
         c.includeOptimalMoves = Boolean.parseBoolean(props.getProperty("scenario.include_optimal_moves", "false"));
+        c.minMoves = Integer.parseInt(props.getProperty("scenario.min_moves", "5"));
         c.minDepthForEndness = Integer.parseInt(props.getProperty("scenario.min_depth_for_endness", "5"));
         c.scoreDropThreshold = Double.parseDouble(props.getProperty("scenario.score_drop_threshold", "15.0"));
         c.maxEndness = Double.parseDouble(props.getProperty("scenario.max_endness", "1.0"));
@@ -73,6 +76,7 @@ public class AnalysisConfig {
         c.precalculationBatchSize = Integer.parseInt(props.getProperty("scenario.precalculation_batch_size", "10"));
         c.precalculationDepthFirst = props.getProperty("scenario.precalculation_strategy", "bfs").equalsIgnoreCase("dfs");
         c.precalculationMinPolicy = Double.parseDouble(props.getProperty("scenario.precalculation_min_policy", "0.1"));
+        c.komi = Double.parseDouble(props.getProperty("scenario.komi", "7.5"));
         c.maxScoreDropMaxMode = Double.parseDouble(props.getProperty("scenario.max_score_drop_max_mode", "0.5"));
         c.minResponseVisitsMaxMode = Integer.parseInt(props.getProperty("scenario.min_response_visits_max_mode", "50"));
         return c;
@@ -119,6 +123,7 @@ public class AnalysisConfig {
         AnalysisConfig c = new AnalysisConfig();
         c.minHumanPolicy = this.minHumanPolicy;
         c.includeOptimalMoves = this.includeOptimalMoves;
+        c.minMoves = this.minMoves;
         c.minDepthForEndness = this.minDepthForEndness;
         c.scoreDropThreshold = this.scoreDropThreshold;
         c.maxEndness = this.maxEndness;
@@ -140,8 +145,16 @@ public class AnalysisConfig {
         c.precalculationMinPolicy = this.precalculationMinPolicy;
         c.maxScoreDropMaxMode = this.maxScoreDropMaxMode;
         c.minResponseVisitsMaxMode = this.minResponseVisitsMaxMode;
+        c.komi = this.komi;
         c.metadata = this.metadata;
         return c;
+    }
+
+    public boolean hasKomiOverrideInMetadata() {
+        if (metadata == null || metadata.configOverrides == null) {
+            return false;
+        }
+        return metadata.configOverrides.containsKey("scenario.komi");
     }
 
     private static void applyOverrides(AnalysisConfig c, Map<String, Object> overrides) {
@@ -160,6 +173,9 @@ public class AnalysisConfig {
                     break;
                 case "scenario.include_optimal_moves":
                     c.includeOptimalMoves = toBoolean(value);
+                    break;
+                case "scenario.min_moves":
+                    c.minMoves = toInt(value);
                     break;
                 case "scenario.min_depth_for_endness":
                     c.minDepthForEndness = toInt(value);
@@ -202,6 +218,9 @@ public class AnalysisConfig {
                     break;
                 case "scenario.min_response_visits_max_mode":
                     c.minResponseVisitsMaxMode = toInt(value);
+                    break;
+                case "scenario.komi":
+                    c.komi = toDouble(value);
                     break;
                 default:
                     System.out.println("Unknown config override key: " + key);

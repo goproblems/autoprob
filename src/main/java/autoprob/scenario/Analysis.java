@@ -195,6 +195,7 @@ public class Analysis {
         var nodeAnalyzer = new NodeAnalyzer(props);
 
         Node root = parser.parse(request.scenario.sgf);
+        applyKomiOverride(root);
         System.out.println(root.board); // draws the board out
         System.out.println("To move: " + (root.getToMove() == Intersection.BLACK ? "black" : "white"));
 
@@ -322,6 +323,7 @@ public class Analysis {
         var nodeAnalyzer = new NodeAnalyzer(props);
 
         Node root = parser.parse(request.scenario.sgf);
+        applyKomiOverride(root);
         System.out.println(root.board);
         System.out.println("To move: " + (root.getToMove() == Intersection.BLACK ? "black" : "white"));
 
@@ -453,6 +455,24 @@ public class Analysis {
 
         System.out.println("Precalculation complete: " + nodesCount + " nodes analyzed");
         return new AnalysisResult[0];  // All results submitted via callback
+    }
+
+    private void applyKomiOverride(Node root) {
+        if (root == null || config == null) {
+            return;
+        }
+
+        if (config.hasKomiOverrideInMetadata()) {
+            root.setXtraTag("KM", String.valueOf(config.komi));
+            System.out.println("Applied komi override from scenario metadata: " + config.komi);
+            return;
+        }
+
+        String sgfKomi = root.getXtra("KM");
+        if (sgfKomi == null || sgfKomi.isBlank()) {
+            root.setXtraTag("KM", String.valueOf(config.komi));
+            System.out.println("Applied default komi from scenario.properties: " + config.komi);
+        }
     }
 
     private void addResponseResultsHumanRank(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String humanRank) throws Exception {
@@ -931,7 +951,7 @@ public class Analysis {
         debugInfo.append("avgOwnership: ").append(df.format(avgOwnership)).append("; ");
 
         // if too few moves, don't end no matter the state
-        int minMovesToEnd = Integer.parseInt(props.getProperty("scenario.min_moves", "5"));
+        int minMovesToEnd = config.minMoves;
         if (node.depth < minMovesToEnd) {
             debugInfo.append("cannot end before moves: ").append(node.depth).append("; ");
             return -1;

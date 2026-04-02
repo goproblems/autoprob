@@ -191,7 +191,17 @@ public class Node {
         xtraTags.addElement(tag);
         xtraTagVals.addElement(val);
     }
-    
+
+    public void setXtraTag(String tag, String val) {
+        for (int i = 0; i < xtraTags.size(); i++) {
+            if (xtraTags.elementAt(i).equals(tag)) {
+                xtraTagVals.setElementAt(val, i);
+                return;
+            }
+        }
+        addXtraTag(tag, val);
+    }
+
     public String getXtra(String tag) {
         for (int i = 0; i < xtraTags.size(); i++) {
             if (xtraTags.elementAt(i).equals(tag))

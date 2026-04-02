@@ -654,13 +654,20 @@ public class Analysis {
 
         // If no valid candidates, end the problem
         if (validCandidates.isEmpty()) {
+            double previousEndness = result.endness;
             if (config.hasComputerAreaConstraints()) {
                 System.out.println("All moveInfos moves filtered by area constraints or tenuki, end problem");
                 debugInfo.append("No valid max-mode responses (area constraints + tenuki filter); ");
             } else {
                 System.out.println("All moveInfos moves are tenuki moves, end problem");
+                debugInfo.append("No valid max-mode responses (tenuki/filters); ");
             }
             result.endness = config.maxEndness;
+            String overrideMsg = String.format(
+                "Endness overridden in max mode: %.2f -> %.2f (no valid response candidates);",
+                previousEndness, result.endness);
+            System.out.println(overrideMsg);
+            debugInfo.append(overrideMsg);
             return;
         }
 

@@ -122,8 +122,10 @@ public class KataBrain {
 				String errorId = extractJsonStringValue(line, "id");
 				if (errorId != null) {
 					System.out.println("bad analysis: " + line);
+					int errorJsonStart = line.indexOf("{\"error\"");
+					String normalizedError = errorJsonStart >= 0 ? line.substring(errorJsonStart) : line;
 					synchronized (this) {
-						errors.put(errorId, line);
+						errors.put(errorId, normalizedError);
 					}
 				}
 				continue;
@@ -178,10 +180,15 @@ public class KataBrain {
 		pw.flush();
 	}
 
-	// tries until finds it
+	/**
+	 * Waits for a KataGo result. Timeout is read from props (kata.query.timeout.ms).
+	 * A value of 0 means no timeout (wait indefinitely).
+	 */
 	public KataAnalysisResult getResult(String id, int targetTurn) {
 //		System.out.println("brain fetching: " + id + " : " + targetTurn);
+		long timeoutMs = Long.parseLong(props.getProperty("kata.query.timeout.ms", "0"));
 		String nm = id + targetTurn; // lookup
+		long startTime = System.currentTimeMillis();
 		while (true) {
 			synchronized (this) {
 				if (errors.containsKey(id)) {
@@ -197,6 +204,15 @@ public class KataBrain {
 //					System.out.println("brain found: " + id + " : " + targetTurn);
 					return results.remove(nm);
 				}
+			}
+			if (timeoutMs > 0 && System.currentTimeMillis() - startTime > timeoutMs) {
+				System.err.println("KataGo query timed out after " + (timeoutMs / 1000) +
+						"s for id=" + id + ", turn=" + targetTurn);
+				KataAnalysisResult errorResult = new KataAnalysisResult();
+				errorResult.id = id;
+				errorResult.turnNumber = targetTurn;
+				errorResult.error = "KataGo query timed out after " + (timeoutMs / 1000) + " seconds";
+				return errorResult;
 			}
 			try {
 				Thread.sleep(1);

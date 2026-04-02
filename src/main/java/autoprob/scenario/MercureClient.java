@@ -304,7 +304,8 @@ public class MercureClient {
             JsonObject json = gson.fromJson(data, JsonObject.class);
             String type = json.has("type") ? json.get("type").getAsString() : null;
             if (NOTIFICATION_TYPE_ANALYSIS_REQUEST_CREATED.equals(type)) {
-                System.out.println("Received " + NOTIFICATION_TYPE_ANALYSIS_REQUEST_CREATED + " notification");
+                String pendingInfo = json.has("pendingRequestCount") ? " (pending: " + json.get("pendingRequestCount").getAsInt() + ")" : "";
+                System.out.println("Received " + NOTIFICATION_TYPE_ANALYSIS_REQUEST_CREATED + " notification" + pendingInfo);
                 onNotification.run();
             }
         } catch (Exception e) {

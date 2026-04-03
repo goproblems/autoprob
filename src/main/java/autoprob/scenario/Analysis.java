@@ -523,6 +523,13 @@ public class Analysis {
 
                 // If not: use highest policy move even if outside area
                 if (forced == null) {
+                    if (!config.allowFallbackOutsideArea) {
+                        System.out.println("No valid computer responses inside area; outside-area fallback is disabled, ending problem");
+                        debugInfo.append("No valid computer responses inside area; outside-area fallback disabled; ");
+                        result.endness = config.maxEndness;
+                        return;
+                    }
+
                     forced = top.get(0);
                     String mv = Intersection.toGTPloc(forced.x, forced.y);
                     System.out.println("WARNING: Forcing response outside area constraint: " + mv + " pol: " + df.format(forced.policy));
@@ -533,6 +540,13 @@ public class Analysis {
                 }
                 validCandidates.add(forced);
             }
+        }
+
+        if (validCandidates.isEmpty()) {
+            System.out.println("No valid computer response candidates found, ending problem");
+            debugInfo.append("No valid computer response candidates found; ");
+            result.endness = config.maxEndness;
+            return;
         }
 
         // Select one candidate to analyze based on humanPolicy

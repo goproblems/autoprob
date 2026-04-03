@@ -32,6 +32,7 @@ public class AnalysisConfig {
     public int maxSenteCandidates;
     public double minSentePolicy;
     public double minUrgencyToContinue;
+    public boolean allowFallbackOutsideArea;
     public double maxScoreDropMaxMode;
     public int minResponseVisitsMaxMode;
     public double komi;
@@ -70,6 +71,7 @@ public class AnalysisConfig {
         c.maxSenteCandidates = Integer.parseInt(props.getProperty("scenario.max_sente_candidates", "5"));
         c.minSentePolicy = Double.parseDouble(props.getProperty("scenario.min_sente_policy", "0.05"));
         c.minUrgencyToContinue = Double.parseDouble(props.getProperty("scenario.min_urgency_to_continue", "10.0"));
+        c.allowFallbackOutsideArea = Boolean.parseBoolean(props.getProperty("scenario.allow_fallback_outside_area", "false"));
         c.passMoveVisits = Integer.parseInt(props.getProperty("scenario.pass_move_visits", "200"));
         c.precalculationMaxDepth = Integer.parseInt(props.getProperty("scenario.precalculation_max_depth", "20"));
         c.precalculationMaxNodes = Integer.parseInt(props.getProperty("scenario.precalculation_max_nodes", "3000"));
@@ -137,6 +139,7 @@ public class AnalysisConfig {
         c.maxSenteCandidates = this.maxSenteCandidates;
         c.minSentePolicy = this.minSentePolicy;
         c.minUrgencyToContinue = this.minUrgencyToContinue;
+        c.allowFallbackOutsideArea = this.allowFallbackOutsideArea;
         c.passMoveVisits = this.passMoveVisits;
         c.precalculationMaxDepth = this.precalculationMaxDepth;
         c.precalculationMaxNodes = this.precalculationMaxNodes;
@@ -209,6 +212,9 @@ public class AnalysisConfig {
                     break;
                 case "scenario.min_urgency_to_continue":
                     c.minUrgencyToContinue = toDouble(value);
+                    break;
+                case "scenario.allow_fallback_outside_area":
+                    c.allowFallbackOutsideArea = toBoolean(value);
                     break;
                 case "scenario.ownership_threshold":
                     c.ownershipThreshold = toDouble(value);

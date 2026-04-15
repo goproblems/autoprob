@@ -17,15 +17,19 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class ScenarioHandler {
     // Client version sent to the API. Bump when releasing a new version.
-    public static final int CLIENT_VERSION = 3;
+    public static final int CLIENT_VERSION = 4;
 
     private final Properties props;
     private final long sleepMs;
@@ -202,12 +206,11 @@ public class ScenarioHandler {
         mercureClient.startListening(notificationSignal::release);
         System.out.println("Starting scenario handler with Mercure SSE mode");
         try {
-            processPendingRequests(apiClient, analysis, gson, notificationSignal);
             while (true) {
                 try {
+                    processPendingRequests(apiClient, analysis, gson, notificationSignal);
                     notificationSignal.acquire();
                     notificationSignal.drainPermits();
-                    processPendingRequests(apiClient, analysis, gson, notificationSignal);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     System.out.println("Interrupted, stopping...");
@@ -254,7 +257,12 @@ public class ScenarioHandler {
                     ", path=" + request.path +
                     ", difficulty=" + request.difficulty);
 
-            processRequest(request, analysis, apiClient, gson);
+            try {
+                processRequest(request, analysis, apiClient, gson);
+            } catch (Exception ex) {
+                System.out.println("Error processing request " + request.id + ": " + ex.getMessage());
+                ex.printStackTrace();
+            }
         }
     }
 
@@ -350,12 +358,73 @@ public class ScenarioHandler {
                 System.out.println("Submitted analysis results for request " + request.id +
                         " (duration: " + submission.durationMs + "ms)");
             } else {
-                System.out.println("Failed to submit results for request " + request.id +
+                String errorMsg = "Failed to submit results for request " + request.id +
                         ". Status: " + submitResponse.getStatusCode() +
-                        ", message: " + submitResponse.getErrorMessage());
+                        ", message: " + submitResponse.getErrorMessage();
+                System.out.println(errorMsg);
+                throw new RuntimeException(errorMsg);
             }
         });
 
-        analysis.analyze(request);
+        try {
+            long defaultRequestTimeoutMs = Long.parseLong(props.getProperty("scenario.request.timeout.ms", "30000"));
+            long requestTimeoutMs = request.getTimeoutMs(defaultRequestTimeoutMs);
+
+            if (requestTimeoutMs > 0) {
+                ExecutorService executor = Executors.newSingleThreadExecutor();
+                Future<?> future = executor.submit(() -> {
+                    try {
+                        analysis.analyze(request);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+                try {
+                    future.get(requestTimeoutMs, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException te) {
+                    future.cancel(true);
+                    throw new RuntimeException("Request timed out after " + requestTimeoutMs + "ms");
+                } catch (ExecutionException ee) {
+                    Throwable cause = ee.getCause();
+                    if (cause instanceof RuntimeException re && re.getCause() instanceof Exception inner) {
+                        throw inner;
+                    }
+                    throw (cause instanceof Exception ex2) ? ex2 : new RuntimeException(cause);
+                } finally {
+                    executor.shutdownNow();
+                }
+            } else {
+                analysis.analyze(request);
+            }
+        } catch (Exception ex) {
+            long durationMs = System.currentTimeMillis() - analysisStartTime;
+            String errorMessage = ex.getMessage();
+            if (errorMessage == null) errorMessage = ex.getClass().getSimpleName();
+            if (errorMessage.length() > 2000) errorMessage = errorMessage.substring(0, 2000);
+            System.out.println("Analysis failed for request " + request.id +
+                    " after " + durationMs + "ms: " + errorMessage);
+            reportError(request.id, errorMessage, apiClient);
+            throw ex;
+        }
+    }
+
+    private void reportError(int requestId, String message, ApiClient apiClient) {
+        try {
+            Map<String, String> pathParams = new HashMap<>();
+            pathParams.put("id", String.valueOf(requestId));
+            String body = "{\"message\":" + new Gson().toJson(message) + "}";
+            ApiClient.ApiResponse<Object> response = apiClient.makePostRequest(
+                    "api.analysis.requests.error", pathParams, body, Object.class, props);
+            recordServerContact();
+            if (response.isSuccess()) {
+                System.out.println("Reported error for request " + requestId);
+            } else {
+                System.out.println("Failed to report error for request " + requestId +
+                        ". Status: " + response.getStatusCode() +
+                        ", message: " + response.getErrorMessage());
+            }
+        } catch (Exception e) {
+            System.out.println("Exception reporting error for request " + requestId + ": " + e.getMessage());
+        }
     }
 }

@@ -10,6 +10,21 @@ public class AnalysisRequest {
     public String difficulty;
     public String requestedAt;
     public Boolean isPrecalculate;
+    public int failureCount;
+    public String errorMessage;
+    public boolean isFailed;
+
+    public long getTimeoutMs(long defaultMs) {
+        if (scenario != null && scenario.metadata != null
+                && scenario.metadata.configOverrides != null
+                && scenario.metadata.configOverrides.containsKey("timeoutSeconds")) {
+            Object val = scenario.metadata.configOverrides.get("timeoutSeconds");
+            if (val instanceof Number num) {
+                return num.longValue() * 1000;
+            }
+        }
+        return defaultMs;
+    }
 
     /**
      * Scenario details embedded within an analysis request.
@@ -24,5 +39,6 @@ public class AnalysisRequest {
         public String imageUrl;
         public String toMove;
         public String[] analyzedRootDifficulties;
+        public ScenarioMetadata metadata;
     }
 }

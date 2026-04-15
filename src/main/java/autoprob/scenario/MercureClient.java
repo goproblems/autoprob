@@ -304,11 +304,14 @@ public class MercureClient {
             JsonObject json = gson.fromJson(data, JsonObject.class);
             String type = json.has("type") ? json.get("type").getAsString() : null;
             if (NOTIFICATION_TYPE_ANALYSIS_REQUEST_CREATED.equals(type)) {
-                System.out.println("Received " + NOTIFICATION_TYPE_ANALYSIS_REQUEST_CREATED + " notification");
+                JsonObject payload = json.has("payload") ? json.getAsJsonObject("payload") : null;
+                String pendingInfo = (payload != null && payload.has("pendingRequestCount"))
+                    ? " (pending: " + payload.get("pendingRequestCount").getAsInt() + ")" : "";
+                System.out.println("Received " + NOTIFICATION_TYPE_ANALYSIS_REQUEST_CREATED + " notification" + pendingInfo);
                 onNotification.run();
             }
         } catch (Exception e) {
-            System.out.println("Failed to parse Mercure event: " + e.getMessage());
+            System.out.println("Failed to parse Mercure event: " + e.getMessage() + ", payload=" + data);
         }
     }
 

@@ -682,6 +682,7 @@ public class Analysis {
                 previousEndness, result.endness);
             System.out.println(overrideMsg);
             debugInfo.append(overrideMsg);
+            result.extraInfo = debugInfo.toString();
             return;
         }
 

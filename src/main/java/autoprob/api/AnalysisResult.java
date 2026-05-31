@@ -20,7 +20,6 @@ public class AnalysisResult {
     public Boolean isAnalyzed;
 
     private static final DecimalFormat df = new DecimalFormat("0.00");
-
     public String toStringBrief() {
         return "{" +
                 "path='" + path + '\'' +

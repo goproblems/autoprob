@@ -249,9 +249,10 @@ public class Analysis {
         }
 
         node.kres = endKata;
+        double pathWeight = policyWeight(momKata, lastMoveInPath(request.path));
 
         AnalysisResult result = buildAnalysisResult(request.path, request.difficulty, node,
-            endKata, momKata, root, rootKata, weightsFile, 0.0, visits);
+            endKata, momKata, root, rootKata, weightsFile, pathWeight, visits);
         result.analysis = gson.toJson(endKata);
         result.extraInfo = debugInfo.toString();
         result.isAnalyzed = true;
@@ -698,6 +699,7 @@ public class Analysis {
         for (int i = 0; i < validCandidates.size(); i++) {
             MoveInfo move = validCandidates.get(i);
             String responsePath = result.path + "," + move.move;
+            double responseWeight = policyWeight(endKata, move.move);
 
             if (i == 0) {
                 // Fully analyze the best response
@@ -708,7 +710,7 @@ public class Analysis {
                 responseNode.kres = responseKata;
 
                 AnalysisResult responseResult = buildAnalysisResult(responsePath, result.difficulty,
-                    responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, (double) move.visits, visits);
+                    responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, responseWeight, visits);
                 responseResult.analysis = gson.toJson(responseKata);
                 responseResult.extraInfo = debugInfo.toString();
                 responseResult.isAnalyzed = true;
@@ -724,7 +726,7 @@ public class Analysis {
                 AnalysisResult candidateResult = new AnalysisResult();
                 candidateResult.path = responsePath;
                 candidateResult.difficulty = result.difficulty;
-                candidateResult.weight = (double) move.visits;
+                candidateResult.weight = responseWeight;
                 candidateResult.katagoWeightsFile = result.katagoWeightsFile;
                 candidateResult.isAnalyzed = false;
                 candidateResult.loss = 0.0;
@@ -770,7 +772,7 @@ public class Analysis {
 
         for (int i = 0; i < movesToAdd; i++) {
             MoveInfo optimalMove = momKata.moveInfos.get(i);
-            int optimalMoveVisits = optimalMove.visits;
+            double optimalMoveWeight = policyWeight(momKata, optimalMove.move);
 
             // Build the path for this optimal move
             String optimalPath = parentPath.isEmpty() ? optimalMove.move : parentPath + "," + optimalMove.move;
@@ -789,7 +791,7 @@ public class Analysis {
             optimalNode.kres = optimalKata;
 
             AnalysisResult optimalResult = buildAnalysisResult(optimalPath, rank, optimalNode,
-                optimalKata, momKata, root, rootKata, weightsFile, (double) optimalMoveVisits, visits);
+                optimalKata, momKata, root, rootKata, weightsFile, optimalMoveWeight, visits);
             optimalResult.analysis = gson.toJson(optimalKata);
             optimalResult.extraInfo = debugInfo.toString();
             optimalResult.isAnalyzed = true;
@@ -861,7 +863,68 @@ public class Analysis {
     }
 
     private List<Double> selectPolicy(KataAnalysisResult kres) {
+        if (kres == null) {
+            return null;
+        }
         return kres.humanPolicy != null ? kres.humanPolicy : kres.policy;
+    }
+
+    private String lastMoveInPath(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        int comma = path.lastIndexOf(',');
+        String move = comma >= 0 ? path.substring(comma + 1) : path;
+        move = move.trim();
+        return move.isEmpty() ? null : move;
+    }
+
+    private double policyWeight(KataAnalysisResult kata, String move) {
+        if (move == null || move.isBlank()) {
+            return 0.0;
+        }
+        String normalizedMove = move.trim();
+        Double policy = policyArrayWeight(kata, normalizedMove);
+        if (policy != null) {
+            return policy;
+        }
+        MoveInfo moveInfo = findMoveInfo(kata, normalizedMove);
+        if (moveInfo != null && moveInfo.prior != null) {
+            return moveInfo.prior;
+        }
+        return 0.0;
+    }
+
+    private MoveInfo findMoveInfo(KataAnalysisResult kata, String move) {
+        if (kata == null || kata.moveInfos == null || move == null) {
+            return null;
+        }
+        for (MoveInfo moveInfo : kata.moveInfos) {
+            if (moveInfo.move != null && moveInfo.move.equalsIgnoreCase(move)) {
+                return moveInfo;
+            }
+        }
+        return null;
+    }
+
+    private Double policyArrayWeight(KataAnalysisResult kata, String move) {
+        List<Double> policy = selectPolicy(kata);
+        if (policy != null && move != null) {
+            Point p = Intersection.gtp2point(move);
+            int index = -1;
+            if (p.x == 19 || p.y == 19) {
+                index = 19 * 19;
+            } else if (p.x >= 0 && p.x < 19 && p.y >= 0 && p.y < 19) {
+                index = p.x + p.y * 19;
+            }
+            if (index >= 0 && index < policy.size()) {
+                Double weight = policy.get(index);
+                if (weight != null && weight >= 0.0) {
+                    return weight;
+                }
+            }
+        }
+        return null;
     }
 
     private AnalysisResult buildRootAnalysisResult(String difficulty, KataAnalysisResult rootKata, String katagoWeightsFile, int katagoPlayouts) {

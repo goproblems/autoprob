@@ -32,6 +32,7 @@ public class AnalysisConfig {
     public double tenukiRegionLinkDistance;
     public int maxSenteCandidates;
     public double minSentePolicy;
+    public double minUrgencyPolicy;
     public double minUrgencyToContinue;
     public boolean allowFallbackOutsideArea;
     public boolean detectKo;
@@ -73,6 +74,7 @@ public class AnalysisConfig {
         c.maxOptimalMoves = Integer.parseInt(props.getProperty("scenario.max_optimal_moves", "1"));
         c.maxSenteCandidates = Integer.parseInt(props.getProperty("scenario.max_sente_candidates", "5"));
         c.minSentePolicy = Double.parseDouble(props.getProperty("scenario.min_sente_policy", "0.05"));
+        c.minUrgencyPolicy = Double.parseDouble(props.getProperty("scenario.min_urgency_policy", "0.02"));
         c.minUrgencyToContinue = Double.parseDouble(props.getProperty("scenario.min_urgency_to_continue", "10.0"));
         c.allowFallbackOutsideArea = Boolean.parseBoolean(props.getProperty("scenario.allow_fallback_outside_area", "false"));
         c.detectKo = Boolean.parseBoolean(props.getProperty("scenario.detect_ko", "true"));
@@ -143,6 +145,7 @@ public class AnalysisConfig {
         c.maxOptimalMoves = this.maxOptimalMoves;
         c.maxSenteCandidates = this.maxSenteCandidates;
         c.minSentePolicy = this.minSentePolicy;
+        c.minUrgencyPolicy = this.minUrgencyPolicy;
         c.minUrgencyToContinue = this.minUrgencyToContinue;
         c.allowFallbackOutsideArea = this.allowFallbackOutsideArea;
         c.detectKo = this.detectKo;
@@ -218,6 +221,9 @@ public class AnalysisConfig {
                     break;
                 case "scenario.min_sente_policy":
                     c.minSentePolicy = toDouble(value);
+                    break;
+                case "scenario.min_urgency_policy":
+                    c.minUrgencyPolicy = toDouble(value);
                     break;
                 case "scenario.min_urgency_to_continue":
                     c.minUrgencyToContinue = toDouble(value);

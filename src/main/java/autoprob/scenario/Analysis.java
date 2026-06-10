@@ -37,13 +37,14 @@ public class Analysis {
     }
 
     private static final DecimalFormat df = new DecimalFormat("0.00");
+    private static final DecimalFormat policyDf = new DecimalFormat("0.0000");
 
     private static final String DEFAULT_HUMAN_RANK = "10k";
     private static final String VISITS_PROPERTY = "scenario.analysis.visits";
     private static final String FALLBACK_VISITS_PROPERTY = "search.visits";
 
-    // Small offset added to depthFactor to prevent endness from being exactly 0
-    private static final double DEPTH_FACTOR_OFFSET = 0.01;
+    // Small offset added to depthFactor. Keep at 0 unless exact-zero endness becomes a problem.
+    private static final double DEPTH_FACTOR_OFFSET = 0.0;
 
     private final Properties props;
     private final KataBrain brain;
@@ -1268,15 +1269,21 @@ public class Analysis {
                     continue;
                 }
 
+                if (moveInfo.prior == null || moveInfo.prior < config.minUrgencyPolicy) {
+                    continue;
+                }
+
                 bestMove = moveInfo;
                 break;
             }
 
             if (bestMove == null) {
                 if (config.hasPlayerAreaConstraints()) {
-                    debugInfo.append("Urgency: 0.00 (all candidate moves are tenuki or outside area);");
+                    debugInfo.append(String.format("Urgency: 0.00 (all candidate moves are tenuki, outside area, or below min urgency policy %.4f);",
+                        config.minUrgencyPolicy));
                 } else {
-                    debugInfo.append("Urgency: 0.00 (all candidate moves are tenuki);");
+                    debugInfo.append(String.format("Urgency: 0.00 (all candidate moves are tenuki or below min urgency policy %.4f);",
+                        config.minUrgencyPolicy));
                 }
                 return 0.0;
             }
@@ -1291,8 +1298,9 @@ public class Analysis {
             double passScore = passKata.rootInfo.scoreLead;
             double urgency = Math.abs(bestScore - passScore);
 
-            debugInfo.append(String.format("Urgency: %.2f (best non-tenuki=%s sc=%.1f, pass sc=%.1f);",
-                urgency, bestMove.move, bestScore, passScore));
+            String bestMovePolicy = bestMove.prior == null ? "?" : policyDf.format(bestMove.prior);
+            debugInfo.append(String.format("Urgency: %.2f (best non-tenuki=%s pol=%s sc=%.1f, pass sc=%.1f);",
+                urgency, bestMove.move, bestMovePolicy, bestScore, passScore));
 
             return urgency;
         } catch (Exception e) {

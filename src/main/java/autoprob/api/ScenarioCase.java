@@ -22,7 +22,7 @@ public class ScenarioCase {
     }
 
     public static class ExpectedValues {
-        public Double endness;
+        public Boolean endness;
         public Double urgency;
         public Double totalLoss;
     }

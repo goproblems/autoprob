@@ -67,6 +67,20 @@ public class ScenarioTestSuite {
     public void runAPISuite() throws Exception {
         System.out.println("Fetching test cases from API...");
 
+        Integer targetScenarioId = null;
+        String scenarioIdStr = props.getProperty("scenarioid");
+        if (scenarioIdStr == null || scenarioIdStr.isEmpty()) {
+            scenarioIdStr = props.getProperty("scenarioId");
+        }
+        if (scenarioIdStr != null && !scenarioIdStr.isEmpty()) {
+            try {
+                targetScenarioId = Integer.parseInt(scenarioIdStr);
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid scenarioid format: " + scenarioIdStr);
+                return;
+            }
+        }
+
         List<ScenarioCase> allCases;
         try {
             allCases = fetchScenarioCases();
@@ -91,6 +105,18 @@ public class ScenarioTestSuite {
                 System.err.println("Invalid caseid format: " + caseIdStr);
                 return;
             }
+        }
+
+        if (targetScenarioId != null) {
+            int scenarioId = targetScenarioId;
+            allCases = allCases.stream()
+                .filter(c -> c.scenario != null && c.scenario.id == scenarioId)
+                .toList();
+            if (allCases.isEmpty()) {
+                System.err.println("No case found with scenario ID: " + targetScenarioId);
+                return;
+            }
+            System.out.println("Running tests for scenario ID: " + targetScenarioId);
         }
 
         List<ScenarioCase> testCases = allCases.stream()
@@ -201,12 +227,11 @@ public class ScenarioTestSuite {
                 List<String> failures = new ArrayList<>();
 
                 if (expectation.expected.endness != null && result.endness != null) {
-                    double tolerance = tol.endness != null ? tol.endness : DEFAULT_ENDNESS_TOLERANCE;
-                    double diff = Math.abs(result.endness - expectation.expected.endness);
-                    if (diff > tolerance) {
+                    boolean actualEndness = result.endness > 0.0;
+                    if (actualEndness != expectation.expected.endness) {
                         passed = false;
-                        failures.add("endness: expected " + df.format(expectation.expected.endness) + 
-                                   ", got " + df.format(result.endness) + " (diff: " + df.format(diff) + ", tolerance: " + df.format(tolerance) + ")");
+                        failures.add("endness: expected " + expectation.expected.endness +
+                                   ", got " + actualEndness + " (raw: " + df.format(result.endness) + ")");
                     }
                 }
 

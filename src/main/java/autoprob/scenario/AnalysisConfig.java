@@ -29,6 +29,7 @@ public class AnalysisConfig {
     public double depthPower;
     public int tenukiHistoryMoves;
     public double tenukiDistanceThreshold;
+    public double tenukiRegionLinkDistance;
     public int maxSenteCandidates;
     public double minSentePolicy;
     public double minUrgencyToContinue;
@@ -67,6 +68,7 @@ public class AnalysisConfig {
         c.depthPower = Double.parseDouble(props.getProperty("scenario.depth_power", "1.1"));
         c.tenukiHistoryMoves = Integer.parseInt(props.getProperty("scenario.tenuki_history_moves", "3"));
         c.tenukiDistanceThreshold = Double.parseDouble(props.getProperty("scenario.tenuki_distance_threshold", "6.0"));
+        c.tenukiRegionLinkDistance = Double.parseDouble(props.getProperty("scenario.tenuki_region_link_distance", String.valueOf(c.tenukiDistanceThreshold)));
         c.maxOptimalMoves = Integer.parseInt(props.getProperty("scenario.max_optimal_moves", "1"));
         c.maxSenteCandidates = Integer.parseInt(props.getProperty("scenario.max_sente_candidates", "5"));
         c.minSentePolicy = Double.parseDouble(props.getProperty("scenario.min_sente_policy", "0.05"));
@@ -135,6 +137,7 @@ public class AnalysisConfig {
         c.depthPower = this.depthPower;
         c.tenukiHistoryMoves = this.tenukiHistoryMoves;
         c.tenukiDistanceThreshold = this.tenukiDistanceThreshold;
+        c.tenukiRegionLinkDistance = this.tenukiRegionLinkDistance;
         c.maxOptimalMoves = this.maxOptimalMoves;
         c.maxSenteCandidates = this.maxSenteCandidates;
         c.minSentePolicy = this.minSentePolicy;
@@ -204,6 +207,9 @@ public class AnalysisConfig {
                 case "scenario.tenuki_distance_threshold":
                     c.tenukiDistanceThreshold = toDouble(value);
                     break;
+                case "scenario.tenuki_region_link_distance":
+                    c.tenukiRegionLinkDistance = toDouble(value);
+                    break;
                 case "scenario.max_sente_candidates":
                     c.maxSenteCandidates = toInt(value);
                     break;
@@ -232,6 +238,10 @@ public class AnalysisConfig {
                     System.out.println("Unknown config override key: " + key);
                     break;
             }
+        }
+        if (overrides.containsKey("scenario.tenuki_distance_threshold")
+                && !overrides.containsKey("scenario.tenuki_region_link_distance")) {
+            c.tenukiRegionLinkDistance = c.tenukiDistanceThreshold;
         }
     }
 

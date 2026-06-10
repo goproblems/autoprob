@@ -383,17 +383,16 @@ public class Analysis {
                 : selectPolicy(current.kata);
             if (policy == null) continue;
 
-            Point lastMove = current.node.findMove();
-
             for (var pol : current.kata.getTopPolicy(10, policy)) {
                 if (nodesCount >= maxNodes) break;
                 if (pol.policy < config.precalculationMinPolicy) break;
 
+                Point candidatePoint = new Point(pol.x, pol.y);
+
                 // Skip tenuki
-                if (lastMove != null && isTenuki(lastMove, new Point(pol.x, pol.y))) continue;
+                if (isTenukiFromActiveRegion(candidatePoint, current.node)) continue;
 
                 // Skip moves outside area constraints
-                Point candidatePoint = new Point(pol.x, pol.y);
                 if (isPlayerTurn && !config.isPlayerMoveAllowed(candidatePoint)) {
                     System.out.println("  Precalc: skipped " + Intersection.toGTPloc(pol.x, pol.y) + " (outside player area)");
                     continue;
@@ -481,7 +480,6 @@ public class Analysis {
         List<KataAnalysisResult.Policy> top = endKata.getTopPolicy(10, endKata.humanPolicy); // gets all, sorted
         int visits = determineVisits();
         var nodeAnalyzer = new NodeAnalyzer(props);
-        Point currentMove = node.findMove();
 
         List<KataAnalysisResult.Policy> validCandidates = new ArrayList<>();
 
@@ -495,13 +493,15 @@ public class Analysis {
                 continue;
             }
 
-            if (currentMove != null && isTenuki(currentMove, new Point(pol.x, pol.y))) {
+            Point candidatePoint = new Point(pol.x, pol.y);
+
+            if (isTenukiFromActiveRegion(candidatePoint, node)) {
                 System.out.println("  tenuki move, skipping");
                 continue;
             }
 
             // Skip moves outside computer area constraints
-            if (!config.isComputerMoveAllowed(new Point(pol.x, pol.y))) {
+            if (!config.isComputerMoveAllowed(candidatePoint)) {
                 System.out.println("  outside computer allowed area, skipping");
                 continue;
             }
@@ -639,15 +639,13 @@ public class Analysis {
 
     private void addResponseResultsMaxRank(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String rank) throws Exception {
         // Use moveInfos to find response moves (post-search, strongest)
-        Point currentMove = node.findMove();
-
         // Collect valid candidates from moveInfos
         double scoreBaseline = endKata.moveInfos.get(0).scoreLead;
         List<MoveInfo> validCandidates = new ArrayList<>();
         for (MoveInfo candidate : endKata.moveInfos) {
             Point candidatePoint = Intersection.gtp2point(candidate.move);
             double scoreDelta = Math.abs(candidate.scoreLead - scoreBaseline);
-            boolean isTenukiMove = currentMove != null && isTenuki(currentMove, candidatePoint);
+            boolean isTenukiMove = isTenukiFromActiveRegion(candidatePoint, node);
 
             if (candidate.visits > 5) {
                 System.out.println("-- max mode response " + candidate.move + " scoreDelta: " + df.format(scoreDelta)
@@ -1213,15 +1211,13 @@ public class Analysis {
         // Get the best move
         try {
             List<MoveInfo> moves = node.kres.moveInfos;
-            Point currentMove = node.findMove();
-            List<Point> recentMoves = (currentMove != null) ? getRecentMoves(node, config.tenukiHistoryMoves) : new ArrayList<>();
 
             // Find the best non-tenuki move
             MoveInfo bestMove = null;
             for (MoveInfo moveInfo : moves) {
                 Point candidatePoint = Intersection.gtp2point(moveInfo.move);
 
-                if (!recentMoves.isEmpty() && isTenukiFromRecent(candidatePoint, recentMoves)) {
+                if (isTenukiFromActiveRegion(candidatePoint, node)) {
                     continue;
                 }
 
@@ -1287,12 +1283,10 @@ public class Analysis {
             return false;
         }
 
-        List<Point> recentMoves = getRecentMoves(node, config.tenukiHistoryMoves);
-
         MoveInfo bestMove = node.kres.moveInfos.get(0);
         Point bestMovePoint = Intersection.gtp2point(bestMove.move);
 
-        if (isTenukiFromRecent(bestMovePoint, recentMoves)) {
+        if (isTenukiFromActiveRegion(bestMovePoint, node)) {
             debugInfo.append(String.format("Wants Tenuki(moveInfos): best=%s visits=%d;",
                 bestMove.move, bestMove.visits));
             return true;
@@ -1306,7 +1300,7 @@ public class Analysis {
     /**
      * Check if KataGo/human policy wants to tenuki
      * Uses humanPolicy if available, otherwise falls back to moveInfos.
-     * Checks against the last N moves to determine if a move is tenuki.
+     * Checks against the active local region to determine if a move is tenuki.
      * Conditions:
      * 1. Best move (by humanPolicy) is tenuki
      * 2. All high policy moves are tenuki
@@ -1326,9 +1320,6 @@ public class Analysis {
             return false;
         }
 
-        // Get recent moves for tenuki checking
-        List<Point> recentMoves = getRecentMoves(node, config.tenukiHistoryMoves);
-
         // Use humanPolicy if available, otherwise fall back to regular policy
         List<Double> policy = selectPolicy(node.kres);
         // if (policy == null) {
@@ -1346,8 +1337,8 @@ public class Analysis {
         Point bestMovePoint = new Point(bestMove.x, bestMove.y);
         String bestMoveStr = Intersection.toGTPloc(bestMove.x, bestMove.y);
 
-        // Best move must be tenuki (far from all recent moves)
-        if (!isTenukiFromRecent(bestMovePoint, recentMoves)) {
+        // Best move must be tenuki (far from the active local region)
+        if (!isTenukiFromActiveRegion(bestMovePoint, node)) {
             debugInfo.append(String.format("Best humanPolicy move %s (policy=%.4f) is not tenuki;",
                     bestMoveStr, bestMove.policy));
             return false;
@@ -1378,7 +1369,7 @@ public class Analysis {
             // candidate.policy already contains the value from policyToUse
             String candidateWithPolicy = String.format("%s(%s=%.2f)", candidateStr, policyLabel, candidate.policy);
 
-            if (isTenukiFromRecent(candidatePoint, recentMoves)) {
+            if (isTenukiFromActiveRegion(candidatePoint, node)) {
                 tenukiMoves.add(candidateWithPolicy);
             } else {
                 nonTenukiMoves.add(candidateWithPolicy);
@@ -1397,47 +1388,82 @@ public class Analysis {
     }
 
     /**
-     * Get the last N moves from the game tree.
-     *
-     * @param node Current node
-     * @param count Number of recent moves to retrieve
-     * @return List of recent move points (most recent first)
+     * Check if a move is tenuki from the active local fight.
+     * Target positions are always treated as part of the local fight.
      */
-    private List<Point> getRecentMoves(Node node, int count) {
-        List<Point> recentMoves = new ArrayList<>();
+    private boolean isTenukiFromActiveRegion(Point candidateMove, Node contextNode) {
+        if (!isBoardPoint(candidateMove)) {
+            return false;
+        }
+
+        if (isNearTargetPosition(candidateMove)) {
+            return false;
+        }
+
+        List<Point> activeRegion = getActiveLocalRegion(contextNode);
+        if (activeRegion.isEmpty()) {
+            return false;
+        }
+
+        return !isNearAny(candidateMove, activeRegion, config.tenukiDistanceThreshold);
+    }
+
+    /**
+     * Build the continuous local region immediately preceding a candidate move.
+     * Older moves are included only while they stay connected to the current region.
+     */
+    private List<Point> getActiveLocalRegion(Node node) {
+        List<Point> region = new ArrayList<>();
         Node current = node;
 
-        while (current != null && recentMoves.size() < count) {
+        while (current != null) {
             Point move = current.findMove();
-            if (move != null) {
-                recentMoves.add(move);
+            if (isBoardPoint(move)) {
+                if (region.isEmpty() || isNearAny(move, region, config.tenukiRegionLinkDistance)) {
+                    region.add(move);
+                } else {
+                    break;
+                }
             }
             current = current.mom;
         }
 
-        return recentMoves;
+        return region;
     }
 
-    /**
-     * Check if a move is tenuki from all recent moves.
-     * A move is considered tenuki if it's far from all recent moves.
-     *
-     * @param candidateMove The move to check
-     * @param recentMoves List of recent moves
-     * @return true if the move is far from all recent moves
-     */
-    private boolean isTenukiFromRecent(Point candidateMove, List<Point> recentMoves) {
-        if (recentMoves.isEmpty()) {
+    private boolean isNearTargetPosition(Point move) {
+        if (config.metadata == null || config.metadata.targetPositions == null) {
             return false;
         }
 
-        for (Point recentMove : recentMoves) {
-            if (!isTenuki(recentMove, candidateMove)) {
-                return false;  // Close to at least one recent move
+        for (String target : config.metadata.targetPositions) {
+            if (target == null || target.isBlank()) {
+                continue;
+            }
+            try {
+                Point targetPoint = Intersection.gtp2point(target);
+                if (isBoardPoint(targetPoint) && distance(move, targetPoint) < config.tenukiDistanceThreshold) {
+                    return true;
+                }
+            } catch (RuntimeException ignored) {
+                // Ignore malformed target coordinates from scenario metadata.
             }
         }
 
-        return true;  // Far from all recent moves
+        return false;
+    }
+
+    private boolean isNearAny(Point move, List<Point> points, double threshold) {
+        for (Point point : points) {
+            if (distance(move, point) < threshold) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isBoardPoint(Point move) {
+        return move != null && move.x >= 0 && move.x < 19 && move.y >= 0 && move.y < 19;
     }
 
     // /**
@@ -1514,11 +1540,14 @@ public class Analysis {
      * @return true if the distance is >= tenukiDistanceThreshold
      */
     private boolean isTenuki(Point from, Point to) {
-        double distance = Math.sqrt(
+        return distance(from, to) >= config.tenukiDistanceThreshold;
+    }
+
+    private double distance(Point from, Point to) {
+        return Math.sqrt(
             Math.pow(to.x - from.x, 2) +
             Math.pow(to.y - from.y, 2)
         );
-        return distance >= config.tenukiDistanceThreshold;
     }
 
     /**
@@ -1595,8 +1624,8 @@ public class Analysis {
 
             Point candidatePoint = Intersection.gtp2point(moveInfo.move);
 
-            // Skip if the candidate itself is a tenuki
-            if (isTenuki(currentMove, candidatePoint)) {
+            // Skip if the candidate itself is a tenuki from the active local region
+            if (isTenukiFromActiveRegion(candidatePoint, node)) {
                 tenukiMoves.add(String.format("%s(p=%.2f)", moveInfo.move, prior));
                 continue;
             }

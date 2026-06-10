@@ -170,7 +170,9 @@ public class ScenarioTestSuite {
                     // Run analysis
                     AnalysisRequest request = new AnalysisRequest();
                     request.scenario = new AnalysisRequest.Scenario();
+                    request.scenario.id = testCase.scenario.id;
                     request.scenario.sgf = testCase.scenario.sgf;
+                    request.scenario.metadata = testCase.scenario.metadata;
                     request.path = expectation.path;
                     request.difficulty = testCase.difficulty;
 

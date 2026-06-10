@@ -57,6 +57,7 @@ public class Analysis {
      * Per-request configuration, may be overridden by scenario metadata.
      */
     private AnalysisConfig config;
+    private String scenarioType;
 
     private ResultSubmitter resultSubmitter;
 
@@ -166,6 +167,7 @@ public class Analysis {
         }
 
         // Build per-request config with metadata overrides and area constraints
+        this.scenarioType = request.scenario.type;
         this.config = defaultConfig.withMetadata(request.scenario.metadata);
         if (request.scenario.metadata != null && request.scenario.metadata.configOverrides != null
                 && !request.scenario.metadata.configOverrides.isEmpty()) {
@@ -1030,7 +1032,8 @@ public class Analysis {
         double urgency = calculateUrgency(node);
         debugInfo.append("urgency: ").append(df.format(urgency)).append("; ");
 
-        double avgOwnership = calculateHumanMovesOwnership(node, root);
+        OwnershipInfo ownershipInfo = calculateOwnershipInfo(node, root);
+        double avgOwnership = ownershipInfo.average;
         debugInfo.append("avgOwnership: ").append(df.format(avgOwnership)).append("; ");
 
         // if too few moves, don't end no matter the state
@@ -1054,19 +1057,11 @@ public class Analysis {
 
         // Significant score change
         if (Math.abs(scoreDelta) >= config.scoreDropThreshold) {
-            // Check ownership of human moves in path to determine if stones are clearly owned by opponent
+            // Check scenario-relevant stones to determine if ownership is clear enough to end.
             if (scoreDelta < -config.scoreDropThreshold) {
                 if (!Double.isNaN(avgOwnership)) {
-                    int playerColor = root.getToMove();
-                    boolean opponentOwned;
-                    boolean clearlyDead;
-                    if (playerColor == Intersection.BLACK) {
-                        opponentOwned = avgOwnership < 0;
-                        clearlyDead = avgOwnership < -config.ownershipThreshold;
-                    } else {
-                        opponentOwned = avgOwnership > 0;
-                        clearlyDead = avgOwnership > config.ownershipThreshold;
-                    }
+                    boolean opponentOwned = isOwnedByOpponent(avgOwnership, ownershipInfo.ownershipStoneColor);
+                    boolean clearlyDead = isClearlyOwnedByOpponent(avgOwnership, ownershipInfo.ownershipStoneColor);
 
                     // Ownership endness logic:
                     // - Stones clearly live: allow ending
@@ -1134,44 +1129,45 @@ public class Analysis {
     }
 
     /**
-     * Calculate average ownership of human moves in the path.
-     * Ownership: +1 (black owns) to -1 (white owns)
-     * This is used to determine if stones added by human moves are clearly dead.
-     *
-     * @param node Current node (end of path)
-     * @param root Root node (start of path)
-     * @return Average ownership value
+     * Calculate average ownership of stones relevant to the scenario type.
+     * Ownership: +1 (black owns) to -1 (white owns).
+     * In invasion, ownership positions are target positions + human moves.
+     * In repel, ownership positions are target positions + computer moves.
      */
-    private double calculateHumanMovesOwnership(Node node, Node root) {
+    private OwnershipInfo calculateOwnershipInfo(Node node, Node root) {
+        int playerColor = root.getToMove();
+        boolean repel = isRepelScenario();
+        int ownershipStoneColor = repel ? oppositeColor(playerColor) : playerColor;
+
         if (node.kres == null || node.kres.ownership == null) {
             debugInfo.append("No ownership data, assuming unclear;");
-            return Double.NaN;
+            return new OwnershipInfo(Double.NaN, ownershipStoneColor);
         }
 
-        List<Point> humanMovePositions = new ArrayList<>();
+        List<Point> ownershipPositions = new ArrayList<>();
+        addTargetPositions(ownershipPositions);
+
         Node current = node;
-        int playerColor = root.getToMove();
 
         while (current != null && current != root) {
             boolean isHumanMove = (current.getToMove() != playerColor);
-            if (isHumanMove) {
+            boolean includeMove = repel ? !isHumanMove : isHumanMove;
+            if (includeMove) {
                 Point move = current.findMove();
-                if (move != null && move.x >= 0 && move.x < 19 && move.y >= 0 && move.y < 19) {
-                    humanMovePositions.add(move);
-                }
+                addUniqueBoardPoint(ownershipPositions, move);
             }
             current = current.mom;
         }
 
-        if (humanMovePositions.isEmpty()) {
-            debugInfo.append("No human moves found;");
-            return Double.NaN;
+        if (ownershipPositions.isEmpty()) {
+            debugInfo.append("No ownership positions found;");
+            return new OwnershipInfo(Double.NaN, ownershipStoneColor);
         }
 
         double totalOwnership = 0.0;
         int validPositions = 0;
 
-        for (Point pos : humanMovePositions) {
+        for (Point pos : ownershipPositions) {
             int index = pos.x + pos.y * 19;
             if (index >= 0 && index < node.kres.ownership.size()) {
                 double ownership = node.kres.ownership.get(index);
@@ -1182,16 +1178,62 @@ public class Analysis {
 
         if (validPositions == 0) {
             debugInfo.append("No valid ownership positions;");
-            return Double.NaN;
+            return new OwnershipInfo(Double.NaN, ownershipStoneColor);
         }
 
         double avgOwnership = totalOwnership / validPositions;
 
-        String playerColorStr = (playerColor == Intersection.BLACK) ? "B" : "W";
-        debugInfo.append(String.format("Ownership: %d moves (player=%s), avg=%.2f;",
-            validPositions, playerColorStr, avgOwnership));
+        String ownershipStoneColorStr = (ownershipStoneColor == Intersection.BLACK) ? "B" : "W";
+        debugInfo.append(String.format("Ownership: %d positions (type=%s, ownershipStone=%s, avg=%.2f);",
+            validPositions, repel ? "repel" : "invasion", ownershipStoneColorStr, avgOwnership));
 
-        return avgOwnership;
+        return new OwnershipInfo(avgOwnership, ownershipStoneColor);
+    }
+
+    private boolean isRepelScenario() {
+        return scenarioType != null && scenarioType.equalsIgnoreCase("repel");
+    }
+
+    private int oppositeColor(int color) {
+        return color == Intersection.BLACK ? Intersection.WHITE : Intersection.BLACK;
+    }
+
+    private boolean isOwnedByOpponent(double ownership, int ownershipStoneColor) {
+        return ownershipStoneColor == Intersection.BLACK ? ownership < 0 : ownership > 0;
+    }
+
+    private boolean isClearlyOwnedByOpponent(double ownership, int ownershipStoneColor) {
+        return ownershipStoneColor == Intersection.BLACK
+            ? ownership < -config.ownershipThreshold
+            : ownership > config.ownershipThreshold;
+    }
+
+    private record OwnershipInfo(double average, int ownershipStoneColor) {}
+
+    private void addTargetPositions(List<Point> positions) {
+        if (config.metadata == null || config.metadata.targetPositions == null) {
+            return;
+        }
+
+        for (String target : config.metadata.targetPositions) {
+            if (target == null || target.isBlank()) {
+                continue;
+            }
+            try {
+                addUniqueBoardPoint(positions, Intersection.gtp2point(target));
+            } catch (RuntimeException ignored) {
+                // Ignore malformed target coordinates from scenario metadata.
+            }
+        }
+    }
+
+    private void addUniqueBoardPoint(List<Point> points, Point point) {
+        if (!isBoardPoint(point)) {
+            return;
+        }
+        if (!points.contains(point)) {
+            points.add(point);
+        }
     }
 
     /**

@@ -1757,6 +1757,10 @@ public class Analysis {
      * @return true if ko situation detected
      */
     private boolean isKoSituation(Node node) {
+        if (!config.detectKo) {
+            return false;
+        }
+
         Point currentMove = node.findMove();
         if (currentMove == null) {
             return false;

@@ -1051,7 +1051,7 @@ public class Analysis {
 //                return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
 //            }
             debugInfo.append(String.format("Endness: low urgency (%.2f); ", urgency));
-            return 1.0 + (urgency > 0.1 ? 1 / urgency : 5);
+            return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
         }
 
         // Significant score change

@@ -1120,8 +1120,13 @@ public class Analysis {
                 debugInfo.append("Endness: no sente but depth too low, continue;");
                 return config.minEndness;
             }
-            debugInfo.append("Endness: no sente;");
-            return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
+            // No-sente only means the remaining local move is gote: the opponent can tenuki after it.
+            // If urgency is still high, the player should get a chance to fill that important gote
+            // instead of ending immediately.
+            debugInfo.append(String.format(
+                "Endness: no sente but urgency remains high (%.2f >= %.2f), continue;",
+                urgency, config.minUrgencyToContinue));
+            return config.minEndness;
         }
 
         // TODO: Total loss - maybe change to continuous value instead of threshold

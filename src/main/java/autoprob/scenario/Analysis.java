@@ -43,8 +43,8 @@ public class Analysis {
     private static final String VISITS_PROPERTY = "scenario.analysis.visits";
     private static final String FALLBACK_VISITS_PROPERTY = "search.visits";
 
-    // Small offset added to depthFactor. Keep at 0 unless exact-zero endness becomes a problem.
-    private static final double DEPTH_FACTOR_OFFSET = 0.0;
+    // Small offset added to depthFactor to avoid exact-zero endness at the path limit.
+    private static final double DEPTH_FACTOR_OFFSET = 0.01;
 
     private final Properties props;
     private final KataBrain brain;

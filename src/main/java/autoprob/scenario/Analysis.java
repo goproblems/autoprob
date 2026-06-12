@@ -668,24 +668,59 @@ public class Analysis {
             validCandidates.add(candidate);
         }
 
-        // If no valid candidates, end the problem
+        // If no valid candidates, end the problem only after the minimum move count.
+        // Before that, keep the tree playable by adding the best available fallback move.
         if (validCandidates.isEmpty()) {
             double previousEndness = result.endness;
             if (config.hasComputerAreaConstraints()) {
-                System.out.println("All moveInfos moves filtered by area constraints or tenuki, end problem");
+                System.out.println("All moveInfos moves filtered by area constraints or tenuki");
                 debugInfo.append("No valid max-mode responses (area constraints + tenuki filter); ");
             } else {
-                System.out.println("All moveInfos moves are tenuki moves, end problem");
+                System.out.println("All moveInfos moves are tenuki moves or filtered");
                 debugInfo.append("No valid max-mode responses (tenuki/filters); ");
             }
-            result.endness = config.maxEndness;
-            String overrideMsg = String.format(
-                "Endness overridden in max mode: %.2f -> %.2f (no valid response candidates);",
-                previousEndness, result.endness);
-            System.out.println(overrideMsg);
-            debugInfo.append(overrideMsg);
-            result.extraInfo = debugInfo.toString();
-            return;
+
+            // Max mode can be strict about response candidates, but it should not bypass
+            // the same minimum-move guard used by calculateEndness.
+            if (node.depth < config.minMoves) {
+                MoveInfo fallback = selectMaxModeFallbackResponse(endKata, node);
+                if (fallback == null) {
+                    String skipMsg = String.format(
+                        "Max-mode endness override skipped: depth %d < min_moves %d, but no fallback response exists;",
+                        node.depth, config.minMoves);
+                    System.out.println(skipMsg);
+                    debugInfo.append(skipMsg);
+                    result.extraInfo = debugInfo.toString();
+                    return;
+                }
+
+                Point fallbackPoint = Intersection.gtp2point(fallback.move);
+                boolean outsideArea = !config.isComputerMoveAllowed(fallbackPoint);
+                boolean tenuki = isTenukiFromActiveRegion(fallbackPoint, node);
+                double scoreDelta = Math.abs(fallback.scoreLead - scoreBaseline);
+                String fallbackMsg = String.format(
+                    "Max-mode endness override skipped: depth %d < min_moves %d; forced fallback response %s (pol=%s, visits=%d, scoreDelta=%.2f%s%s);",
+                    node.depth,
+                    config.minMoves,
+                    fallback.move,
+                    fallback.prior == null ? "?" : policyDf.format(fallback.prior),
+                    fallback.visits,
+                    scoreDelta,
+                    tenuki ? ", tenuki" : "",
+                    outsideArea ? ", outside-area" : "");
+                System.out.println(fallbackMsg);
+                debugInfo.append(fallbackMsg);
+                validCandidates.add(fallback);
+            } else {
+                result.endness = config.maxEndness;
+                String overrideMsg = String.format(
+                    "Endness overridden in max mode: %.2f -> %.2f (no valid response candidates);",
+                    previousEndness, result.endness);
+                System.out.println(overrideMsg);
+                debugInfo.append(overrideMsg);
+                result.extraInfo = debugInfo.toString();
+                return;
+            }
         }
 
         int visits = determineVisits();
@@ -739,6 +774,39 @@ public class Analysis {
                 results.add(candidateResult);
             }
         }
+    }
+
+    private MoveInfo selectMaxModeFallbackResponse(KataAnalysisResult endKata, Node node) {
+        if (endKata.moveInfos == null || endKata.moveInfos.isEmpty()) {
+            return null;
+        }
+
+        MoveInfo firstAllowedArea = null;
+        MoveInfo firstNonTenuki = null;
+
+        for (MoveInfo candidate : endKata.moveInfos) {
+            Point candidatePoint = Intersection.gtp2point(candidate.move);
+            boolean allowedArea = config.isComputerMoveAllowed(candidatePoint);
+            boolean nonTenuki = !isTenukiFromActiveRegion(candidatePoint, node);
+
+            if (allowedArea && nonTenuki) {
+                return candidate;
+            }
+            if (allowedArea && firstAllowedArea == null) {
+                firstAllowedArea = candidate;
+            }
+            if (nonTenuki && firstNonTenuki == null) {
+                firstNonTenuki = candidate;
+            }
+        }
+
+        if (firstAllowedArea != null) {
+            return firstAllowedArea;
+        }
+        if (firstNonTenuki != null) {
+            return firstNonTenuki;
+        }
+        return endKata.moveInfos.get(0);
     }
 
     /**

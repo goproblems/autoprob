@@ -36,6 +36,8 @@ public class AnalysisConfig {
     public double minUrgencyPolicy;
     public double minUrgencyScoreDelta;
     public double minUrgencyToContinue;
+    public double minValuablePlayerUrgency;
+    public double minValuablePlayerPolicy;
     public boolean allowFallbackOutsideArea;
     public boolean detectKo;
     public double maxScoreDropMaxMode;
@@ -80,6 +82,8 @@ public class AnalysisConfig {
         c.minUrgencyPolicy = Double.parseDouble(props.getProperty("scenario.min_urgency_policy", "0.02"));
         c.minUrgencyScoreDelta = Double.parseDouble(props.getProperty("scenario.min_urgency_score_delta", "-1.0"));
         c.minUrgencyToContinue = Double.parseDouble(props.getProperty("scenario.min_urgency_to_continue", "10.0"));
+        c.minValuablePlayerUrgency = Double.parseDouble(props.getProperty("scenario.min_valuable_player_urgency", "11.0"));
+        c.minValuablePlayerPolicy = Double.parseDouble(props.getProperty("scenario.min_valuable_player_policy", "0.5"));
         c.allowFallbackOutsideArea = Boolean.parseBoolean(props.getProperty("scenario.allow_fallback_outside_area", "false"));
         c.detectKo = Boolean.parseBoolean(props.getProperty("scenario.detect_ko", "true"));
         c.passMoveVisits = Integer.parseInt(props.getProperty("scenario.pass_move_visits", "200"));
@@ -153,6 +157,8 @@ public class AnalysisConfig {
         c.minUrgencyPolicy = this.minUrgencyPolicy;
         c.minUrgencyScoreDelta = this.minUrgencyScoreDelta;
         c.minUrgencyToContinue = this.minUrgencyToContinue;
+        c.minValuablePlayerUrgency = this.minValuablePlayerUrgency;
+        c.minValuablePlayerPolicy = this.minValuablePlayerPolicy;
         c.allowFallbackOutsideArea = this.allowFallbackOutsideArea;
         c.detectKo = this.detectKo;
         c.passMoveVisits = this.passMoveVisits;
@@ -239,6 +245,12 @@ public class AnalysisConfig {
                     break;
                 case "scenario.min_urgency_to_continue":
                     c.minUrgencyToContinue = toDouble(value);
+                    break;
+                case "scenario.min_valuable_player_urgency":
+                    c.minValuablePlayerUrgency = toDouble(value);
+                    break;
+                case "scenario.min_valuable_player_policy":
+                    c.minValuablePlayerPolicy = toDouble(value);
                     break;
                 case "scenario.allow_fallback_outside_area":
                     c.allowFallbackOutsideArea = toBoolean(value);

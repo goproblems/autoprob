@@ -1144,7 +1144,7 @@ public class Analysis {
 //                return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
 //            }
             debugInfo.append(String.format("Endness: low urgency (%.2f); ", urgency));
-            boolean hasValuablePlayerMove = hasValuablePlayerMove(node);
+            boolean hasValuablePlayerMove = hasValuablePlayerMove(node, urgency);
             return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead, hasValuablePlayerMove);
         }
 
@@ -1412,7 +1412,7 @@ public class Analysis {
         }
     }
 
-    private boolean hasValuablePlayerMove(Node node) {
+    private boolean hasValuablePlayerMove(Node node, double urgency) {
         if (node.kres == null || node.kres.rootInfo == null ||
             node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
             return false;
@@ -1429,18 +1429,34 @@ public class Analysis {
                 continue;
             }
 
-            if (moveInfo.prior == null || moveInfo.prior < config.minUrgencyPolicy) {
-                continue;
-            }
-
             if (scoreDiffFromCurrentRoot(node, moveInfo.scoreLead) < config.minUrgencyScoreDelta) {
                 continue;
             }
 
-            return true;
+            double playerPolicy = playerPolicyForMove(node.kres, candidatePoint, moveInfo);
+            boolean valuableByUrgency = urgency >= config.minValuablePlayerUrgency
+                && moveInfo.prior != null
+                && moveInfo.prior >= config.minUrgencyPolicy;
+            boolean valuableByPlayerPolicy = playerPolicy >= config.minValuablePlayerPolicy;
+            if (valuableByUrgency || valuableByPlayerPolicy) {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    private double playerPolicyForMove(KataAnalysisResult kata, Point point, MoveInfo moveInfo) {
+        if (kata != null && kata.humanPolicy != null && point != null) {
+            int index = point.x + point.y * 19;
+            if (index >= 0 && index < kata.humanPolicy.size()) {
+                Double policy = kata.humanPolicy.get(index);
+                if (policy != null && policy >= 0) {
+                    return policy;
+                }
+            }
+        }
+        return moveInfo.prior == null ? 0.0 : moveInfo.prior;
     }
 
     private double scoreDiffFromCurrentRoot(Node node, double scoreLead) {
@@ -1682,7 +1698,7 @@ public class Analysis {
             }
             try {
                 Point targetPoint = Intersection.gtp2point(target);
-                if (isBoardPoint(targetPoint) && distance(move, targetPoint) < config.tenukiDistanceThreshold) {
+                if (isBoardPoint(targetPoint) && distance(move, targetPoint) <= config.tenukiDistanceThreshold) {
                     return true;
                 }
             } catch (RuntimeException ignored) {
@@ -1695,7 +1711,7 @@ public class Analysis {
 
     private boolean isNearAny(Point move, List<Point> points, double threshold) {
         for (Point point : points) {
-            if (distance(move, point) < threshold) {
+            if (distance(move, point) <= threshold) {
                 return true;
             }
         }
@@ -1777,10 +1793,10 @@ public class Analysis {
      *
      * @param from Starting point
      * @param to Destination point
-     * @return true if the distance is >= tenukiDistanceThreshold
+     * @return true if the distance is > tenukiDistanceThreshold
      */
     private boolean isTenuki(Point from, Point to) {
-        return distance(from, to) >= config.tenukiDistanceThreshold;
+        return distance(from, to) > config.tenukiDistanceThreshold;
     }
 
     private double distance(Point from, Point to) {

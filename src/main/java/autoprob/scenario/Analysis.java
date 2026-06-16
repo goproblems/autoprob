@@ -1224,6 +1224,11 @@ public class Analysis {
 
         // TODO: Total loss - maybe change to continuous value instead of threshold
 
+        if (endness > 0 && hasStrongPlayerMove(node, urgency)) {
+            debugInfo.append("Depth endness blocked: strong player move;");
+            return config.minEndness;
+        }
+
         return validateEndness(endness, isPlayerMove, playerScoreLead);
     }
 
@@ -1439,6 +1444,36 @@ public class Analysis {
                 && moveInfo.prior >= config.minUrgencyPolicy;
             boolean valuableByPlayerPolicy = playerPolicy >= config.minValuablePlayerPolicy;
             if (valuableByUrgency || valuableByPlayerPolicy) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean hasStrongPlayerMove(Node node, double urgency) {
+        if (urgency < config.minStrongPlayerUrgency || node.kres == null ||
+            node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+            return false;
+        }
+
+        for (MoveInfo moveInfo : node.kres.moveInfos) {
+            Point candidatePoint = Intersection.gtp2point(moveInfo.move);
+
+            if (isTenukiFromActiveRegion(candidatePoint, node)) {
+                continue;
+            }
+
+            if (config.hasPlayerAreaConstraints() && !config.isPlayerMoveAllowed(candidatePoint)) {
+                continue;
+            }
+
+            if (scoreDiffFromCurrentRoot(node, moveInfo.scoreLead) < config.minUrgencyScoreDelta) {
+                continue;
+            }
+
+            double playerPolicy = playerPolicyForMove(node.kres, candidatePoint, moveInfo);
+            if (playerPolicy >= config.minStrongPlayerPolicy) {
                 return true;
             }
         }

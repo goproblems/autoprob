@@ -1021,7 +1021,6 @@ public class Analysis {
         result.difficulty = difficulty;
         result.score = nodeKata.blackScore();
         result.loss = nodeKata.blackScore() - parentKata.blackScore();
-        result.urgency = calculateUrgency(node);
         result.katagoPlayouts = katagoPlayouts;
         result.katagoWeightsFile = katagoWeightsFile;
         result.weight = weight;
@@ -1099,6 +1098,7 @@ public class Analysis {
 
         // Calculate urgency to determine if position is important enough to continue
         double urgency = calculateUrgency(node);
+        result.urgency = urgency;
         debugInfo.append("urgency: ").append(df.format(urgency)).append("; ");
 
         OwnershipInfo ownershipInfo = calculateOwnershipInfo(node, root);

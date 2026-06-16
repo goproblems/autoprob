@@ -27,7 +27,7 @@ public class AnalysisConfig {
     public double ownershipThreshold;
     public double depthTargetMoves;
     public double depthPower;
-    public int tenukiHistoryMoves;
+    public int noSenteTenukiHistoryMoves;
     public double tenukiDistanceThreshold;
     public double tenukiRegionLinkDistance;
     public int maxSenteCandidates;
@@ -70,7 +70,7 @@ public class AnalysisConfig {
         c.ownershipThreshold = Double.parseDouble(props.getProperty("scenario.ownership_threshold", "0.6"));
         c.depthTargetMoves = Double.parseDouble(props.getProperty("scenario.depth_target_moves", "30.0"));
         c.depthPower = Double.parseDouble(props.getProperty("scenario.depth_power", "1.1"));
-        c.tenukiHistoryMoves = Integer.parseInt(props.getProperty("scenario.tenuki_history_moves", "3"));
+        c.noSenteTenukiHistoryMoves = Integer.parseInt(props.getProperty("scenario.no_sente_tenuki_history_moves", "3"));
         c.tenukiDistanceThreshold = Double.parseDouble(props.getProperty("scenario.tenuki_distance_threshold", "6.0"));
         c.tenukiRegionLinkDistance = Double.parseDouble(props.getProperty("scenario.tenuki_region_link_distance", String.valueOf(c.tenukiDistanceThreshold)));
         c.maxOptimalMoves = Integer.parseInt(props.getProperty("scenario.max_optimal_moves", "1"));
@@ -143,7 +143,7 @@ public class AnalysisConfig {
         c.ownershipThreshold = this.ownershipThreshold;
         c.depthTargetMoves = this.depthTargetMoves;
         c.depthPower = this.depthPower;
-        c.tenukiHistoryMoves = this.tenukiHistoryMoves;
+        c.noSenteTenukiHistoryMoves = this.noSenteTenukiHistoryMoves;
         c.tenukiDistanceThreshold = this.tenukiDistanceThreshold;
         c.tenukiRegionLinkDistance = this.tenukiRegionLinkDistance;
         c.maxOptimalMoves = this.maxOptimalMoves;
@@ -213,8 +213,8 @@ public class AnalysisConfig {
                 case "scenario.depth_power":
                     c.depthPower = toDouble(value);
                     break;
-                case "scenario.tenuki_history_moves":
-                    c.tenukiHistoryMoves = toInt(value);
+                case "scenario.no_sente_tenuki_history_moves":
+                    c.noSenteTenukiHistoryMoves = toInt(value);
                     break;
                 case "scenario.tenuki_distance_threshold":
                     c.tenukiDistanceThreshold = toDouble(value);

@@ -286,8 +286,8 @@ public class Analysis {
 
         results.add(result);
 
-        // Determine if current move is human move or computer move
-        boolean isHumanMove = (node.getToMove() != root.getToMove());
+        // Determine if current move is player move or computer move
+        boolean isPlayerMove = (node.getToMove() != root.getToMove());
 
         // Add optimal moves from parent node if enabled
         if (config.includeOptimalMoves) {
@@ -295,8 +295,8 @@ public class Analysis {
         }
 
         // if not an end move, we can add possible response moves from katago
-        // Only add response moves for HUMAN moves
-        if (isHumanMove && result.endness < 0) {
+        // Only add response moves for player moves
+        if (isPlayerMove && result.endness < 0) {
             if (humanRank.equals("max")) {
                 addResponseResultsMaxRank(brain, node, root, rootKata, result, results, endKata, humanRank);
             }
@@ -1051,28 +1051,38 @@ public class Analysis {
 
     /**
      * Validate endness value according to success/failure rules.
-     * Success (endness > 0) is only allowed on human move.
+     * Success (endness > 0) is only allowed on player move.
      * Failure (endness > 0) is only allowed on computer move.
      *
      * @param endness The calculated endness value
-     * @param isHumanMove Whether current move is human's move
-     * @param scoreDelta The score change from human's perspective (positive = human gained)
+     * @param isPlayerMove Whether current move is player's move
+     * @param playerScoreLead The latest score lead from player's perspective (positive = player is ahead)
      * @return Validated endness value
      */
-    private double validateEndness(double endness, boolean isHumanMove, double scoreDelta) {
+    private double validateEndness(double endness, boolean isPlayerMove, double playerScoreLead) {
         if (endness <= 0) {
             return endness;
         }
-        boolean isSuccess = scoreDelta >= -0.1;
-        if (isSuccess && isHumanMove) {
+        if (canEndOnThisMove(isPlayerMove, playerScoreLead)) {
             return endness;
         }
-        if (!isSuccess && !isHumanMove) {
-            return endness;
-        }
-        debugInfo.append(String.format("Endness blocked: %s on %s move (success only on human move, failure only on computer move);",
-            isSuccess ? "success" : "failure", isHumanMove ? "human" : "computer"));
+        boolean success = isSuccess(playerScoreLead);
+        debugInfo.append(String.format("Endness blocked: %s on %s move (success only on player move, failure only on computer move);",
+            success ? "success" : "failure", isPlayerMove ? "player" : "computer"));
         return config.minEndness;
+    }
+
+    private boolean canEndOnThisMove(boolean isPlayerMove, double playerScoreLead) {
+        boolean isSuccess = isSuccess(playerScoreLead);
+        return (isSuccess && isPlayerMove) || (!isSuccess && !isPlayerMove);
+    }
+
+    private boolean isSuccess(double playerScoreLead) {
+        return playerScoreLead >= -0.1;
+    }
+
+    private double playerScoreLead(double blackScoreLead, Node root) {
+        return root.getToMove() == Intersection.BLACK ? blackScoreLead : -blackScoreLead;
     }
 
     /**
@@ -1088,13 +1098,15 @@ public class Analysis {
      */
     private double calculateEndness(AnalysisResult result, Node node, Node root,
                                    KataAnalysisResult rootKata, String difficulty) {
-        // Determine if this is a human move or computer move
-        boolean isHumanMove = (node.getToMove() != root.getToMove());
-        debugInfo.append("human: ").append(isHumanMove).append("; ");
+        // Determine if this is a player move or computer move
+        boolean isPlayerMove = (node.getToMove() != root.getToMove());
+        debugInfo.append("player: ").append(isPlayerMove).append("; ");
         double scoreDeltaBp = result.score - rootKata.blackScore(); // From black's perspective
-        // scoreDelta from human's perspective (positive = human gained advantage)
+        // scoreDelta from player's perspective (positive = player gained advantage)
         double scoreDelta = (root.getToMove() == Intersection.BLACK) ? scoreDeltaBp : -scoreDeltaBp;
+        double playerScoreLead = playerScoreLead(result.score, root);
         debugInfo.append("score delta: ").append(df.format(scoreDelta)).append("; ");
+        debugInfo.append("score lead: ").append(df.format(playerScoreLead)).append("; ");
 
         // Calculate urgency to determine if position is important enough to continue
         double urgency = calculateUrgency(node);
@@ -1118,10 +1130,10 @@ public class Analysis {
 //            if (scoreDelta < - (urgency + MAX_LOSING_SCORE_AFTER_TENUKI)) {
 //                debugInfo.append(String.format("Endness: high urgency (%.2f) but game has already lost %.1f, ending;",
 //                    urgency, -scoreDelta));
-//                return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
+//                return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
 //            }
             debugInfo.append(String.format("Endness: low urgency (%.2f); ", urgency));
-            return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
+            return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
         }
 
         // Significant score change
@@ -1139,9 +1151,9 @@ public class Analysis {
                     if (opponentOwned && !clearlyDead) {
                         debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
                     } else {
-                        if ((isHumanMove && scoreDelta > 0) || (!isHumanMove && scoreDelta < 0)) {
+                        if ((isPlayerMove && scoreDelta > 0) || (!isPlayerMove && scoreDelta < 0)) {
                             debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
-                            return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
+                            return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
                         }
                         debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
                     }
@@ -1149,9 +1161,9 @@ public class Analysis {
                     debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
                 }
             } else {
-                if ((isHumanMove && scoreDelta > 0) || (!isHumanMove && scoreDelta < 0)) {
+                if ((isPlayerMove && scoreDelta > 0) || (!isPlayerMove && scoreDelta < 0)) {
                     debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
-                    return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
+                    return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
                 }
                 debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
             }
@@ -1166,13 +1178,13 @@ public class Analysis {
         boolean wantsTenukiResult = difficulty.equals("max")
             ? wantsTenukiByMoveInfos(node)
             : wantsTenuki(node);
-        if (isHumanMove && wantsTenukiResult) {
+        if (isPlayerMove && wantsTenukiResult) {
             if (node.depth <= config.minDepthForEndness) {
                 debugInfo.append("Endness: computer wants tenuki but depth too low, continue;");
                 return config.minEndness;
             }
             debugInfo.append("Endness: computer wants to tenuki;");
-            return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
+            return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
         }
 
         // Depth of tree - deeper means more likely to end (gentle acceleration)
@@ -1183,29 +1195,30 @@ public class Analysis {
         debugInfo.append(String.format("DepthFactor: %.2f;", depthFactor));
 
         // Only check on computer move, to see if player still has sente moves to play
-        if (!isHumanMove && !hasSenteMoves(node)) {
+        if (!isPlayerMove && !hasSenteMoves(node)) {
             if (node.depth <= config.minDepthForEndness) {
                 debugInfo.append("Endness: no sente but depth too low, continue;");
                 return config.minEndness;
             }
-            // No-sente only means the remaining local move is gote: the opponent can tenuki after it.
-            // If urgency is still high, the player should get a chance to fill that important gote
-            // instead of ending immediately.
-            debugInfo.append(String.format(
-                "Endness: no sente but urgency remains high (%.2f >= %.2f), continue;",
-                urgency, config.minUrgencyToContinue));
-            return config.minEndness;
+            if (!canEndOnThisMove(isPlayerMove, playerScoreLead)) {
+                boolean success = isSuccess(playerScoreLead);
+                debugInfo.append(String.format("Endness: no sente but %s cannot end on %s move;",
+                    success ? "success" : "failure", isPlayerMove ? "player" : "computer"));
+                return config.minEndness;
+            }
+            debugInfo.append("Endness: no sente;");
+            return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
         }
 
         // TODO: Total loss - maybe change to continuous value instead of threshold
 
-        return validateEndness(endness, isHumanMove, scoreDelta);
+        return validateEndness(endness, isPlayerMove, playerScoreLead);
     }
 
     /**
      * Calculate average ownership of stones relevant to the scenario type.
      * Ownership: +1 (black owns) to -1 (white owns).
-     * In invasion, ownership positions are target positions + human moves.
+     * In invasion, ownership positions are target positions + player moves.
      * In repel, ownership positions are target positions + computer moves.
      */
     private OwnershipInfo calculateOwnershipInfo(Node node, Node root) {
@@ -1224,8 +1237,8 @@ public class Analysis {
         Node current = node;
 
         while (current != null && current != root) {
-            boolean isHumanMove = (current.getToMove() != playerColor);
-            boolean includeMove = repel ? !isHumanMove : isHumanMove;
+            boolean isPlayerMove = (current.getToMove() != playerColor);
+            boolean includeMove = repel ? !isPlayerMove : isPlayerMove;
             if (includeMove) {
                 Point move = current.findMove();
                 addUniqueBoardPoint(ownershipPositions, move);
@@ -1525,6 +1538,14 @@ public class Analysis {
      * Target positions are always treated as part of the local fight.
      */
     private boolean isTenukiFromActiveRegion(Point candidateMove, Node contextNode) {
+        return isTenukiFromActiveRegion(candidateMove, contextNode, 0);
+    }
+
+    private boolean isTenukiFromActiveRegion(Point candidateMove, Node contextNode, int recentHistoryMoves) {
+        return isTenukiFromActiveRegion(candidateMove, contextNode, recentHistoryMoves, null);
+    }
+
+    private boolean isTenukiFromActiveRegion(Point candidateMove, Node contextNode, int recentHistoryMoves, Point extraPoint) {
         if (!isBoardPoint(candidateMove)) {
             return false;
         }
@@ -1534,11 +1555,22 @@ public class Analysis {
         }
 
         List<Point> activeRegion = getActiveLocalRegion(contextNode);
+        addUniqueBoardPoint(activeRegion, extraPoint);
         if (activeRegion.isEmpty()) {
             return false;
         }
 
-        return !isNearAny(candidateMove, activeRegion, config.tenukiDistanceThreshold);
+        if (!isNearAny(candidateMove, activeRegion, config.tenukiDistanceThreshold)) {
+            return true;
+        }
+
+        if (recentHistoryMoves <= 0) {
+            return false;
+        }
+
+        List<Point> recentMoves = getRecentBoardMoves(contextNode, recentHistoryMoves);
+        addUniqueBoardPoint(recentMoves, extraPoint);
+        return !recentMoves.isEmpty() && !isNearAny(candidateMove, recentMoves, config.tenukiDistanceThreshold);
     }
 
     /**
@@ -1579,6 +1611,21 @@ public class Analysis {
         } while (expanded);
 
         return region;
+    }
+
+    private List<Point> getRecentBoardMoves(Node node, int maxHistoryMoves) {
+        List<Point> moves = new ArrayList<>();
+        Node current = node;
+
+        while (current != null && moves.size() < maxHistoryMoves) {
+            Point move = current.findMove();
+            if (isBoardPoint(move)) {
+                moves.add(move);
+            }
+            current = current.mom;
+        }
+
+        return moves;
     }
 
     private boolean isNearTargetPosition(Point move) {
@@ -1776,7 +1823,7 @@ public class Analysis {
             Point candidatePoint = Intersection.gtp2point(moveInfo.move);
 
             // Skip if the candidate itself is a tenuki from the active local region
-            if (isTenukiFromActiveRegion(candidatePoint, node)) {
+            if (isTenukiFromActiveRegion(candidatePoint, node, config.noSenteTenukiHistoryMoves)) {
                 tenukiMoves.add(String.format("%s(p=%.2f)", moveInfo.move, prior));
                 continue;
             }
@@ -1803,8 +1850,9 @@ public class Analysis {
             String opponentResponseMove = moveInfo.pv.get(1);
             Point opponentResponse = Intersection.gtp2point(opponentResponseMove);
 
-            // If opponent's response is not tenuki, this is a sente move
-            if (!isTenuki(candidatePoint, opponentResponse)) {
+            // If opponent's response stays near the current active region or this candidate,
+            // this candidate keeps sente.
+            if (!isTenukiFromActiveRegion(opponentResponse, node, config.noSenteTenukiHistoryMoves, candidatePoint)) {
                 senteCount++;
                 senteMoves.add(formatSenteCandidate(node, moveInfo, prior) + "->" + opponentResponseMove);
             } else {

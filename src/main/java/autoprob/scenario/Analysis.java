@@ -1155,14 +1155,19 @@ public class Analysis {
                 if (!Double.isNaN(avgOwnership)) {
                     boolean opponentOwned = isOwnedByOpponent(avgOwnership, ownershipInfo.ownershipStoneColor);
                     boolean clearlyDead = isClearlyOwnedByOpponent(avgOwnership, ownershipInfo.ownershipStoneColor);
+                    boolean enoughOwnershipPositions = ownershipInfo.positionCount > config.minOwnershipPositions;
 
                     // Ownership endness logic:
                     // - Stones clearly live: allow ending
-                    // - Stones belong to opponent but not clearly dead: continue
+                    // - Stones belong to opponent but not clearly dead: continue only with enough ownership positions
                     // - Stones clearly dead: allow ending
-                    if (opponentOwned && !clearlyDead) {
+                    if (opponentOwned && !clearlyDead && enoughOwnershipPositions) {
                         debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
                     } else {
+                        if (opponentOwned && !clearlyDead) {
+                            debugInfo.append(String.format("Ownership sample too small (%d <= %d), ignoring ownership unclear;",
+                                ownershipInfo.positionCount, config.minOwnershipPositions));
+                        }
                         if ((isPlayerMove && scoreDelta > 0) || (!isPlayerMove && scoreDelta < 0)) {
                             debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
                             return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
@@ -1245,7 +1250,7 @@ public class Analysis {
 
         if (node.kres == null || node.kres.ownership == null) {
             debugInfo.append("No ownership data, assuming unclear;");
-            return new OwnershipInfo(Double.NaN, ownershipStoneColor);
+            return new OwnershipInfo(Double.NaN, ownershipStoneColor, 0);
         }
 
         List<Point> ownershipPositions = new ArrayList<>();
@@ -1265,7 +1270,7 @@ public class Analysis {
 
         if (ownershipPositions.isEmpty()) {
             debugInfo.append("No ownership positions found;");
-            return new OwnershipInfo(Double.NaN, ownershipStoneColor);
+            return new OwnershipInfo(Double.NaN, ownershipStoneColor, 0);
         }
 
         double totalOwnership = 0.0;
@@ -1282,7 +1287,7 @@ public class Analysis {
 
         if (validPositions == 0) {
             debugInfo.append("No valid ownership positions;");
-            return new OwnershipInfo(Double.NaN, ownershipStoneColor);
+            return new OwnershipInfo(Double.NaN, ownershipStoneColor, 0);
         }
 
         double avgOwnership = totalOwnership / validPositions;
@@ -1291,7 +1296,7 @@ public class Analysis {
         debugInfo.append(String.format("Ownership: %d positions (type=%s, ownershipStone=%s, avg=%.2f);",
             validPositions, repel ? "repel" : "invasion", ownershipStoneColorStr, avgOwnership));
 
-        return new OwnershipInfo(avgOwnership, ownershipStoneColor);
+        return new OwnershipInfo(avgOwnership, ownershipStoneColor, validPositions);
     }
 
     private boolean isRepelScenario() {
@@ -1312,7 +1317,7 @@ public class Analysis {
             : ownership > config.ownershipThreshold;
     }
 
-    private record OwnershipInfo(double average, int ownershipStoneColor) {}
+    private record OwnershipInfo(double average, int ownershipStoneColor, int positionCount) {}
 
     private void addTargetPositions(List<Point> positions) {
         if (config.metadata == null || config.metadata.targetPositions == null) {

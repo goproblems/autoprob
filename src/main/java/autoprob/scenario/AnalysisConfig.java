@@ -25,6 +25,7 @@ public class AnalysisConfig {
     public double maxEndness;
     public double minEndness;
     public double ownershipThreshold;
+    public int minOwnershipPositions;
     public double depthTargetMoves;
     public double depthPower;
     public int noSenteTenukiHistoryMoves;
@@ -72,6 +73,7 @@ public class AnalysisConfig {
         c.maxEndness = Double.parseDouble(props.getProperty("scenario.max_endness", "1.0"));
         c.minEndness = Double.parseDouble(props.getProperty("scenario.min_endness", "-1.0"));
         c.ownershipThreshold = Double.parseDouble(props.getProperty("scenario.ownership_threshold", "0.6"));
+        c.minOwnershipPositions = Integer.parseInt(props.getProperty("scenario.min_ownership_positions", "5"));
         c.depthTargetMoves = Double.parseDouble(props.getProperty("scenario.depth_target_moves", "30.0"));
         c.depthPower = Double.parseDouble(props.getProperty("scenario.depth_power", "1.1"));
         c.noSenteTenukiHistoryMoves = Integer.parseInt(props.getProperty("scenario.no_sente_tenuki_history_moves", "3"));
@@ -149,6 +151,7 @@ public class AnalysisConfig {
         c.maxEndness = this.maxEndness;
         c.minEndness = this.minEndness;
         c.ownershipThreshold = this.ownershipThreshold;
+        c.minOwnershipPositions = this.minOwnershipPositions;
         c.depthTargetMoves = this.depthTargetMoves;
         c.depthPower = this.depthPower;
         c.noSenteTenukiHistoryMoves = this.noSenteTenukiHistoryMoves;
@@ -272,6 +275,9 @@ public class AnalysisConfig {
                     break;
                 case "scenario.ownership_threshold":
                     c.ownershipThreshold = toDouble(value);
+                    break;
+                case "scenario.min_ownership_positions":
+                    c.minOwnershipPositions = toInt(value);
                     break;
                 case "scenario.max_score_drop_max_mode":
                     c.maxScoreDropMaxMode = toDouble(value);

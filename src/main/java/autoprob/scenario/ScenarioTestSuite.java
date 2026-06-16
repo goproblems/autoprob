@@ -41,6 +41,13 @@ public class ScenarioTestSuite {
         this.props = props;
     }
 
+    private Properties testAnalysisProperties() {
+        Properties analysisProps = new Properties();
+        analysisProps.putAll(props);
+        analysisProps.setProperty("scenario.testcase_mode", "true");
+        return analysisProps;
+    }
+
     private List<ScenarioCase> fetchScenarioCases() throws Exception {
         ApiClient apiClient = new ApiClient();
 
@@ -141,6 +148,7 @@ public class ScenarioTestSuite {
         int passedTests = 0;
         int failedTests = 0;
         List<FailedTest> failedTestDetails = new ArrayList<>();
+        Properties analysisProps = testAnalysisProperties();
 
         KataBrain brain = new KataBrain(props);
         try {
@@ -179,7 +187,7 @@ public class ScenarioTestSuite {
 
                     AnalysisResult[] results;
                     try {
-                        Analysis analysis = new Analysis(props, brain);
+                        Analysis analysis = new Analysis(analysisProps, brain);
                         results = analysis.analyze(request);
                     } catch (Exception e) {
                         System.err.println("\n  Failed to analyze: " + e.getMessage());

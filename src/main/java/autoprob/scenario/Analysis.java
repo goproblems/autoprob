@@ -41,6 +41,8 @@ public class Analysis {
 
     private static final String DEFAULT_HUMAN_RANK = "10k";
     private static final String VISITS_PROPERTY = "scenario.analysis.visits";
+    private static final String TESTCASE_VISITS_PROPERTY = "scenario.testcase.visits";
+    private static final String TESTCASE_MODE_PROPERTY = "scenario.testcase_mode";
     private static final String FALLBACK_VISITS_PROPERTY = "search.visits";
 
     // Small offset added to depthFactor to avoid exact-zero endness at the path limit.
@@ -906,6 +908,15 @@ public class Analysis {
      * Determine visits, allowing per-request override from metadata.
      */
     private int determineVisits(AnalysisRequest request) {
+        if (Boolean.parseBoolean(props.getProperty(TESTCASE_MODE_PROPERTY, "false"))) {
+            String testcaseVisits = props.getProperty(TESTCASE_VISITS_PROPERTY);
+            if (testcaseVisits != null) {
+                int v = Integer.parseInt(testcaseVisits);
+                System.out.println("Using testcase visits: " + v);
+                return v;
+            }
+        }
+
         // Check metadata configOverrides for scenario.analysis.visits
         if (request != null && request.scenario != null && request.scenario.metadata != null
                 && request.scenario.metadata.configOverrides != null) {

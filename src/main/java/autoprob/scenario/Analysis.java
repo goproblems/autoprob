@@ -1057,9 +1057,10 @@ public class Analysis {
      * @param endness The calculated endness value
      * @param isPlayerMove Whether current move is player's move
      * @param playerScoreLead The latest score lead from player's perspective (positive = player is ahead)
+     * @param hasValuablePlayerMove Whether the player has a local candidate worth continuing
      * @return Validated endness value
      */
-    private double validateEndness(double endness, boolean isPlayerMove, double playerScoreLead) {
+    private double validateEndness(double endness, boolean isPlayerMove, double playerScoreLead, boolean hasValuablePlayerMove) {
         if (endness <= 0) {
             return endness;
         }
@@ -1067,9 +1068,19 @@ public class Analysis {
             return endness;
         }
         boolean success = isSuccess(playerScoreLead);
+        // Case 95: after a successful computer move, if the player has no valuable local move,
+        // ending is better than forcing a meaningless player continuation.
+        if (success && !isPlayerMove && !hasValuablePlayerMove) {
+            debugInfo.append("Endness: success on computer move allowed, no valuable player move;");
+            return endness;
+        }
         debugInfo.append(String.format("Endness blocked: %s on %s move (success only on player move, failure only on computer move);",
             success ? "success" : "failure", isPlayerMove ? "player" : "computer"));
         return config.minEndness;
+    }
+
+    private double validateEndness(double endness, boolean isPlayerMove, double playerScoreLead) {
+        return validateEndness(endness, isPlayerMove, playerScoreLead, true);
     }
 
     private boolean canEndOnThisMove(boolean isPlayerMove, double playerScoreLead) {
@@ -1133,7 +1144,8 @@ public class Analysis {
 //                return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
 //            }
             debugInfo.append(String.format("Endness: low urgency (%.2f); ", urgency));
-            return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
+            boolean hasValuablePlayerMove = hasValuablePlayerMove(node);
+            return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead, hasValuablePlayerMove);
         }
 
         // Significant score change
@@ -1398,6 +1410,37 @@ public class Analysis {
             debugInfo.append("Error calculating urgency");
             return 0.0;
         }
+    }
+
+    private boolean hasValuablePlayerMove(Node node) {
+        if (node.kres == null || node.kres.rootInfo == null ||
+            node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+            return false;
+        }
+
+        for (MoveInfo moveInfo : node.kres.moveInfos) {
+            Point candidatePoint = Intersection.gtp2point(moveInfo.move);
+
+            if (isTenukiFromActiveRegion(candidatePoint, node)) {
+                continue;
+            }
+
+            if (config.hasPlayerAreaConstraints() && !config.isPlayerMoveAllowed(candidatePoint)) {
+                continue;
+            }
+
+            if (moveInfo.prior == null || moveInfo.prior < config.minUrgencyPolicy) {
+                continue;
+            }
+
+            if (scoreDiffFromCurrentRoot(node, moveInfo.scoreLead) < config.minUrgencyScoreDelta) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     private double scoreDiffFromCurrentRoot(Node node, double scoreLead) {

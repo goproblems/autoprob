@@ -1532,24 +1532,41 @@ public class Analysis {
     }
 
     /**
-     * Build the continuous local region immediately preceding a candidate move.
-     * Older moves are included only while they stay connected to the current region.
+     * Build the connected local region containing the latest move.
+     * Older moves are included only when they connect to that latest-move region.
      */
     private List<Point> getActiveLocalRegion(Node node) {
-        List<Point> region = new ArrayList<>();
+        List<Point> history = new ArrayList<>();
         Node current = node;
 
         while (current != null) {
             Point move = current.findMove();
             if (isBoardPoint(move)) {
-                if (region.isEmpty() || isNearAny(move, region, config.tenukiRegionLinkDistance)) {
-                    region.add(move);
-                } else {
-                    break;
-                }
+                history.add(move);
             }
             current = current.mom;
         }
+
+        List<Point> region = new ArrayList<>();
+        if (history.isEmpty()) {
+            return region;
+        }
+
+        boolean[] included = new boolean[history.size()];
+        region.add(history.get(0));
+        included[0] = true;
+
+        boolean expanded;
+        do {
+            expanded = false;
+            for (int i = 1; i < history.size(); i++) {
+                if (!included[i] && isNearAny(history.get(i), region, config.tenukiRegionLinkDistance)) {
+                    region.add(history.get(i));
+                    included[i] = true;
+                    expanded = true;
+                }
+            }
+        } while (expanded);
 
         return region;
     }

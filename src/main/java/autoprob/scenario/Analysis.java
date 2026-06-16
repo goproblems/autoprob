@@ -1346,17 +1346,21 @@ public class Analysis {
                     continue;
                 }
 
+                if (scoreDiffFromCurrentRoot(node, moveInfo.scoreLead) < config.minUrgencyScoreDelta) {
+                    continue;
+                }
+
                 bestMove = moveInfo;
                 break;
             }
 
             if (bestMove == null) {
                 if (config.hasPlayerAreaConstraints()) {
-                    debugInfo.append(String.format("Urgency: 0.00 (all candidate moves are tenuki, outside area, or below min urgency policy %.4f);",
-                        config.minUrgencyPolicy));
+                    debugInfo.append(String.format("Urgency: 0.00 (all candidate moves are tenuki, outside area, below min urgency policy %.4f, or below min urgency score diff %.1f);",
+                        config.minUrgencyPolicy, config.minUrgencyScoreDelta));
                 } else {
-                    debugInfo.append(String.format("Urgency: 0.00 (all candidate moves are tenuki or below min urgency policy %.4f);",
-                        config.minUrgencyPolicy));
+                    debugInfo.append(String.format("Urgency: 0.00 (all candidate moves are tenuki, below min urgency policy %.4f, or below min urgency score diff %.1f);",
+                        config.minUrgencyPolicy, config.minUrgencyScoreDelta));
                 }
                 return 0.0;
             }
@@ -1372,14 +1376,20 @@ public class Analysis {
             double urgency = Math.abs(bestScore - passScore);
 
             String bestMovePolicy = bestMove.prior == null ? "?" : policyDf.format(bestMove.prior);
-            debugInfo.append(String.format("Urgency: %.2f (best non-tenuki=%s pol=%s sc=%.1f, pass sc=%.1f);",
-                urgency, bestMove.move, bestMovePolicy, bestScore, passScore));
+            debugInfo.append(String.format("Urgency: %.2f (best non-tenuki=%s pol=%s sc=%.1f diff=%.1f, pass sc=%.1f);",
+                urgency, bestMove.move, bestMovePolicy, bestScore,
+                scoreDiffFromCurrentRoot(node, bestScore), passScore));
 
             return urgency;
         } catch (Exception e) {
             debugInfo.append("Error calculating urgency");
             return 0.0;
         }
+    }
+
+    private double scoreDiffFromCurrentRoot(Node node, double scoreLead) {
+        double sign = node.kres.rootInfo.currentPlayer.equals("B") ? 1.0 : -1.0;
+        return (scoreLead - node.kres.rootInfo.scoreLead) * sign;
     }
 
     /**
@@ -1745,6 +1755,7 @@ public class Analysis {
         List<String> senteMoves = new ArrayList<>();
         List<String> goteMoves = new ArrayList<>();
         List<String> lowPolicyMoves = new ArrayList<>();
+        List<String> lowDeltaMoves = new ArrayList<>();
         List<String> tenukiMoves = new ArrayList<>();
 
         for (MoveInfo moveInfo : moveInfos) {
@@ -1776,8 +1787,14 @@ public class Analysis {
                 continue;
             }
 
+            double scoreDelta = scoreDiffFromCurrentRoot(node, moveInfo.scoreLead);
+            if (scoreDelta < config.minSenteScoreDelta) {
+                lowDeltaMoves.add(formatSenteCandidate(node, moveInfo, prior));
+                continue;
+            }
+
             if (moveInfo.pv == null || moveInfo.pv.size() < 2) {
-                goteMoves.add(String.format("%s(p=%.2f)->?", moveInfo.move, prior));
+                goteMoves.add(formatSenteCandidate(node, moveInfo, prior) + "->?");
                 continue;  // No PV info for this move
             }
 
@@ -1789,9 +1806,9 @@ public class Analysis {
             // If opponent's response is not tenuki, this is a sente move
             if (!isTenuki(candidatePoint, opponentResponse)) {
                 senteCount++;
-                senteMoves.add(String.format("%s(p=%.2f)->%s", moveInfo.move, prior, opponentResponseMove));
+                senteMoves.add(formatSenteCandidate(node, moveInfo, prior) + "->" + opponentResponseMove);
             } else {
-                goteMoves.add(String.format("%s(p=%.2f)->%s", moveInfo.move, prior, opponentResponseMove));
+                goteMoves.add(formatSenteCandidate(node, moveInfo, prior) + "->" + opponentResponseMove);
             }
         }
 
@@ -1810,6 +1827,11 @@ public class Analysis {
         if (!lowPolicyMoves.isEmpty()) {
             if (movesInfo.length() > 0) movesInfo.append(" ");
             movesInfo.append("lowP:").append(String.join(",", lowPolicyMoves));
+        }
+        if (!lowDeltaMoves.isEmpty()) {
+            if (movesInfo.length() > 0) movesInfo.append(" ");
+            movesInfo.append("lowDelta<").append(df.format(config.minSenteScoreDelta))
+                .append(":").append(String.join(",", lowDeltaMoves));
         }
 
         if (senteCount > 0) {
@@ -1843,6 +1865,11 @@ public class Analysis {
         //     }
         // }
         // --- End old implementation ---
+    }
+
+    private String formatSenteCandidate(Node node, MoveInfo moveInfo, double prior) {
+        return String.format("%s(p=%.2f sc=%.1f diff=%.1f)", moveInfo.move, prior,
+            moveInfo.scoreLead, scoreDiffFromCurrentRoot(node, moveInfo.scoreLead));
     }
 
 

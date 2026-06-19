@@ -10,6 +10,7 @@ import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
 import autoprob.problem.DifficultyEstimator;
 import autoprob.problem.SiteProblem;
+import autoprob.scenario.ScenarioNodeRecalculator;
 import autoprob.scenario.ScenarioTestSuite;
 
 import java.awt.Point;
@@ -65,6 +66,8 @@ public class GoTool {
             runTestScenarioCaseCommand(props);
         } else if (command.equals("scenariohandler")) {
             runScenarioHandlerCommand(props);
+        } else if (command.equals("recalculatenodes")) {
+            runRecalculateNodesCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -98,6 +101,12 @@ public class GoTool {
     private void runScenarioHandlerCommand(Properties props) throws Exception {
         autoprob.scenario.ScenarioHandler handler = new autoprob.scenario.ScenarioHandler(props);
         handler.run();
+    }
+
+    private void runRecalculateNodesCommand(Properties props) throws Exception {
+        System.out.println("Running scenario node recalculation...");
+        ScenarioNodeRecalculator recalculator = new ScenarioNodeRecalculator(props);
+        recalculator.run();
     }
 
     private Node loadPassedSgf(Properties props) throws Exception {

@@ -38,10 +38,12 @@ public class ScenarioNodeRecalculator {
     public void run() throws Exception {
         int scenarioId = readScenarioId();
         int limit = Integer.parseInt(props.getProperty("recalculate.nodes.limit", String.valueOf(DEFAULT_LIMIT)));
+        String difficulty = readDifficultyFilter();
 
         AnalysisRequest.Scenario scenario = fetchScenario(scenarioId);
         System.out.println("Recalculating scenario " + scenarioId + " nodes below client version "
-            + ScenarioHandler.CLIENT_VERSION + " (limit=" + limit + ")");
+            + ScenarioHandler.CLIENT_VERSION + " (limit=" + limit
+            + (difficulty == null ? "" : ", difficulty=" + difficulty) + ")");
 
         Set<Integer> processedNodeIds = new HashSet<>();
         int processedNodes = 0;
@@ -160,10 +162,21 @@ public class ScenarioNodeRecalculator {
             addOptionalQueryParam(params, "pathPrefix");
         }
 
-        addOptionalQueryParam(params, "difficulty");
+        String difficulty = readDifficultyFilter();
+        if (difficulty != null) {
+            addQueryParam(params, "difficulty", difficulty);
+        }
         addOptionalQueryParam(params, "responseValid");
 
         return "?" + String.join("&", params);
+    }
+
+    private String readDifficultyFilter() {
+        String difficulty = props.getProperty("recalculate.difficulty");
+        if (difficulty == null || difficulty.isBlank()) {
+            difficulty = props.getProperty("difficulty");
+        }
+        return difficulty == null || difficulty.isBlank() ? null : difficulty;
     }
 
     private void addOptionalQueryParam(List<String> params, String key) {
@@ -182,6 +195,7 @@ public class ScenarioNodeRecalculator {
         return props.getProperty("path") != null
             || props.getProperty("pathPrefix") != null
             || props.getProperty("difficulty") != null
+            || props.getProperty("recalculate.difficulty") != null
             || props.getProperty("responseValid") != null;
     }
 

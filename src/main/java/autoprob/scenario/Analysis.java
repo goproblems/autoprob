@@ -670,8 +670,16 @@ public class Analysis {
             validCandidates.add(candidate);
         }
 
-        // If no valid candidates, end the problem only after the minimum move count.
-        // Before that, keep the tree playable by adding the best available fallback move.
+        int visits = determineVisits();
+        var nodeAnalyzer = new NodeAnalyzer(props);
+
+        // Use HUMAN style for analysis
+        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(rank, HumanLikeStyle.HUMAN);
+        // It is necessary to set ignorePreRootHistory to true here to avoid bias from move order in response analysis for ai rank
+        overrideSettings.ignorePreRootHistory = true;
+
+        // If search-backed max candidates are all filtered, try regular policy as a fallback.
+        // This keeps max mode search-first, while avoiding an early end when policy still has a local response.
         if (validCandidates.isEmpty()) {
             double previousEndness = result.endness;
             if (config.hasComputerAreaConstraints()) {
@@ -682,41 +690,78 @@ public class Analysis {
                 debugInfo.append("No valid max-mode responses (tenuki/filters); ");
             }
 
-            // Max mode can be strict about response candidates, but it should not bypass
-            // the same minimum-move guard used by calculateEndness.
-            if (node.depth < config.minMoves) {
-                MoveInfo fallback = selectMaxModeFallbackResponse(endKata, node);
-                if (fallback == null) {
-                    String skipMsg = String.format(
-                        "Max-mode endness override skipped: depth %d < min_moves %d, but no fallback response exists;",
-                        node.depth, config.minMoves);
-                    System.out.println(skipMsg);
-                    debugInfo.append(skipMsg);
+            KataAnalysisResult.Policy fallback = selectMaxModePolicyFallbackResponse(endKata, node);
+            if (fallback != null) {
+                String fallbackMove = Intersection.toGTPloc(fallback.x, fallback.y);
+                String responsePath = result.path + "," + fallbackMove;
+                String fallbackMsg = String.format("Max-mode policy fallback response %s(p=%.4f);",
+                    fallbackMove, fallback.policy);
+                System.out.println(fallbackMsg);
+                debugInfo.append(fallbackMsg);
+                result.extraInfo = debugInfo.toString();
+
+                Node responseNode = node.addBasicMove(fallback.x, fallback.y);
+                KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
+                responseNode.kres = responseKata;
+
+                AnalysisResult responseResult = buildAnalysisResult(responsePath, result.difficulty,
+                    responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, fallback.policy, visits);
+                responseResult.analysis = gson.toJson(responseKata);
+                responseResult.extraInfo = debugInfo.toString();
+                responseResult.isAnalyzed = true;
+
+                if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
+                    System.out.println("dbg: " + debugInfo);
+                }
+
+                results.add(responseResult);
+                return;
+            }
+
+            int pathMoves = pathMoveCount(result.path);
+            if (pathMoves < config.minMoves) {
+                KataAnalysisResult.Policy forcedFallback = selectMaxModePolicyFallbackResponse(endKata, node, true);
+                if (forcedFallback != null) {
+                    String fallbackMove = Intersection.toGTPloc(forcedFallback.x, forcedFallback.y);
+                    String responsePath = result.path + "," + fallbackMove;
+                    String fallbackMsg = String.format(
+                        "Max-mode forced policy fallback response %s(p=%.4f) before min_moves (%d < %d);",
+                        fallbackMove, forcedFallback.policy, pathMoves, config.minMoves);
+                    System.out.println(fallbackMsg);
+                    debugInfo.append(fallbackMsg);
                     result.extraInfo = debugInfo.toString();
+
+                    Node responseNode = node.addBasicMove(forcedFallback.x, forcedFallback.y);
+                    KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
+                    responseNode.kres = responseKata;
+
+                    AnalysisResult responseResult = buildAnalysisResult(responsePath, result.difficulty,
+                        responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, forcedFallback.policy, visits);
+                    responseResult.analysis = gson.toJson(responseKata);
+                    responseResult.extraInfo = debugInfo.toString();
+                    responseResult.isAnalyzed = true;
+
+                    if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
+                        System.out.println("dbg: " + debugInfo);
+                    }
+
+                    results.add(responseResult);
                     return;
                 }
 
-                Point fallbackPoint = Intersection.gtp2point(fallback.move);
-                boolean outsideArea = !config.isComputerMoveAllowed(fallbackPoint);
-                boolean tenuki = isTenukiFromActiveRegion(fallbackPoint, node);
-                double scoreDelta = Math.abs(fallback.scoreLead - scoreBaseline);
-                String fallbackMsg = String.format(
-                    "Max-mode endness override skipped: depth %d < min_moves %d; forced fallback response %s (pol=%s, visits=%d, scoreDelta=%.2f%s%s);",
-                    node.depth,
-                    config.minMoves,
-                    fallback.move,
-                    fallback.prior == null ? "?" : policyDf.format(fallback.prior),
-                    fallback.visits,
-                    scoreDelta,
-                    tenuki ? ", tenuki" : "",
-                    outsideArea ? ", outside-area" : "");
-                System.out.println(fallbackMsg);
-                debugInfo.append(fallbackMsg);
-                validCandidates.add(fallback);
-            } else {
+                String skipMsg = String.format(
+                    "Max-mode endness not changed: no valid moveInfos response, no policy fallback, no forced fallback, path moves %d < min_moves %d;",
+                    pathMoves, config.minMoves);
+                System.out.println(skipMsg);
+                debugInfo.append(skipMsg);
+                result.extraInfo = debugInfo.toString();
+                return;
+            }
+
+            {
                 result.endness = config.maxEndness;
                 String overrideMsg = String.format(
-                    "Endness overridden in max mode: %.2f -> %.2f (no valid response candidates);",
+                    "Endness: no valid max response and no policy fallback response (%.2f -> %.2f);",
                     previousEndness, result.endness);
                 System.out.println(overrideMsg);
                 debugInfo.append(overrideMsg);
@@ -724,14 +769,6 @@ public class Analysis {
                 return;
             }
         }
-
-        int visits = determineVisits();
-        var nodeAnalyzer = new NodeAnalyzer(props);
-
-        // Use HUMAN style for analysis
-        KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(rank, HumanLikeStyle.HUMAN);
-        // It is necessary to set ignorePreRootHistory to true here to avoid bias from move order in response analysis for ai rank
-        overrideSettings.ignorePreRootHistory = true;
 
         // Analyze the first (best) candidate, add others as unanalyzed
         for (int i = 0; i < validCandidates.size(); i++) {
@@ -778,37 +815,53 @@ public class Analysis {
         }
     }
 
-    private MoveInfo selectMaxModeFallbackResponse(KataAnalysisResult endKata, Node node) {
-        if (endKata.moveInfos == null || endKata.moveInfos.isEmpty()) {
+    private KataAnalysisResult.Policy selectMaxModePolicyFallbackResponse(KataAnalysisResult endKata, Node node) {
+        return selectMaxModePolicyFallbackResponse(endKata, node, false);
+    }
+
+    private KataAnalysisResult.Policy selectMaxModePolicyFallbackResponse(KataAnalysisResult endKata, Node node, boolean force) {
+        if (endKata.policy == null || endKata.policy.isEmpty()) {
             return null;
         }
 
-        MoveInfo firstAllowedArea = null;
-        MoveInfo firstNonTenuki = null;
+        KataAnalysisResult.Policy firstFallback = null;
+        for (KataAnalysisResult.Policy candidate : endKata.getTopPolicy(20, endKata.policy)) {
+            String move = Intersection.toGTPloc(candidate.x, candidate.y);
+            System.out.println("max policy fallback candidate: " + move + " pol: " + df.format(candidate.policy));
 
-        for (MoveInfo candidate : endKata.moveInfos) {
-            Point candidatePoint = Intersection.gtp2point(candidate.move);
-            boolean allowedArea = config.isComputerMoveAllowed(candidatePoint);
-            boolean nonTenuki = !isTenukiFromActiveRegion(candidatePoint, node);
+            Point candidatePoint = new Point(candidate.x, candidate.y);
+            boolean tenuki = isTenukiFromActiveRegion(candidatePoint, node);
+            boolean insideArea = config.isComputerMoveAllowed(candidatePoint);
 
-            if (allowedArea && nonTenuki) {
+            if (!force && candidate.policy < config.minHumanPolicy) {
+                System.out.println("  too low policy, skipping");
+                continue;
+            }
+
+            if (!force && tenuki) {
+                System.out.println("  tenuki move, skipping");
+                continue;
+            }
+
+            if (!force && !insideArea) {
+                System.out.println("  outside computer allowed area, skipping");
+                continue;
+            }
+
+            if (!force) {
                 return candidate;
             }
-            if (allowedArea && firstAllowedArea == null) {
-                firstAllowedArea = candidate;
+
+            if (insideArea) {
+                return candidate;
             }
-            if (nonTenuki && firstNonTenuki == null) {
-                firstNonTenuki = candidate;
+
+            if (firstFallback == null) {
+                firstFallback = candidate;
             }
         }
 
-        if (firstAllowedArea != null) {
-            return firstAllowedArea;
-        }
-        if (firstNonTenuki != null) {
-            return firstNonTenuki;
-        }
-        return endKata.moveInfos.get(0);
+        return firstFallback;
     }
 
     /**
@@ -957,6 +1010,20 @@ public class Analysis {
         String move = comma >= 0 ? path.substring(comma + 1) : path;
         move = move.trim();
         return move.isEmpty() ? null : move;
+    }
+
+    private int pathMoveCount(String path) {
+        if (path == null || path.isBlank()) {
+            return 0;
+        }
+
+        int count = 0;
+        for (String move : path.split(",")) {
+            if (!move.isBlank()) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private double policyWeight(KataAnalysisResult kata, String move) {

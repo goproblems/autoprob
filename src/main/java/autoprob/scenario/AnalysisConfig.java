@@ -20,7 +20,6 @@ public class AnalysisConfig {
     public double minHumanPolicy;
     public boolean includeOptimalMoves;
     public int minMoves;
-    public int minDepthForEndness;
     public double scoreDropThreshold;
     public double maxEndness;
     public double minEndness;
@@ -68,7 +67,6 @@ public class AnalysisConfig {
         c.minHumanPolicy = Double.parseDouble(props.getProperty("scenario.min_response_policy", "0.05"));
         c.includeOptimalMoves = Boolean.parseBoolean(props.getProperty("scenario.include_optimal_moves", "false"));
         c.minMoves = Integer.parseInt(props.getProperty("scenario.min_moves", "5"));
-        c.minDepthForEndness = Integer.parseInt(props.getProperty("scenario.min_depth_for_endness", "5"));
         c.scoreDropThreshold = Double.parseDouble(props.getProperty("scenario.score_drop_threshold", "15.0"));
         c.maxEndness = Double.parseDouble(props.getProperty("scenario.max_endness", "1.0"));
         c.minEndness = Double.parseDouble(props.getProperty("scenario.min_endness", "-1.0"));
@@ -146,7 +144,6 @@ public class AnalysisConfig {
         c.minHumanPolicy = this.minHumanPolicy;
         c.includeOptimalMoves = this.includeOptimalMoves;
         c.minMoves = this.minMoves;
-        c.minDepthForEndness = this.minDepthForEndness;
         c.scoreDropThreshold = this.scoreDropThreshold;
         c.maxEndness = this.maxEndness;
         c.minEndness = this.minEndness;
@@ -209,9 +206,6 @@ public class AnalysisConfig {
                     break;
                 case "scenario.min_moves":
                     c.minMoves = toInt(value);
-                    break;
-                case "scenario.min_depth_for_endness":
-                    c.minDepthForEndness = toInt(value);
                     break;
                 case "scenario.score_drop_threshold":
                     c.scoreDropThreshold = toDouble(value);

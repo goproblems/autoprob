@@ -4,6 +4,7 @@ import autoprob.KataBrain;
 import autoprob.NodeAnalyzer;
 import autoprob.api.AnalysisRequest;
 import autoprob.api.AnalysisResult;
+import autoprob.api.EndnessReasonCode;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.parse.Parser;
@@ -20,6 +21,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
+
+import static autoprob.api.EndnessReasonCode.*;
 
 /**
  * Orchestrates running KataGo analysis for API scenarios.
@@ -533,6 +536,8 @@ public class Analysis {
                         System.out.println("No valid computer responses inside area; outside-area fallback is disabled, ending problem");
                         debugInfo.append("No valid computer responses inside area; outside-area fallback disabled; ");
                         result.endness = config.maxEndness;
+                        addEndnessReason(result.endnessReasons, NO_VALID_COMPUTER_RESPONSE_INSIDE_AREA,
+                            ENDNESS_EFFECT_END, null, null, result.endness, true);
                         return;
                     }
 
@@ -552,6 +557,8 @@ public class Analysis {
             System.out.println("No valid computer response candidates found, ending problem");
             debugInfo.append("No valid computer response candidates found; ");
             result.endness = config.maxEndness;
+            addEndnessReason(result.endnessReasons, NO_VALID_COMPUTER_RESPONSE,
+                ENDNESS_EFFECT_END, null, null, result.endness, true);
             return;
         }
 
@@ -766,6 +773,8 @@ public class Analysis {
                 System.out.println(overrideMsg);
                 debugInfo.append(overrideMsg);
                 result.extraInfo = debugInfo.toString();
+                addEndnessReason(result.endnessReasons, NO_VALID_MAX_RESPONSE,
+                    ENDNESS_EFFECT_END, null, null, result.endness, true);
                 return;
             }
         }
@@ -1127,38 +1136,47 @@ public class Analysis {
         return node;
     }
 
+    private static final String ENDNESS_EFFECT_END = "end";
+    private static final String ENDNESS_EFFECT_BLOCK = "block";
+    private static final String ENDNESS_EFFECT_INFO = "info";
+
+    private record EndnessDecision(double endness, EndnessReasonCode primaryReasonCode) {}
+
     /**
      * Validate endness value according to success/failure rules.
      * Success (endness > 0) is only allowed on player move.
      * Failure (endness > 0) is only allowed on computer move.
-     *
-     * @param endness The calculated endness value
-     * @param isPlayerMove Whether current move is player's move
-     * @param playerScoreLead The latest score lead from player's perspective (positive = player is ahead)
-     * @param hasValuablePlayerMove Whether the player has a local candidate worth continuing
-     * @return Validated endness value
      */
-    private double validateEndness(double endness, boolean isPlayerMove, double playerScoreLead, boolean hasValuablePlayerMove) {
+    private EndnessDecision validateEndness(double endness, boolean isPlayerMove, double playerScoreLead,
+                                            boolean hasValuablePlayerMove,
+                                            List<AnalysisResult.EndnessReason> reasons,
+                                            EndnessReasonCode candidateReasonCode) {
         if (endness <= 0) {
-            return endness;
+            return new EndnessDecision(endness, candidateReasonCode);
         }
         if (canEndOnThisMove(isPlayerMove, playerScoreLead)) {
-            return endness;
+            return new EndnessDecision(endness, candidateReasonCode);
         }
         boolean success = isSuccess(playerScoreLead);
         // Case 95: after a successful computer move, if the player has no valuable local move,
         // ending is better than forcing a meaningless player continuation.
         if (success && !isPlayerMove && !hasValuablePlayerMove) {
+            addEndnessReason(reasons, NO_VALUABLE_PLAYER_MOVE_AFTER_SUCCESS, ENDNESS_EFFECT_END,
+                playerScoreLead, null, endness);
             debugInfo.append("Endness: success on computer move allowed, no valuable player move;");
-            return endness;
+            return new EndnessDecision(endness, NO_VALUABLE_PLAYER_MOVE_AFTER_SUCCESS);
         }
+        addEndnessReason(reasons, WRONG_TURN_FOR_RESULT, ENDNESS_EFFECT_BLOCK,
+            playerScoreLead, null, config.minEndness);
         debugInfo.append(String.format("Endness blocked: %s on %s move (success only on player move, failure only on computer move);",
             success ? "success" : "failure", isPlayerMove ? "player" : "computer"));
-        return config.minEndness;
+        return new EndnessDecision(config.minEndness, WRONG_TURN_FOR_RESULT);
     }
 
-    private double validateEndness(double endness, boolean isPlayerMove, double playerScoreLead) {
-        return validateEndness(endness, isPlayerMove, playerScoreLead, true);
+    private EndnessDecision validateEndness(double endness, boolean isPlayerMove, double playerScoreLead,
+                                            List<AnalysisResult.EndnessReason> reasons,
+                                            EndnessReasonCode candidateReasonCode) {
+        return validateEndness(endness, isPlayerMove, playerScoreLead, true, reasons, candidateReasonCode);
     }
 
     private boolean canEndOnThisMove(boolean isPlayerMove, double playerScoreLead) {
@@ -1174,6 +1192,45 @@ public class Analysis {
         return root.getToMove() == Intersection.BLACK ? blackScoreLead : -blackScoreLead;
     }
 
+    private void addEndnessReason(List<AnalysisResult.EndnessReason> reasons, EndnessReasonCode code, String effect,
+                                  Double value, Double threshold, Double endness) {
+        addEndnessReason(reasons, code, effect, value, threshold, endness, false);
+    }
+
+    private void addEndnessReason(List<AnalysisResult.EndnessReason> reasons, EndnessReasonCode code, String effect,
+                                  Double value, Double threshold, Double endness, boolean primary) {
+        if (reasons == null) {
+            return;
+        }
+        for (AnalysisResult.EndnessReason reason : reasons) {
+            if (code.equals(reason.code) && effect.equals(reason.effect)) {
+                if (primary) {
+                    reason.primary = true;
+                }
+                return;
+            }
+        }
+        reasons.add(new AnalysisResult.EndnessReason(code, effect, value, threshold, endness, primary));
+    }
+
+    private void setPrimaryEndnessReason(AnalysisResult result, EndnessDecision decision) {
+        if (decision == null || result.endnessReasons == null) {
+            return;
+        }
+        for (AnalysisResult.EndnessReason reason : result.endnessReasons) {
+            reason.primary = false;
+        }
+        for (AnalysisResult.EndnessReason reason : result.endnessReasons) {
+            if (decision.primaryReasonCode().equals(reason.code)) {
+                reason.primary = true;
+                return;
+            }
+        }
+        addEndnessReason(result.endnessReasons, decision.primaryReasonCode(),
+            decision.endness() > 0 ? ENDNESS_EFFECT_END : ENDNESS_EFFECT_BLOCK,
+            null, null, decision.endness(), true);
+    }
+
     /**
      * Calculate endness value to determine if the problem should end.
      * Considers multiple factors according to the spec.
@@ -1187,6 +1244,10 @@ public class Analysis {
      */
     private double calculateEndness(AnalysisResult result, Node node, Node root,
                                    KataAnalysisResult rootKata, String difficulty) {
+        result.endnessReasons = new ArrayList<>();
+        List<AnalysisResult.EndnessReason> reasons = result.endnessReasons;
+        EndnessDecision decision = null;
+
         // Determine if this is a player move or computer move
         boolean isPlayerMove = (node.getToMove() != root.getToMove());
         debugInfo.append("player: ").append(isPlayerMove).append("; ");
@@ -1210,7 +1271,9 @@ public class Analysis {
         int minMovesToEnd = config.minMoves;
         if (node.depth < minMovesToEnd) {
             debugInfo.append("cannot end before moves: ").append(node.depth).append("; ");
-            return -1;
+            addEndnessReason(reasons, MIN_MOVES_NOT_REACHED, ENDNESS_EFFECT_BLOCK,
+                (double) node.depth, (double) minMovesToEnd, -1.0);
+            decision = new EndnessDecision(-1.0, MIN_MOVES_NOT_REACHED);
         }
 
         if (urgency < config.minUrgencyToContinue) {
@@ -1222,12 +1285,19 @@ public class Analysis {
 //                return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
 //            }
             debugInfo.append(String.format("Endness: low urgency (%.2f); ", urgency));
+            addEndnessReason(reasons, LOW_URGENCY, ENDNESS_EFFECT_END,
+                urgency, config.minUrgencyToContinue, config.maxEndness);
             boolean hasValuablePlayerMove = hasValuablePlayerMove(node, urgency);
-            return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead, hasValuablePlayerMove);
+            EndnessDecision lowUrgencyDecision = validateEndness(config.maxEndness, isPlayerMove,
+                playerScoreLead, hasValuablePlayerMove, reasons, LOW_URGENCY);
+            if (decision == null) {
+                decision = lowUrgencyDecision;
+            }
         }
 
         // Significant score change
         if (Math.abs(scoreDelta) >= config.scoreDropThreshold) {
+            boolean scoreChangeCanEnd = (isPlayerMove && scoreDelta > 0) || (!isPlayerMove && scoreDelta < 0);
             // Check scenario-relevant stones to determine if ownership is clear enough to end.
             if (scoreDelta < -config.scoreDropThreshold) {
                 if (!Double.isNaN(avgOwnership)) {
@@ -1241,26 +1311,54 @@ public class Analysis {
                     // - Stones clearly dead: allow ending
                     if (opponentOwned && !clearlyDead && enoughOwnershipPositions) {
                         debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
+                        if (scoreChangeCanEnd) {
+                            addEndnessReason(reasons, SIGNIFICANT_SCORE_CHANGE, ENDNESS_EFFECT_END,
+                                scoreDelta, config.scoreDropThreshold, config.maxEndness);
+                            addEndnessReason(reasons, OWNERSHIP_UNCLEAR, ENDNESS_EFFECT_BLOCK,
+                                avgOwnership, config.ownershipThreshold, config.minEndness);
+                        }
                     } else {
                         if (opponentOwned && !clearlyDead) {
                             debugInfo.append(String.format("Ownership sample too small (%d <= %d), ignoring ownership unclear;",
                                 ownershipInfo.positionCount, config.minOwnershipPositions));
+                            addEndnessReason(reasons, OWNERSHIP_SAMPLE_TOO_SMALL, ENDNESS_EFFECT_INFO,
+                                (double) ownershipInfo.positionCount, (double) config.minOwnershipPositions, null);
                         }
-                        if ((isPlayerMove && scoreDelta > 0) || (!isPlayerMove && scoreDelta < 0)) {
+                        if (scoreChangeCanEnd) {
                             debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
-                            return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
+                            addEndnessReason(reasons, SIGNIFICANT_SCORE_CHANGE, ENDNESS_EFFECT_END,
+                                scoreDelta, config.scoreDropThreshold, config.maxEndness);
+                            EndnessDecision scoreDecision = validateEndness(config.maxEndness, isPlayerMove,
+                                playerScoreLead, reasons, SIGNIFICANT_SCORE_CHANGE);
+                            if (decision == null) {
+                                decision = scoreDecision;
+                            }
+                        } else {
+                            debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
                         }
-                        debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
                     }
                 } else {
                     debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
+                    if (scoreChangeCanEnd) {
+                        addEndnessReason(reasons, SIGNIFICANT_SCORE_CHANGE, ENDNESS_EFFECT_END,
+                            scoreDelta, config.scoreDropThreshold, config.maxEndness);
+                        addEndnessReason(reasons, OWNERSHIP_UNCLEAR, ENDNESS_EFFECT_BLOCK,
+                            null, config.ownershipThreshold, config.minEndness);
+                    }
                 }
             } else {
-                if ((isPlayerMove && scoreDelta > 0) || (!isPlayerMove && scoreDelta < 0)) {
+                if (scoreChangeCanEnd) {
                     debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
-                    return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
+                    addEndnessReason(reasons, SIGNIFICANT_SCORE_CHANGE, ENDNESS_EFFECT_END,
+                        scoreDelta, config.scoreDropThreshold, config.maxEndness);
+                    EndnessDecision scoreDecision = validateEndness(config.maxEndness, isPlayerMove,
+                        playerScoreLead, reasons, SIGNIFICANT_SCORE_CHANGE);
+                    if (decision == null) {
+                        decision = scoreDecision;
+                    }
+                } else {
+                    debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
                 }
-                debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
             }
         }
 
@@ -1274,45 +1372,80 @@ public class Analysis {
             ? wantsTenukiByMoveInfos(node)
             : wantsTenuki(node);
         if (isPlayerMove && wantsTenukiResult) {
-            if (node.depth <= config.minDepthForEndness) {
+            addEndnessReason(reasons, COMPUTER_WANTS_TENUKI, ENDNESS_EFFECT_END,
+                null, null, config.maxEndness);
+            if (node.depth < config.minMoves) {
                 debugInfo.append("Endness: computer wants tenuki but depth too low, continue;");
-                return config.minEndness;
+                addEndnessReason(reasons, MIN_MOVES_NOT_REACHED, ENDNESS_EFFECT_BLOCK,
+                    (double) node.depth, (double) config.minMoves, config.minEndness);
+                if (decision == null) {
+                    decision = new EndnessDecision(config.minEndness, MIN_MOVES_NOT_REACHED);
+                }
+            } else {
+                debugInfo.append("Endness: computer wants to tenuki;");
+                EndnessDecision tenukiDecision = validateEndness(config.maxEndness, isPlayerMove,
+                    playerScoreLead, reasons, COMPUTER_WANTS_TENUKI);
+                if (decision == null) {
+                    decision = tenukiDecision;
+                }
             }
-            debugInfo.append("Endness: computer wants to tenuki;");
-            return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
         }
 
         // Depth of tree - deeper means more likely to end (gentle acceleration)
-        int depthBeyondMin = Math.max(0, node.depth - config.minDepthForEndness);
+        int depthBeyondMin = Math.max(0, node.depth - config.minMoves);
         double depthRatio = depthBeyondMin / config.depthTargetMoves;
         double depthFactor = Math.pow(depthRatio, config.depthPower) + DEPTH_FACTOR_OFFSET;
         endness += depthFactor;
         debugInfo.append(String.format("DepthFactor: %.2f;", depthFactor));
+        addEndnessReason(reasons, DEPTH_FACTOR, endness > 0 ? ENDNESS_EFFECT_END : ENDNESS_EFFECT_INFO,
+            depthFactor, -config.minEndness, endness);
 
         // Only check on computer move, to see if player still has sente moves to play
         if (!isPlayerMove && !hasSenteMoves(node)) {
-            if (node.depth <= config.minDepthForEndness) {
+            addEndnessReason(reasons, NO_SENTE, ENDNESS_EFFECT_END,
+                null, null, config.maxEndness);
+            if (node.depth < config.minMoves) {
                 debugInfo.append("Endness: no sente but depth too low, continue;");
-                return config.minEndness;
-            }
-            if (!canEndOnThisMove(isPlayerMove, playerScoreLead)) {
+                addEndnessReason(reasons, MIN_MOVES_NOT_REACHED, ENDNESS_EFFECT_BLOCK,
+                    (double) node.depth, (double) config.minMoves, config.minEndness);
+                if (decision == null) {
+                    decision = new EndnessDecision(config.minEndness, MIN_MOVES_NOT_REACHED);
+                }
+            } else if (!canEndOnThisMove(isPlayerMove, playerScoreLead)) {
                 boolean success = isSuccess(playerScoreLead);
                 debugInfo.append(String.format("Endness: no sente but %s cannot end on %s move;",
                     success ? "success" : "failure", isPlayerMove ? "player" : "computer"));
-                return config.minEndness;
+                addEndnessReason(reasons, WRONG_TURN_FOR_RESULT, ENDNESS_EFFECT_BLOCK,
+                    playerScoreLead, null, config.minEndness);
+                if (decision == null) {
+                    decision = new EndnessDecision(config.minEndness, WRONG_TURN_FOR_RESULT);
+                }
+            } else {
+                debugInfo.append("Endness: no sente;");
+                EndnessDecision noSenteDecision = validateEndness(config.maxEndness, isPlayerMove,
+                    playerScoreLead, reasons, NO_SENTE);
+                if (decision == null) {
+                    decision = noSenteDecision;
+                }
             }
-            debugInfo.append("Endness: no sente;");
-            return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
         }
 
         // TODO: Total loss - maybe change to continuous value instead of threshold
 
         if (endness > 0 && hasStrongPlayerMove(node, urgency)) {
             debugInfo.append("Depth endness blocked: strong player move;");
-            return config.minEndness;
+            addEndnessReason(reasons, STRONG_PLAYER_MOVE, ENDNESS_EFFECT_BLOCK,
+                urgency, config.minStrongPlayerUrgency, config.minEndness);
+            if (decision == null) {
+                decision = new EndnessDecision(config.minEndness, STRONG_PLAYER_MOVE);
+            }
         }
 
-        return validateEndness(endness, isPlayerMove, playerScoreLead);
+        if (decision == null) {
+            decision = validateEndness(endness, isPlayerMove, playerScoreLead, reasons, DEPTH_FACTOR);
+        }
+        setPrimaryEndnessReason(result, decision);
+        return decision.endness();
     }
 
     /**

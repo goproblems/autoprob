@@ -1166,11 +1166,12 @@ public class Analysis {
             debugInfo.append("Endness: success on computer move allowed, no valuable player move;");
             return new EndnessDecision(endness, NO_VALUABLE_PLAYER_MOVE_AFTER_SUCCESS);
         }
-        addEndnessReason(reasons, WRONG_TURN_FOR_RESULT, ENDNESS_EFFECT_BLOCK,
+        EndnessReasonCode wrongTurnReason = endNotAllowedReason(success);
+        addEndnessReason(reasons, wrongTurnReason, ENDNESS_EFFECT_BLOCK,
             playerScoreLead, null, config.minEndness);
         debugInfo.append(String.format("Endness blocked: %s on %s move (success only on player move, failure only on computer move);",
             success ? "success" : "failure", isPlayerMove ? "player" : "computer"));
-        return new EndnessDecision(config.minEndness, WRONG_TURN_FOR_RESULT);
+        return new EndnessDecision(config.minEndness, wrongTurnReason);
     }
 
     private EndnessDecision validateEndness(double endness, boolean isPlayerMove, double playerScoreLead,
@@ -1179,9 +1180,23 @@ public class Analysis {
         return validateEndness(endness, isPlayerMove, playerScoreLead, true, reasons, candidateReasonCode);
     }
 
+    private EndnessDecision applyMinMovesGate(EndnessDecision decision, int depth,
+                                              List<AnalysisResult.EndnessReason> reasons) {
+        if (decision == null || decision.endness() <= 0 || depth >= config.minMoves) {
+            return decision;
+        }
+        addEndnessReason(reasons, MIN_MOVES_NOT_REACHED, ENDNESS_EFFECT_BLOCK,
+            (double) depth, (double) config.minMoves, config.minEndness);
+        return new EndnessDecision(config.minEndness, MIN_MOVES_NOT_REACHED);
+    }
+
     private boolean canEndOnThisMove(boolean isPlayerMove, double playerScoreLead) {
         boolean isSuccess = isSuccess(playerScoreLead);
         return (isSuccess && isPlayerMove) || (!isSuccess && !isPlayerMove);
+    }
+
+    private EndnessReasonCode endNotAllowedReason(boolean success) {
+        return success ? SUCCESS_NOT_ALLOWED_ON_COMPUTER_MOVE : FAILURE_NOT_ALLOWED_ON_PLAYER_MOVE;
     }
 
     private boolean isSuccess(double playerScoreLead) {
@@ -1268,12 +1283,9 @@ public class Analysis {
         debugInfo.append("avgOwnership: ").append(df.format(avgOwnership)).append("; ");
 
         // if too few moves, don't end no matter the state
-        int minMovesToEnd = config.minMoves;
-        if (node.depth < minMovesToEnd) {
+        boolean beforeMinMoves = node.depth < config.minMoves;
+        if (beforeMinMoves) {
             debugInfo.append("cannot end before moves: ").append(node.depth).append("; ");
-            addEndnessReason(reasons, MIN_MOVES_NOT_REACHED, ENDNESS_EFFECT_BLOCK,
-                (double) node.depth, (double) minMovesToEnd, -1.0);
-            decision = new EndnessDecision(-1.0, MIN_MOVES_NOT_REACHED);
         }
 
         if (urgency < config.minUrgencyToContinue) {
@@ -1290,6 +1302,7 @@ public class Analysis {
             boolean hasValuablePlayerMove = hasValuablePlayerMove(node, urgency);
             EndnessDecision lowUrgencyDecision = validateEndness(config.maxEndness, isPlayerMove,
                 playerScoreLead, hasValuablePlayerMove, reasons, LOW_URGENCY);
+            lowUrgencyDecision = applyMinMovesGate(lowUrgencyDecision, node.depth, reasons);
             if (decision == null) {
                 decision = lowUrgencyDecision;
             }
@@ -1316,6 +1329,9 @@ public class Analysis {
                                 scoreDelta, config.scoreDropThreshold, config.maxEndness);
                             addEndnessReason(reasons, OWNERSHIP_UNCLEAR, ENDNESS_EFFECT_BLOCK,
                                 avgOwnership, config.ownershipThreshold, config.minEndness);
+                            if (decision == null) {
+                                decision = new EndnessDecision(config.minEndness, OWNERSHIP_UNCLEAR);
+                            }
                         }
                     } else {
                         if (opponentOwned && !clearlyDead) {
@@ -1330,6 +1346,7 @@ public class Analysis {
                                 scoreDelta, config.scoreDropThreshold, config.maxEndness);
                             EndnessDecision scoreDecision = validateEndness(config.maxEndness, isPlayerMove,
                                 playerScoreLead, reasons, SIGNIFICANT_SCORE_CHANGE);
+                            scoreDecision = applyMinMovesGate(scoreDecision, node.depth, reasons);
                             if (decision == null) {
                                 decision = scoreDecision;
                             }
@@ -1344,6 +1361,9 @@ public class Analysis {
                             scoreDelta, config.scoreDropThreshold, config.maxEndness);
                         addEndnessReason(reasons, OWNERSHIP_UNCLEAR, ENDNESS_EFFECT_BLOCK,
                             null, config.ownershipThreshold, config.minEndness);
+                        if (decision == null) {
+                            decision = new EndnessDecision(config.minEndness, OWNERSHIP_UNCLEAR);
+                        }
                     }
                 }
             } else {
@@ -1353,6 +1373,7 @@ public class Analysis {
                         scoreDelta, config.scoreDropThreshold, config.maxEndness);
                     EndnessDecision scoreDecision = validateEndness(config.maxEndness, isPlayerMove,
                         playerScoreLead, reasons, SIGNIFICANT_SCORE_CHANGE);
+                    scoreDecision = applyMinMovesGate(scoreDecision, node.depth, reasons);
                     if (decision == null) {
                         decision = scoreDecision;
                     }
@@ -1374,20 +1395,14 @@ public class Analysis {
         if (isPlayerMove && wantsTenukiResult) {
             addEndnessReason(reasons, COMPUTER_WANTS_TENUKI, ENDNESS_EFFECT_END,
                 null, null, config.maxEndness);
-            if (node.depth < config.minMoves) {
-                debugInfo.append("Endness: computer wants tenuki but depth too low, continue;");
-                addEndnessReason(reasons, MIN_MOVES_NOT_REACHED, ENDNESS_EFFECT_BLOCK,
-                    (double) node.depth, (double) config.minMoves, config.minEndness);
-                if (decision == null) {
-                    decision = new EndnessDecision(config.minEndness, MIN_MOVES_NOT_REACHED);
-                }
-            } else {
-                debugInfo.append("Endness: computer wants to tenuki;");
-                EndnessDecision tenukiDecision = validateEndness(config.maxEndness, isPlayerMove,
-                    playerScoreLead, reasons, COMPUTER_WANTS_TENUKI);
-                if (decision == null) {
-                    decision = tenukiDecision;
-                }
+            debugInfo.append(beforeMinMoves
+                ? "Endness: computer wants tenuki but depth too low, continue;"
+                : "Endness: computer wants to tenuki;");
+            EndnessDecision tenukiDecision = validateEndness(config.maxEndness, isPlayerMove,
+                playerScoreLead, reasons, COMPUTER_WANTS_TENUKI);
+            tenukiDecision = applyMinMovesGate(tenukiDecision, node.depth, reasons);
+            if (decision == null) {
+                decision = tenukiDecision;
             }
         }
 
@@ -1397,36 +1412,35 @@ public class Analysis {
         double depthFactor = Math.pow(depthRatio, config.depthPower) + DEPTH_FACTOR_OFFSET;
         endness += depthFactor;
         debugInfo.append(String.format("DepthFactor: %.2f;", depthFactor));
-        addEndnessReason(reasons, DEPTH_FACTOR, endness > 0 ? ENDNESS_EFFECT_END : ENDNESS_EFFECT_INFO,
-            depthFactor, -config.minEndness, endness);
+        boolean depthBasedEndness = endness > 0;
+        if (depthBasedEndness) {
+            addEndnessReason(reasons, MAX_DEPTH_REACHED, ENDNESS_EFFECT_END,
+                depthFactor, null, endness);
+        }
 
         // Only check on computer move, to see if player still has sente moves to play
         if (!isPlayerMove && !hasSenteMoves(node)) {
             addEndnessReason(reasons, NO_SENTE, ENDNESS_EFFECT_END,
                 null, null, config.maxEndness);
-            if (node.depth < config.minMoves) {
-                debugInfo.append("Endness: no sente but depth too low, continue;");
-                addEndnessReason(reasons, MIN_MOVES_NOT_REACHED, ENDNESS_EFFECT_BLOCK,
-                    (double) node.depth, (double) config.minMoves, config.minEndness);
-                if (decision == null) {
-                    decision = new EndnessDecision(config.minEndness, MIN_MOVES_NOT_REACHED);
-                }
-            } else if (!canEndOnThisMove(isPlayerMove, playerScoreLead)) {
+            EndnessDecision noSenteDecision;
+            if (!canEndOnThisMove(isPlayerMove, playerScoreLead)) {
                 boolean success = isSuccess(playerScoreLead);
                 debugInfo.append(String.format("Endness: no sente but %s cannot end on %s move;",
                     success ? "success" : "failure", isPlayerMove ? "player" : "computer"));
-                addEndnessReason(reasons, WRONG_TURN_FOR_RESULT, ENDNESS_EFFECT_BLOCK,
+                EndnessReasonCode wrongTurnReason = endNotAllowedReason(success);
+                addEndnessReason(reasons, wrongTurnReason, ENDNESS_EFFECT_BLOCK,
                     playerScoreLead, null, config.minEndness);
-                if (decision == null) {
-                    decision = new EndnessDecision(config.minEndness, WRONG_TURN_FOR_RESULT);
-                }
+                noSenteDecision = new EndnessDecision(config.minEndness, wrongTurnReason);
             } else {
-                debugInfo.append("Endness: no sente;");
-                EndnessDecision noSenteDecision = validateEndness(config.maxEndness, isPlayerMove,
+                debugInfo.append(beforeMinMoves
+                    ? "Endness: no sente but depth too low, continue;"
+                    : "Endness: no sente;");
+                noSenteDecision = validateEndness(config.maxEndness, isPlayerMove,
                     playerScoreLead, reasons, NO_SENTE);
-                if (decision == null) {
-                    decision = noSenteDecision;
-                }
+                noSenteDecision = applyMinMovesGate(noSenteDecision, node.depth, reasons);
+            }
+            if (decision == null) {
+                decision = noSenteDecision;
             }
         }
 
@@ -1442,7 +1456,11 @@ public class Analysis {
         }
 
         if (decision == null) {
-            decision = validateEndness(endness, isPlayerMove, playerScoreLead, reasons, DEPTH_FACTOR);
+            if (!depthBasedEndness) {
+                return beforeMinMoves ? config.minEndness : endness;
+            }
+            decision = validateEndness(endness, isPlayerMove, playerScoreLead, reasons, MAX_DEPTH_REACHED);
+            decision = applyMinMovesGate(decision, node.depth, reasons);
         }
         setPrimaryEndnessReason(result, decision);
         return decision.endness();

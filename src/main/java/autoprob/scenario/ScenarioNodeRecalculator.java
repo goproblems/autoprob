@@ -25,6 +25,7 @@ public class ScenarioNodeRecalculator {
     private static final String GREEN = "\033[32m";
     private static final String YELLOW = "\033[33m";
     private static final String CYAN = "\033[36m";
+    private static final String RED = "\033[31m";
     private static final String RESET = "\033[0m";
 
     private final Properties props;
@@ -48,37 +49,51 @@ public class ScenarioNodeRecalculator {
         Set<Integer> processedNodeIds = new HashSet<>();
         int processedNodes = 0;
         int submittedResults = 0;
+        int failedNodes = 0;
         int totalNodesEstimate = 0;
+        int queryOffset = 0;
 
         KataBrain brain = new KataBrain(props);
         try {
             if (!hasNodeFilter()) {
                 ScenarioNodeListResponse rootPage = fetchNodes(scenarioId, limit, 0, "");
                 totalNodesEstimate = Math.max(totalNodesEstimate, processedNodeIds.size() + rootPage.totalRecords);
-                submittedResults += processNodes(scenario, rootPage.entries, brain, processedNodeIds, totalNodesEstimate);
+                ProcessNodesResult rootResult = processNodes(scenario, rootPage.entries, brain, processedNodeIds, totalNodesEstimate);
+                submittedResults += rootResult.submittedResults();
+                failedNodes += rootResult.failedNodes();
                 processedNodes = processedNodeIds.size();
             }
 
             while (true) {
-                ScenarioNodeListResponse page = fetchNodes(scenarioId, limit, 0, null);
+                ScenarioNodeListResponse page = fetchNodes(scenarioId, limit, queryOffset, null);
                 List<ScenarioNodeEntry> entries = page.entries == null ? List.of() : page.entries;
                 if (entries.isEmpty()) {
-                    System.out.println("No more nodes to recalculate.");
+                    if (queryOffset == 0) {
+                        System.out.println("No more nodes to recalculate.");
+                    } else {
+                        System.out.println("No more nodes to recalculate after skipping nodes already attempted in this run.");
+                    }
                     break;
                 }
 
                 totalNodesEstimate = Math.max(totalNodesEstimate, processedNodeIds.size() + page.totalRecords);
                 int before = processedNodeIds.size();
-                submittedResults += processNodes(scenario, entries, brain, processedNodeIds, totalNodesEstimate);
+                ProcessNodesResult pageResult = processNodes(scenario, entries, brain, processedNodeIds, totalNodesEstimate);
+                submittedResults += pageResult.submittedResults();
+                failedNodes += pageResult.failedNodes();
                 processedNodes = processedNodeIds.size();
 
                 System.out.println("Processed " + processedNodes + " nodes, submitted "
-                    + submittedResults + " analysis results. Remaining reported by API: "
-                    + Math.max(0, page.totalRecords - entries.size()));
+                    + submittedResults + " analysis results, failed " + failedNodes
+                    + " nodes. Remaining reported by API after current offset: "
+                    + Math.max(0, page.totalRecords - queryOffset - entries.size()));
 
                 if (processedNodeIds.size() == before) {
-                    System.out.println("No new nodes processed from the latest page; stopping to avoid repeating the same page.");
-                    break;
+                    queryOffset += entries.size();
+                    System.out.println("No new nodes processed from the latest page; advancing offset to "
+                        + queryOffset + " to skip nodes already attempted in this run.");
+                } else {
+                    queryOffset = 0;
                 }
             }
         } finally {
@@ -86,7 +101,7 @@ public class ScenarioNodeRecalculator {
         }
 
         System.out.println("Recalculation complete. Processed " + processedNodes
-            + " nodes and submitted " + submittedResults + " results.");
+            + " nodes, submitted " + submittedResults + " results, failed " + failedNodes + " nodes.");
     }
 
     private int readScenarioId() {
@@ -199,10 +214,12 @@ public class ScenarioNodeRecalculator {
             || props.getProperty("responseValid") != null;
     }
 
-    private int processNodes(AnalysisRequest.Scenario scenario, List<ScenarioNodeEntry> entries,
-                             KataBrain brain, Set<Integer> processedNodeIds, int totalNodesEstimate) throws Exception {
+    private record ProcessNodesResult(int submittedResults, int failedNodes) {}
+
+    private ProcessNodesResult processNodes(AnalysisRequest.Scenario scenario, List<ScenarioNodeEntry> entries,
+                                            KataBrain brain, Set<Integer> processedNodeIds, int totalNodesEstimate) {
         if (entries == null || entries.isEmpty()) {
-            return 0;
+            return new ProcessNodesResult(0, 0);
         }
 
         entries.sort(Comparator
@@ -211,33 +228,48 @@ public class ScenarioNodeRecalculator {
             .thenComparing(entry -> entry.path == null ? "" : entry.path));
 
         int submittedResults = 0;
+        int failedNodes = 0;
         for (ScenarioNodeEntry node : entries) {
             if (!processedNodeIds.add(node.id)) {
                 continue;
             }
 
             String path = node.path == null ? "" : node.path;
-            printProgressBar(processedNodeIds.size(), totalNodesEstimate, node);
-            System.out.println("Recalculating node " + node.id + " difficulty=" + node.difficulty
-                + " path=" + (path.isEmpty() ? "<root>" : path)
-                + " version=" + node.analysisClientVersion);
+            try {
+                printProgressBar(processedNodeIds.size(), totalNodesEstimate, node);
+                System.out.println("Recalculating node " + node.id + " difficulty=" + node.difficulty
+                    + " path=" + (path.isEmpty() ? "<root>" : path)
+                    + " version=" + node.analysisClientVersion);
 
-            AnalysisRequest request = new AnalysisRequest();
-            request.scenario = scenario;
-            request.path = path;
-            request.difficulty = node.difficulty;
-            request.isPrecalculate = false;
+                AnalysisRequest request = new AnalysisRequest();
+                request.scenario = scenario;
+                request.path = path;
+                request.difficulty = node.difficulty;
+                request.isPrecalculate = false;
 
-            Analysis analysis = new Analysis(props, brain);
-            AnalysisResult[] results = analysis.analyze(request);
-            if (results == null || results.length == 0) {
-                throw new RuntimeException("No analysis results for node " + node.id);
+                Analysis analysis = new Analysis(props, brain);
+                AnalysisResult[] results = analysis.analyze(request);
+                if (results == null || results.length == 0) {
+                    throw new RuntimeException("No analysis results for node " + node.id);
+                }
+
+                submitResults(scenario.id, results);
+                submittedResults += results.length;
+            } catch (Exception ex) {
+                failedNodes++;
+                System.out.println(RED + "Failed to recalculate node " + node.id
+                    + " difficulty=" + node.difficulty
+                    + " path=" + (path.isEmpty() ? "<root>" : path)
+                    + " version=" + node.analysisClientVersion
+                    + ": " + ex.getClass().getSimpleName()
+                    + (ex.getMessage() == null ? "" : " - " + ex.getMessage())
+                    + RESET);
+                if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                    ex.printStackTrace(System.out);
+                }
             }
-
-            submitResults(scenario.id, results);
-            submittedResults += results.length;
         }
-        return submittedResults;
+        return new ProcessNodesResult(submittedResults, failedNodes);
     }
 
     private void printProgressBar(int current, int total, ScenarioNodeEntry node) {

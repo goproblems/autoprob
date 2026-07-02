@@ -20,19 +20,28 @@ public class AnalysisConfig {
     public double minHumanPolicy;
     public boolean includeOptimalMoves;
     public int minMoves;
-    public int minDepthForEndness;
     public double scoreDropThreshold;
     public double maxEndness;
     public double minEndness;
     public double ownershipThreshold;
+    public int minOwnershipPositions;
     public double depthTargetMoves;
     public double depthPower;
-    public int tenukiHistoryMoves;
+    public int noSenteTenukiHistoryMoves;
     public double tenukiDistanceThreshold;
+    public double tenukiRegionLinkDistance;
     public int maxSenteCandidates;
     public double minSentePolicy;
+    public double minSenteScoreDelta;
+    public double minUrgencyPolicy;
+    public double minUrgencyScoreDelta;
     public double minUrgencyToContinue;
+    public double minValuablePlayerUrgency;
+    public double minValuablePlayerPolicy;
+    public double minStrongPlayerUrgency;
+    public double minStrongPlayerPolicy;
     public boolean allowFallbackOutsideArea;
+    public boolean detectKo;
     public double maxScoreDropMaxMode;
     public int minResponseVisitsMaxMode;
     public double komi;
@@ -58,20 +67,29 @@ public class AnalysisConfig {
         c.minHumanPolicy = Double.parseDouble(props.getProperty("scenario.min_response_policy", "0.05"));
         c.includeOptimalMoves = Boolean.parseBoolean(props.getProperty("scenario.include_optimal_moves", "false"));
         c.minMoves = Integer.parseInt(props.getProperty("scenario.min_moves", "5"));
-        c.minDepthForEndness = Integer.parseInt(props.getProperty("scenario.min_depth_for_endness", "5"));
         c.scoreDropThreshold = Double.parseDouble(props.getProperty("scenario.score_drop_threshold", "15.0"));
         c.maxEndness = Double.parseDouble(props.getProperty("scenario.max_endness", "1.0"));
         c.minEndness = Double.parseDouble(props.getProperty("scenario.min_endness", "-1.0"));
         c.ownershipThreshold = Double.parseDouble(props.getProperty("scenario.ownership_threshold", "0.6"));
+        c.minOwnershipPositions = Integer.parseInt(props.getProperty("scenario.min_ownership_positions", "5"));
         c.depthTargetMoves = Double.parseDouble(props.getProperty("scenario.depth_target_moves", "30.0"));
         c.depthPower = Double.parseDouble(props.getProperty("scenario.depth_power", "1.1"));
-        c.tenukiHistoryMoves = Integer.parseInt(props.getProperty("scenario.tenuki_history_moves", "3"));
+        c.noSenteTenukiHistoryMoves = Integer.parseInt(props.getProperty("scenario.no_sente_tenuki_history_moves", "3"));
         c.tenukiDistanceThreshold = Double.parseDouble(props.getProperty("scenario.tenuki_distance_threshold", "6.0"));
+        c.tenukiRegionLinkDistance = Double.parseDouble(props.getProperty("scenario.tenuki_region_link_distance", String.valueOf(c.tenukiDistanceThreshold)));
         c.maxOptimalMoves = Integer.parseInt(props.getProperty("scenario.max_optimal_moves", "1"));
         c.maxSenteCandidates = Integer.parseInt(props.getProperty("scenario.max_sente_candidates", "5"));
         c.minSentePolicy = Double.parseDouble(props.getProperty("scenario.min_sente_policy", "0.05"));
+        c.minSenteScoreDelta = Double.parseDouble(props.getProperty("scenario.min_sente_score_delta", "-1.0"));
+        c.minUrgencyPolicy = Double.parseDouble(props.getProperty("scenario.min_urgency_policy", "0.02"));
+        c.minUrgencyScoreDelta = Double.parseDouble(props.getProperty("scenario.min_urgency_score_delta", "-1.0"));
         c.minUrgencyToContinue = Double.parseDouble(props.getProperty("scenario.min_urgency_to_continue", "10.0"));
+        c.minValuablePlayerUrgency = Double.parseDouble(props.getProperty("scenario.min_valuable_player_urgency", "11.0"));
+        c.minValuablePlayerPolicy = Double.parseDouble(props.getProperty("scenario.min_valuable_player_policy", "0.5"));
+        c.minStrongPlayerUrgency = Double.parseDouble(props.getProperty("scenario.min_strong_player_urgency", "20.0"));
+        c.minStrongPlayerPolicy = Double.parseDouble(props.getProperty("scenario.min_strong_player_policy", "0.5"));
         c.allowFallbackOutsideArea = Boolean.parseBoolean(props.getProperty("scenario.allow_fallback_outside_area", "false"));
+        c.detectKo = Boolean.parseBoolean(props.getProperty("scenario.detect_ko", "true"));
         c.passMoveVisits = Integer.parseInt(props.getProperty("scenario.pass_move_visits", "200"));
         c.precalculationMaxDepth = Integer.parseInt(props.getProperty("scenario.precalculation_max_depth", "20"));
         c.precalculationMaxNodes = Integer.parseInt(props.getProperty("scenario.precalculation_max_nodes", "3000"));
@@ -126,20 +144,29 @@ public class AnalysisConfig {
         c.minHumanPolicy = this.minHumanPolicy;
         c.includeOptimalMoves = this.includeOptimalMoves;
         c.minMoves = this.minMoves;
-        c.minDepthForEndness = this.minDepthForEndness;
         c.scoreDropThreshold = this.scoreDropThreshold;
         c.maxEndness = this.maxEndness;
         c.minEndness = this.minEndness;
         c.ownershipThreshold = this.ownershipThreshold;
+        c.minOwnershipPositions = this.minOwnershipPositions;
         c.depthTargetMoves = this.depthTargetMoves;
         c.depthPower = this.depthPower;
-        c.tenukiHistoryMoves = this.tenukiHistoryMoves;
+        c.noSenteTenukiHistoryMoves = this.noSenteTenukiHistoryMoves;
         c.tenukiDistanceThreshold = this.tenukiDistanceThreshold;
+        c.tenukiRegionLinkDistance = this.tenukiRegionLinkDistance;
         c.maxOptimalMoves = this.maxOptimalMoves;
         c.maxSenteCandidates = this.maxSenteCandidates;
         c.minSentePolicy = this.minSentePolicy;
+        c.minSenteScoreDelta = this.minSenteScoreDelta;
+        c.minUrgencyPolicy = this.minUrgencyPolicy;
+        c.minUrgencyScoreDelta = this.minUrgencyScoreDelta;
         c.minUrgencyToContinue = this.minUrgencyToContinue;
+        c.minValuablePlayerUrgency = this.minValuablePlayerUrgency;
+        c.minValuablePlayerPolicy = this.minValuablePlayerPolicy;
+        c.minStrongPlayerUrgency = this.minStrongPlayerUrgency;
+        c.minStrongPlayerPolicy = this.minStrongPlayerPolicy;
         c.allowFallbackOutsideArea = this.allowFallbackOutsideArea;
+        c.detectKo = this.detectKo;
         c.passMoveVisits = this.passMoveVisits;
         c.precalculationMaxDepth = this.precalculationMaxDepth;
         c.precalculationMaxNodes = this.precalculationMaxNodes;
@@ -180,9 +207,6 @@ public class AnalysisConfig {
                 case "scenario.min_moves":
                     c.minMoves = toInt(value);
                     break;
-                case "scenario.min_depth_for_endness":
-                    c.minDepthForEndness = toInt(value);
-                    break;
                 case "scenario.score_drop_threshold":
                     c.scoreDropThreshold = toDouble(value);
                     break;
@@ -198,11 +222,14 @@ public class AnalysisConfig {
                 case "scenario.depth_power":
                     c.depthPower = toDouble(value);
                     break;
-                case "scenario.tenuki_history_moves":
-                    c.tenukiHistoryMoves = toInt(value);
+                case "scenario.no_sente_tenuki_history_moves":
+                    c.noSenteTenukiHistoryMoves = toInt(value);
                     break;
                 case "scenario.tenuki_distance_threshold":
                     c.tenukiDistanceThreshold = toDouble(value);
+                    break;
+                case "scenario.tenuki_region_link_distance":
+                    c.tenukiRegionLinkDistance = toDouble(value);
                     break;
                 case "scenario.max_sente_candidates":
                     c.maxSenteCandidates = toInt(value);
@@ -210,14 +237,41 @@ public class AnalysisConfig {
                 case "scenario.min_sente_policy":
                     c.minSentePolicy = toDouble(value);
                     break;
+                case "scenario.min_sente_score_delta":
+                    c.minSenteScoreDelta = toDouble(value);
+                    break;
+                case "scenario.min_urgency_policy":
+                    c.minUrgencyPolicy = toDouble(value);
+                    break;
+                case "scenario.min_urgency_score_delta":
+                    c.minUrgencyScoreDelta = toDouble(value);
+                    break;
                 case "scenario.min_urgency_to_continue":
                     c.minUrgencyToContinue = toDouble(value);
+                    break;
+                case "scenario.min_valuable_player_urgency":
+                    c.minValuablePlayerUrgency = toDouble(value);
+                    break;
+                case "scenario.min_valuable_player_policy":
+                    c.minValuablePlayerPolicy = toDouble(value);
+                    break;
+                case "scenario.min_strong_player_urgency":
+                    c.minStrongPlayerUrgency = toDouble(value);
+                    break;
+                case "scenario.min_strong_player_policy":
+                    c.minStrongPlayerPolicy = toDouble(value);
                     break;
                 case "scenario.allow_fallback_outside_area":
                     c.allowFallbackOutsideArea = toBoolean(value);
                     break;
+                case "scenario.detect_ko":
+                    c.detectKo = toBoolean(value);
+                    break;
                 case "scenario.ownership_threshold":
                     c.ownershipThreshold = toDouble(value);
+                    break;
+                case "scenario.min_ownership_positions":
+                    c.minOwnershipPositions = toInt(value);
                     break;
                 case "scenario.max_score_drop_max_mode":
                     c.maxScoreDropMaxMode = toDouble(value);
@@ -232,6 +286,10 @@ public class AnalysisConfig {
                     System.out.println("Unknown config override key: " + key);
                     break;
             }
+        }
+        if (overrides.containsKey("scenario.tenuki_distance_threshold")
+                && !overrides.containsKey("scenario.tenuki_region_link_distance")) {
+            c.tenukiRegionLinkDistance = c.tenukiDistanceThreshold;
         }
     }
 

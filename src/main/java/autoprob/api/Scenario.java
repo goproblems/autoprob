@@ -9,4 +9,5 @@ public class Scenario {
     public String createdAt;
     public String imageUrl;
     public String toMove;
+    public ScenarioMetadata metadata;
 }

@@ -4,6 +4,7 @@ import autoprob.KataBrain;
 import autoprob.NodeAnalyzer;
 import autoprob.api.AnalysisRequest;
 import autoprob.api.AnalysisResult;
+import autoprob.api.EndnessReasonCode;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.parse.Parser;
@@ -21,6 +22,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
 
+import static autoprob.api.EndnessReasonCode.*;
+
 /**
  * Orchestrates running KataGo analysis for API scenarios.
  */
@@ -37,12 +40,15 @@ public class Analysis {
     }
 
     private static final DecimalFormat df = new DecimalFormat("0.00");
+    private static final DecimalFormat policyDf = new DecimalFormat("0.0000");
 
     private static final String DEFAULT_HUMAN_RANK = "10k";
     private static final String VISITS_PROPERTY = "scenario.analysis.visits";
+    private static final String TESTCASE_VISITS_PROPERTY = "scenario.testcase.visits";
+    private static final String TESTCASE_MODE_PROPERTY = "scenario.testcase_mode";
     private static final String FALLBACK_VISITS_PROPERTY = "search.visits";
 
-    // Small offset added to depthFactor to prevent endness from being exactly 0
+    // Small offset added to depthFactor to avoid exact-zero endness at the path limit.
     private static final double DEPTH_FACTOR_OFFSET = 0.01;
 
     private final Properties props;
@@ -57,6 +63,7 @@ public class Analysis {
      * Per-request configuration, may be overridden by scenario metadata.
      */
     private AnalysisConfig config;
+    private String scenarioType;
 
     private ResultSubmitter resultSubmitter;
 
@@ -166,6 +173,7 @@ public class Analysis {
         }
 
         // Build per-request config with metadata overrides and area constraints
+        this.scenarioType = request.scenario.type;
         this.config = defaultConfig.withMetadata(request.scenario.metadata);
         if (request.scenario.metadata != null && request.scenario.metadata.configOverrides != null
                 && !request.scenario.metadata.configOverrides.isEmpty()) {
@@ -283,8 +291,8 @@ public class Analysis {
 
         results.add(result);
 
-        // Determine if current move is human move or computer move
-        boolean isHumanMove = (node.getToMove() != root.getToMove());
+        // Determine if current move is player move or computer move
+        boolean isPlayerMove = (node.getToMove() != root.getToMove());
 
         // Add optimal moves from parent node if enabled
         if (config.includeOptimalMoves) {
@@ -292,8 +300,8 @@ public class Analysis {
         }
 
         // if not an end move, we can add possible response moves from katago
-        // Only add response moves for HUMAN moves
-        if (isHumanMove && result.endness < 0) {
+        // Only add response moves for player moves
+        if (isPlayerMove && result.endness < 0) {
             if (humanRank.equals("max")) {
                 addResponseResultsMaxRank(brain, node, root, rootKata, result, results, endKata, humanRank);
             }
@@ -383,17 +391,16 @@ public class Analysis {
                 : selectPolicy(current.kata);
             if (policy == null) continue;
 
-            Point lastMove = current.node.findMove();
-
             for (var pol : current.kata.getTopPolicy(10, policy)) {
                 if (nodesCount >= maxNodes) break;
                 if (pol.policy < config.precalculationMinPolicy) break;
 
+                Point candidatePoint = new Point(pol.x, pol.y);
+
                 // Skip tenuki
-                if (lastMove != null && isTenuki(lastMove, new Point(pol.x, pol.y))) continue;
+                if (isTenukiFromActiveRegion(candidatePoint, current.node)) continue;
 
                 // Skip moves outside area constraints
-                Point candidatePoint = new Point(pol.x, pol.y);
                 if (isPlayerTurn && !config.isPlayerMoveAllowed(candidatePoint)) {
                     System.out.println("  Precalc: skipped " + Intersection.toGTPloc(pol.x, pol.y) + " (outside player area)");
                     continue;
@@ -481,7 +488,6 @@ public class Analysis {
         List<KataAnalysisResult.Policy> top = endKata.getTopPolicy(10, endKata.humanPolicy); // gets all, sorted
         int visits = determineVisits();
         var nodeAnalyzer = new NodeAnalyzer(props);
-        Point currentMove = node.findMove();
 
         List<KataAnalysisResult.Policy> validCandidates = new ArrayList<>();
 
@@ -495,13 +501,15 @@ public class Analysis {
                 continue;
             }
 
-            if (currentMove != null && isTenuki(currentMove, new Point(pol.x, pol.y))) {
+            Point candidatePoint = new Point(pol.x, pol.y);
+
+            if (isTenukiFromActiveRegion(candidatePoint, node)) {
                 System.out.println("  tenuki move, skipping");
                 continue;
             }
 
             // Skip moves outside computer area constraints
-            if (!config.isComputerMoveAllowed(new Point(pol.x, pol.y))) {
+            if (!config.isComputerMoveAllowed(candidatePoint)) {
                 System.out.println("  outside computer allowed area, skipping");
                 continue;
             }
@@ -528,6 +536,8 @@ public class Analysis {
                         System.out.println("No valid computer responses inside area; outside-area fallback is disabled, ending problem");
                         debugInfo.append("No valid computer responses inside area; outside-area fallback disabled; ");
                         result.endness = config.maxEndness;
+                        addEndnessReason(result.endnessReasons, NO_VALID_COMPUTER_RESPONSE_INSIDE_AREA,
+                            ENDNESS_EFFECT_END, null, null, result.endness, true);
                         return;
                     }
 
@@ -547,6 +557,8 @@ public class Analysis {
             System.out.println("No valid computer response candidates found, ending problem");
             debugInfo.append("No valid computer response candidates found; ");
             result.endness = config.maxEndness;
+            addEndnessReason(result.endnessReasons, NO_VALID_COMPUTER_RESPONSE,
+                ENDNESS_EFFECT_END, null, null, result.endness, true);
             return;
         }
 
@@ -639,15 +651,13 @@ public class Analysis {
 
     private void addResponseResultsMaxRank(KataBrain brain, Node node, Node root, KataAnalysisResult rootKata, AnalysisResult result, ArrayList<AnalysisResult> results, KataAnalysisResult endKata, String rank) throws Exception {
         // Use moveInfos to find response moves (post-search, strongest)
-        Point currentMove = node.findMove();
-
         // Collect valid candidates from moveInfos
         double scoreBaseline = endKata.moveInfos.get(0).scoreLead;
         List<MoveInfo> validCandidates = new ArrayList<>();
         for (MoveInfo candidate : endKata.moveInfos) {
             Point candidatePoint = Intersection.gtp2point(candidate.move);
             double scoreDelta = Math.abs(candidate.scoreLead - scoreBaseline);
-            boolean isTenukiMove = currentMove != null && isTenuki(currentMove, candidatePoint);
+            boolean isTenukiMove = isTenukiFromActiveRegion(candidatePoint, node);
 
             if (candidate.visits > 5) {
                 System.out.println("-- max mode response " + candidate.move + " scoreDelta: " + df.format(scoreDelta)
@@ -667,26 +677,6 @@ public class Analysis {
             validCandidates.add(candidate);
         }
 
-        // If no valid candidates, end the problem
-        if (validCandidates.isEmpty()) {
-            double previousEndness = result.endness;
-            if (config.hasComputerAreaConstraints()) {
-                System.out.println("All moveInfos moves filtered by area constraints or tenuki, end problem");
-                debugInfo.append("No valid max-mode responses (area constraints + tenuki filter); ");
-            } else {
-                System.out.println("All moveInfos moves are tenuki moves, end problem");
-                debugInfo.append("No valid max-mode responses (tenuki/filters); ");
-            }
-            result.endness = config.maxEndness;
-            String overrideMsg = String.format(
-                "Endness overridden in max mode: %.2f -> %.2f (no valid response candidates);",
-                previousEndness, result.endness);
-            System.out.println(overrideMsg);
-            debugInfo.append(overrideMsg);
-            result.extraInfo = debugInfo.toString();
-            return;
-        }
-
         int visits = determineVisits();
         var nodeAnalyzer = new NodeAnalyzer(props);
 
@@ -694,6 +684,100 @@ public class Analysis {
         KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(rank, HumanLikeStyle.HUMAN);
         // It is necessary to set ignorePreRootHistory to true here to avoid bias from move order in response analysis for ai rank
         overrideSettings.ignorePreRootHistory = true;
+
+        // If search-backed max candidates are all filtered, try regular policy as a fallback.
+        // This keeps max mode search-first, while avoiding an early end when policy still has a local response.
+        if (validCandidates.isEmpty()) {
+            double previousEndness = result.endness;
+            if (config.hasComputerAreaConstraints()) {
+                System.out.println("All moveInfos moves filtered by area constraints or tenuki");
+                debugInfo.append("No valid max-mode responses (area constraints + tenuki filter); ");
+            } else {
+                System.out.println("All moveInfos moves are tenuki moves or filtered");
+                debugInfo.append("No valid max-mode responses (tenuki/filters); ");
+            }
+
+            KataAnalysisResult.Policy fallback = selectMaxModePolicyFallbackResponse(endKata, node);
+            if (fallback != null) {
+                String fallbackMove = Intersection.toGTPloc(fallback.x, fallback.y);
+                String responsePath = result.path + "," + fallbackMove;
+                String fallbackMsg = String.format("Max-mode policy fallback response %s(p=%.4f);",
+                    fallbackMove, fallback.policy);
+                System.out.println(fallbackMsg);
+                debugInfo.append(fallbackMsg);
+                result.extraInfo = debugInfo.toString();
+
+                Node responseNode = node.addBasicMove(fallback.x, fallback.y);
+                KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
+                responseNode.kres = responseKata;
+
+                AnalysisResult responseResult = buildAnalysisResult(responsePath, result.difficulty,
+                    responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, fallback.policy, visits);
+                responseResult.analysis = gson.toJson(responseKata);
+                responseResult.extraInfo = debugInfo.toString();
+                responseResult.isAnalyzed = true;
+
+                if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
+                    System.out.println("dbg: " + debugInfo);
+                }
+
+                results.add(responseResult);
+                return;
+            }
+
+            int pathMoves = pathMoveCount(result.path);
+            if (pathMoves < config.minMoves) {
+                KataAnalysisResult.Policy forcedFallback = selectMaxModePolicyFallbackResponse(endKata, node, true);
+                if (forcedFallback != null) {
+                    String fallbackMove = Intersection.toGTPloc(forcedFallback.x, forcedFallback.y);
+                    String responsePath = result.path + "," + fallbackMove;
+                    String fallbackMsg = String.format(
+                        "Max-mode forced policy fallback response %s(p=%.4f) before min_moves (%d < %d);",
+                        fallbackMove, forcedFallback.policy, pathMoves, config.minMoves);
+                    System.out.println(fallbackMsg);
+                    debugInfo.append(fallbackMsg);
+                    result.extraInfo = debugInfo.toString();
+
+                    Node responseNode = node.addBasicMove(forcedFallback.x, forcedFallback.y);
+                    KataAnalysisResult responseKata = nodeAnalyzer.analyzeNode(brain, responseNode, visits, null, overrideSettings);
+                    responseNode.kres = responseKata;
+
+                    AnalysisResult responseResult = buildAnalysisResult(responsePath, result.difficulty,
+                        responseNode, responseKata, endKata, root, rootKata, result.katagoWeightsFile, forcedFallback.policy, visits);
+                    responseResult.analysis = gson.toJson(responseKata);
+                    responseResult.extraInfo = debugInfo.toString();
+                    responseResult.isAnalyzed = true;
+
+                    if (Boolean.parseBoolean(props.getProperty("scenario.print_debug_info", "true"))) {
+                        System.out.println("dbg: " + debugInfo);
+                    }
+
+                    results.add(responseResult);
+                    return;
+                }
+
+                String skipMsg = String.format(
+                    "Max-mode endness not changed: no valid moveInfos response, no policy fallback, no forced fallback, path moves %d < min_moves %d;",
+                    pathMoves, config.minMoves);
+                System.out.println(skipMsg);
+                debugInfo.append(skipMsg);
+                result.extraInfo = debugInfo.toString();
+                return;
+            }
+
+            {
+                result.endness = config.maxEndness;
+                String overrideMsg = String.format(
+                    "Endness: no valid max response and no policy fallback response (%.2f -> %.2f);",
+                    previousEndness, result.endness);
+                System.out.println(overrideMsg);
+                debugInfo.append(overrideMsg);
+                result.extraInfo = debugInfo.toString();
+                addEndnessReason(result.endnessReasons, NO_VALID_MAX_RESPONSE,
+                    ENDNESS_EFFECT_END, null, null, result.endness, true);
+                return;
+            }
+        }
 
         // Analyze the first (best) candidate, add others as unanalyzed
         for (int i = 0; i < validCandidates.size(); i++) {
@@ -738,6 +822,55 @@ public class Analysis {
                 results.add(candidateResult);
             }
         }
+    }
+
+    private KataAnalysisResult.Policy selectMaxModePolicyFallbackResponse(KataAnalysisResult endKata, Node node) {
+        return selectMaxModePolicyFallbackResponse(endKata, node, false);
+    }
+
+    private KataAnalysisResult.Policy selectMaxModePolicyFallbackResponse(KataAnalysisResult endKata, Node node, boolean force) {
+        if (endKata.policy == null || endKata.policy.isEmpty()) {
+            return null;
+        }
+
+        KataAnalysisResult.Policy firstFallback = null;
+        for (KataAnalysisResult.Policy candidate : endKata.getTopPolicy(20, endKata.policy)) {
+            String move = Intersection.toGTPloc(candidate.x, candidate.y);
+            System.out.println("max policy fallback candidate: " + move + " pol: " + df.format(candidate.policy));
+
+            Point candidatePoint = new Point(candidate.x, candidate.y);
+            boolean tenuki = isTenukiFromActiveRegion(candidatePoint, node);
+            boolean insideArea = config.isComputerMoveAllowed(candidatePoint);
+
+            if (!force && candidate.policy < config.minHumanPolicy) {
+                System.out.println("  too low policy, skipping");
+                continue;
+            }
+
+            if (!force && tenuki) {
+                System.out.println("  tenuki move, skipping");
+                continue;
+            }
+
+            if (!force && !insideArea) {
+                System.out.println("  outside computer allowed area, skipping");
+                continue;
+            }
+
+            if (!force) {
+                return candidate;
+            }
+
+            if (insideArea) {
+                return candidate;
+            }
+
+            if (firstFallback == null) {
+                firstFallback = candidate;
+            }
+        }
+
+        return firstFallback;
     }
 
     /**
@@ -837,6 +970,15 @@ public class Analysis {
      * Determine visits, allowing per-request override from metadata.
      */
     private int determineVisits(AnalysisRequest request) {
+        if (Boolean.parseBoolean(props.getProperty(TESTCASE_MODE_PROPERTY, "false"))) {
+            String testcaseVisits = props.getProperty(TESTCASE_VISITS_PROPERTY);
+            if (testcaseVisits != null) {
+                int v = Integer.parseInt(testcaseVisits);
+                System.out.println("Using testcase visits: " + v);
+                return v;
+            }
+        }
+
         // Check metadata configOverrides for scenario.analysis.visits
         if (request != null && request.scenario != null && request.scenario.metadata != null
                 && request.scenario.metadata.configOverrides != null) {
@@ -877,6 +1019,20 @@ public class Analysis {
         String move = comma >= 0 ? path.substring(comma + 1) : path;
         move = move.trim();
         return move.isEmpty() ? null : move;
+    }
+
+    private int pathMoveCount(String path) {
+        if (path == null || path.isBlank()) {
+            return 0;
+        }
+
+        int count = 0;
+        for (String move : path.split(",")) {
+            if (!move.isBlank()) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private double policyWeight(KataAnalysisResult kata, String move) {
@@ -952,7 +1108,6 @@ public class Analysis {
         result.difficulty = difficulty;
         result.score = nodeKata.blackScore();
         result.loss = nodeKata.blackScore() - parentKata.blackScore();
-        result.urgency = calculateUrgency(node);
         result.katagoPlayouts = katagoPlayouts;
         result.katagoWeightsFile = katagoWeightsFile;
         result.weight = weight;
@@ -981,30 +1136,114 @@ public class Analysis {
         return node;
     }
 
+    private static final String ENDNESS_EFFECT_END = "end";
+    private static final String ENDNESS_EFFECT_BLOCK = "block";
+    private static final String ENDNESS_EFFECT_INFO = "info";
+
+    private record EndnessDecision(double endness, EndnessReasonCode primaryReasonCode) {}
+
     /**
      * Validate endness value according to success/failure rules.
-     * Success (endness > 0) is only allowed on human move.
+     * Success (endness > 0) is only allowed on player move.
      * Failure (endness > 0) is only allowed on computer move.
-     *
-     * @param endness The calculated endness value
-     * @param isHumanMove Whether current move is human's move
-     * @param scoreDelta The score change from human's perspective (positive = human gained)
-     * @return Validated endness value
      */
-    private double validateEndness(double endness, boolean isHumanMove, double scoreDelta) {
+    private EndnessDecision validateEndness(double endness, boolean isPlayerMove, double playerScoreLead,
+                                            boolean hasValuablePlayerMove,
+                                            List<AnalysisResult.EndnessReason> reasons,
+                                            EndnessReasonCode candidateReasonCode) {
         if (endness <= 0) {
-            return endness;
+            return new EndnessDecision(endness, candidateReasonCode);
         }
-        boolean isSuccess = scoreDelta >= -0.1;
-        if (isSuccess && isHumanMove) {
-            return endness;
+        if (canEndOnThisMove(isPlayerMove, playerScoreLead)) {
+            return new EndnessDecision(endness, candidateReasonCode);
         }
-        if (!isSuccess && !isHumanMove) {
-            return endness;
+        boolean success = isSuccess(playerScoreLead);
+        // Case 95: after a successful computer move, if the player has no valuable local move,
+        // ending is better than forcing a meaningless player continuation.
+        if (success && !isPlayerMove && !hasValuablePlayerMove) {
+            addEndnessReason(reasons, NO_VALUABLE_PLAYER_MOVE_AFTER_SUCCESS, ENDNESS_EFFECT_END,
+                playerScoreLead, null, endness);
+            debugInfo.append("Endness: success on computer move allowed, no valuable player move;");
+            return new EndnessDecision(endness, NO_VALUABLE_PLAYER_MOVE_AFTER_SUCCESS);
         }
-        debugInfo.append(String.format("Endness blocked: %s on %s move (success only on human move, failure only on computer move);",
-            isSuccess ? "success" : "failure", isHumanMove ? "human" : "computer"));
-        return config.minEndness;
+        EndnessReasonCode wrongTurnReason = endNotAllowedReason(success);
+        addEndnessReason(reasons, wrongTurnReason, ENDNESS_EFFECT_BLOCK,
+            playerScoreLead, null, config.minEndness);
+        debugInfo.append(String.format("Endness blocked: %s on %s move (success only on player move, failure only on computer move);",
+            success ? "success" : "failure", isPlayerMove ? "player" : "computer"));
+        return new EndnessDecision(config.minEndness, wrongTurnReason);
+    }
+
+    private EndnessDecision validateEndness(double endness, boolean isPlayerMove, double playerScoreLead,
+                                            List<AnalysisResult.EndnessReason> reasons,
+                                            EndnessReasonCode candidateReasonCode) {
+        return validateEndness(endness, isPlayerMove, playerScoreLead, true, reasons, candidateReasonCode);
+    }
+
+    private EndnessDecision applyMinMovesGate(EndnessDecision decision, int depth,
+                                              List<AnalysisResult.EndnessReason> reasons) {
+        if (decision == null || decision.endness() <= 0 || depth >= config.minMoves) {
+            return decision;
+        }
+        addEndnessReason(reasons, MIN_MOVES_NOT_REACHED, ENDNESS_EFFECT_BLOCK,
+            (double) depth, (double) config.minMoves, config.minEndness);
+        return new EndnessDecision(config.minEndness, MIN_MOVES_NOT_REACHED);
+    }
+
+    private boolean canEndOnThisMove(boolean isPlayerMove, double playerScoreLead) {
+        boolean isSuccess = isSuccess(playerScoreLead);
+        return (isSuccess && isPlayerMove) || (!isSuccess && !isPlayerMove);
+    }
+
+    private EndnessReasonCode endNotAllowedReason(boolean success) {
+        return success ? SUCCESS_NOT_ALLOWED_ON_COMPUTER_MOVE : FAILURE_NOT_ALLOWED_ON_PLAYER_MOVE;
+    }
+
+    private boolean isSuccess(double playerScoreLead) {
+        return playerScoreLead >= -0.1;
+    }
+
+    private double playerScoreLead(double blackScoreLead, Node root) {
+        return root.getToMove() == Intersection.BLACK ? blackScoreLead : -blackScoreLead;
+    }
+
+    private void addEndnessReason(List<AnalysisResult.EndnessReason> reasons, EndnessReasonCode code, String effect,
+                                  Double value, Double threshold, Double endness) {
+        addEndnessReason(reasons, code, effect, value, threshold, endness, false);
+    }
+
+    private void addEndnessReason(List<AnalysisResult.EndnessReason> reasons, EndnessReasonCode code, String effect,
+                                  Double value, Double threshold, Double endness, boolean primary) {
+        if (reasons == null) {
+            return;
+        }
+        for (AnalysisResult.EndnessReason reason : reasons) {
+            if (code.equals(reason.code) && effect.equals(reason.effect)) {
+                if (primary) {
+                    reason.primary = true;
+                }
+                return;
+            }
+        }
+        reasons.add(new AnalysisResult.EndnessReason(code, effect, value, threshold, endness, primary));
+    }
+
+    private void setPrimaryEndnessReason(AnalysisResult result, EndnessDecision decision) {
+        if (decision == null || result.endnessReasons == null) {
+            return;
+        }
+        for (AnalysisResult.EndnessReason reason : result.endnessReasons) {
+            reason.primary = false;
+        }
+        for (AnalysisResult.EndnessReason reason : result.endnessReasons) {
+            if (decision.primaryReasonCode().equals(reason.code)) {
+                reason.primary = true;
+                return;
+            }
+        }
+        addEndnessReason(result.endnessReasons, decision.primaryReasonCode(),
+            decision.endness() > 0 ? ENDNESS_EFFECT_END : ENDNESS_EFFECT_BLOCK,
+            null, null, decision.endness(), true);
     }
 
     /**
@@ -1020,26 +1259,33 @@ public class Analysis {
      */
     private double calculateEndness(AnalysisResult result, Node node, Node root,
                                    KataAnalysisResult rootKata, String difficulty) {
-        // Determine if this is a human move or computer move
-        boolean isHumanMove = (node.getToMove() != root.getToMove());
-        debugInfo.append("human: ").append(isHumanMove).append("; ");
+        result.endnessReasons = new ArrayList<>();
+        List<AnalysisResult.EndnessReason> reasons = result.endnessReasons;
+        EndnessDecision decision = null;
+
+        // Determine if this is a player move or computer move
+        boolean isPlayerMove = (node.getToMove() != root.getToMove());
+        debugInfo.append("player: ").append(isPlayerMove).append("; ");
         double scoreDeltaBp = result.score - rootKata.blackScore(); // From black's perspective
-        // scoreDelta from human's perspective (positive = human gained advantage)
+        // scoreDelta from player's perspective (positive = player gained advantage)
         double scoreDelta = (root.getToMove() == Intersection.BLACK) ? scoreDeltaBp : -scoreDeltaBp;
+        double playerScoreLead = playerScoreLead(result.score, root);
         debugInfo.append("score delta: ").append(df.format(scoreDelta)).append("; ");
+        debugInfo.append("score lead: ").append(df.format(playerScoreLead)).append("; ");
 
         // Calculate urgency to determine if position is important enough to continue
         double urgency = calculateUrgency(node);
+        result.urgency = urgency;
         debugInfo.append("urgency: ").append(df.format(urgency)).append("; ");
 
-        double avgOwnership = calculateHumanMovesOwnership(node, root);
+        OwnershipInfo ownershipInfo = calculateOwnershipInfo(node, root);
+        double avgOwnership = ownershipInfo.average;
         debugInfo.append("avgOwnership: ").append(df.format(avgOwnership)).append("; ");
 
         // if too few moves, don't end no matter the state
-        int minMovesToEnd = config.minMoves;
-        if (node.depth < minMovesToEnd) {
+        boolean beforeMinMoves = node.depth < config.minMoves;
+        if (beforeMinMoves) {
             debugInfo.append("cannot end before moves: ").append(node.depth).append("; ");
-            return -1;
         }
 
         if (urgency < config.minUrgencyToContinue) {
@@ -1048,50 +1294,92 @@ public class Analysis {
 //            if (scoreDelta < - (urgency + MAX_LOSING_SCORE_AFTER_TENUKI)) {
 //                debugInfo.append(String.format("Endness: high urgency (%.2f) but game has already lost %.1f, ending;",
 //                    urgency, -scoreDelta));
-//                return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
+//                return validateEndness(config.maxEndness, isPlayerMove, playerScoreLead);
 //            }
             debugInfo.append(String.format("Endness: low urgency (%.2f); ", urgency));
-            return 1.0 + (urgency > 0.1 ? 1 / urgency : 5);
+            addEndnessReason(reasons, LOW_URGENCY, ENDNESS_EFFECT_END,
+                urgency, config.minUrgencyToContinue, config.maxEndness);
+            boolean hasValuablePlayerMove = hasValuablePlayerMove(node, urgency);
+            EndnessDecision lowUrgencyDecision = validateEndness(config.maxEndness, isPlayerMove,
+                playerScoreLead, hasValuablePlayerMove, reasons, LOW_URGENCY);
+            lowUrgencyDecision = applyMinMovesGate(lowUrgencyDecision, node.depth, reasons);
+            if (decision == null) {
+                decision = lowUrgencyDecision;
+            }
         }
 
         // Significant score change
         if (Math.abs(scoreDelta) >= config.scoreDropThreshold) {
-            // Check ownership of human moves in path to determine if stones are clearly owned by opponent
+            boolean scoreChangeCanEnd = (isPlayerMove && scoreDelta > 0) || (!isPlayerMove && scoreDelta < 0);
+            // Check scenario-relevant stones to determine if ownership is clear enough to end.
             if (scoreDelta < -config.scoreDropThreshold) {
                 if (!Double.isNaN(avgOwnership)) {
-                    int playerColor = root.getToMove();
-                    boolean opponentOwned;
-                    boolean clearlyDead;
-                    if (playerColor == Intersection.BLACK) {
-                        opponentOwned = avgOwnership < 0;
-                        clearlyDead = avgOwnership < -config.ownershipThreshold;
-                    } else {
-                        opponentOwned = avgOwnership > 0;
-                        clearlyDead = avgOwnership > config.ownershipThreshold;
-                    }
+                    boolean opponentOwned = isOwnedByOpponent(avgOwnership, ownershipInfo.ownershipStoneColor);
+                    boolean clearlyDead = isClearlyOwnedByOpponent(avgOwnership, ownershipInfo.ownershipStoneColor);
+                    boolean enoughOwnershipPositions = ownershipInfo.positionCount > config.minOwnershipPositions;
 
                     // Ownership endness logic:
                     // - Stones clearly live: allow ending
-                    // - Stones belong to opponent but not clearly dead: continue
+                    // - Stones belong to opponent but not clearly dead: continue only with enough ownership positions
                     // - Stones clearly dead: allow ending
-                    if (opponentOwned && !clearlyDead) {
+                    if (opponentOwned && !clearlyDead && enoughOwnershipPositions) {
                         debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
-                    } else {
-                        if ((isHumanMove && scoreDelta > 0) || (!isHumanMove && scoreDelta < 0)) {
-                            debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
-                            return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
+                        if (scoreChangeCanEnd) {
+                            addEndnessReason(reasons, SIGNIFICANT_SCORE_CHANGE, ENDNESS_EFFECT_END,
+                                scoreDelta, config.scoreDropThreshold, config.maxEndness);
+                            addEndnessReason(reasons, OWNERSHIP_UNCLEAR, ENDNESS_EFFECT_BLOCK,
+                                avgOwnership, config.ownershipThreshold, config.minEndness);
+                            if (decision == null) {
+                                decision = new EndnessDecision(config.minEndness, OWNERSHIP_UNCLEAR);
+                            }
                         }
-                        debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
+                    } else {
+                        if (opponentOwned && !clearlyDead) {
+                            debugInfo.append(String.format("Ownership sample too small (%d <= %d), ignoring ownership unclear;",
+                                ownershipInfo.positionCount, config.minOwnershipPositions));
+                            addEndnessReason(reasons, OWNERSHIP_SAMPLE_TOO_SMALL, ENDNESS_EFFECT_INFO,
+                                (double) ownershipInfo.positionCount, (double) config.minOwnershipPositions, null);
+                        }
+                        if (scoreChangeCanEnd) {
+                            debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
+                            addEndnessReason(reasons, SIGNIFICANT_SCORE_CHANGE, ENDNESS_EFFECT_END,
+                                scoreDelta, config.scoreDropThreshold, config.maxEndness);
+                            EndnessDecision scoreDecision = validateEndness(config.maxEndness, isPlayerMove,
+                                playerScoreLead, reasons, SIGNIFICANT_SCORE_CHANGE);
+                            scoreDecision = applyMinMovesGate(scoreDecision, node.depth, reasons);
+                            if (decision == null) {
+                                decision = scoreDecision;
+                            }
+                        } else {
+                            debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
+                        }
                     }
                 } else {
                     debugInfo.append(String.format("Significant score change (%.1f), but ownership unclear, continuing;", scoreDelta));
+                    if (scoreChangeCanEnd) {
+                        addEndnessReason(reasons, SIGNIFICANT_SCORE_CHANGE, ENDNESS_EFFECT_END,
+                            scoreDelta, config.scoreDropThreshold, config.maxEndness);
+                        addEndnessReason(reasons, OWNERSHIP_UNCLEAR, ENDNESS_EFFECT_BLOCK,
+                            null, config.ownershipThreshold, config.minEndness);
+                        if (decision == null) {
+                            decision = new EndnessDecision(config.minEndness, OWNERSHIP_UNCLEAR);
+                        }
+                    }
                 }
             } else {
-                if ((isHumanMove && scoreDelta > 0) || (!isHumanMove && scoreDelta < 0)) {
+                if (scoreChangeCanEnd) {
                     debugInfo.append(String.format("Endness: significant score change (%.1f);", scoreDelta));
-                    return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
+                    addEndnessReason(reasons, SIGNIFICANT_SCORE_CHANGE, ENDNESS_EFFECT_END,
+                        scoreDelta, config.scoreDropThreshold, config.maxEndness);
+                    EndnessDecision scoreDecision = validateEndness(config.maxEndness, isPlayerMove,
+                        playerScoreLead, reasons, SIGNIFICANT_SCORE_CHANGE);
+                    scoreDecision = applyMinMovesGate(scoreDecision, node.depth, reasons);
+                    if (decision == null) {
+                        decision = scoreDecision;
+                    }
+                } else {
+                    debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
                 }
-                debugInfo.append(String.format("Significant score change (%.1f), continuing;", scoreDelta));
             }
         }
 
@@ -1104,76 +1392,120 @@ public class Analysis {
         boolean wantsTenukiResult = difficulty.equals("max")
             ? wantsTenukiByMoveInfos(node)
             : wantsTenuki(node);
-        if (isHumanMove && wantsTenukiResult) {
-            if (node.depth <= config.minDepthForEndness) {
-                debugInfo.append("Endness: computer wants tenuki but depth too low, continue;");
-                return config.minEndness;
+        if (isPlayerMove && wantsTenukiResult) {
+            addEndnessReason(reasons, COMPUTER_WANTS_TENUKI, ENDNESS_EFFECT_END,
+                null, null, config.maxEndness);
+            debugInfo.append(beforeMinMoves
+                ? "Endness: computer wants tenuki but depth too low, continue;"
+                : "Endness: computer wants to tenuki;");
+            EndnessDecision tenukiDecision = validateEndness(config.maxEndness, isPlayerMove,
+                playerScoreLead, reasons, COMPUTER_WANTS_TENUKI);
+            tenukiDecision = applyMinMovesGate(tenukiDecision, node.depth, reasons);
+            if (decision == null) {
+                decision = tenukiDecision;
             }
-            debugInfo.append("Endness: computer wants to tenuki;");
-            return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
         }
 
         // Depth of tree - deeper means more likely to end (gentle acceleration)
-        int depthBeyondMin = Math.max(0, node.depth - config.minDepthForEndness);
+        int depthBeyondMin = Math.max(0, node.depth - config.minMoves);
         double depthRatio = depthBeyondMin / config.depthTargetMoves;
         double depthFactor = Math.pow(depthRatio, config.depthPower) + DEPTH_FACTOR_OFFSET;
         endness += depthFactor;
         debugInfo.append(String.format("DepthFactor: %.2f;", depthFactor));
+        boolean depthBasedEndness = endness > 0;
+        if (depthBasedEndness) {
+            addEndnessReason(reasons, MAX_DEPTH_REACHED, ENDNESS_EFFECT_END,
+                depthFactor, null, endness);
+        }
 
         // Only check on computer move, to see if player still has sente moves to play
-        if (!isHumanMove && !hasSenteMoves(node)) {
-            if (node.depth <= config.minDepthForEndness) {
-                debugInfo.append("Endness: no sente but depth too low, continue;");
-                return config.minEndness;
+        if (!isPlayerMove && !hasSenteMoves(node)) {
+            addEndnessReason(reasons, NO_SENTE, ENDNESS_EFFECT_END,
+                null, null, config.maxEndness);
+            EndnessDecision noSenteDecision;
+            if (!canEndOnThisMove(isPlayerMove, playerScoreLead)) {
+                boolean success = isSuccess(playerScoreLead);
+                debugInfo.append(String.format("Endness: no sente but %s cannot end on %s move;",
+                    success ? "success" : "failure", isPlayerMove ? "player" : "computer"));
+                EndnessReasonCode wrongTurnReason = endNotAllowedReason(success);
+                addEndnessReason(reasons, wrongTurnReason, ENDNESS_EFFECT_BLOCK,
+                    playerScoreLead, null, config.minEndness);
+                noSenteDecision = new EndnessDecision(config.minEndness, wrongTurnReason);
+            } else {
+                debugInfo.append(beforeMinMoves
+                    ? "Endness: no sente but depth too low, continue;"
+                    : "Endness: no sente;");
+                noSenteDecision = validateEndness(config.maxEndness, isPlayerMove,
+                    playerScoreLead, reasons, NO_SENTE);
+                noSenteDecision = applyMinMovesGate(noSenteDecision, node.depth, reasons);
             }
-            debugInfo.append("Endness: no sente;");
-            return validateEndness(config.maxEndness, isHumanMove, scoreDelta);
+            if (decision == null) {
+                decision = noSenteDecision;
+            }
         }
 
         // TODO: Total loss - maybe change to continuous value instead of threshold
 
-        return validateEndness(endness, isHumanMove, scoreDelta);
+        if (endness > 0 && hasStrongPlayerMove(node, urgency)) {
+            debugInfo.append("Depth endness blocked: strong player move;");
+            addEndnessReason(reasons, STRONG_PLAYER_MOVE, ENDNESS_EFFECT_BLOCK,
+                urgency, config.minStrongPlayerUrgency, config.minEndness);
+            if (decision == null) {
+                decision = new EndnessDecision(config.minEndness, STRONG_PLAYER_MOVE);
+            }
+        }
+
+        if (decision == null) {
+            if (!depthBasedEndness) {
+                return beforeMinMoves ? config.minEndness : endness;
+            }
+            decision = validateEndness(endness, isPlayerMove, playerScoreLead, reasons, MAX_DEPTH_REACHED);
+            decision = applyMinMovesGate(decision, node.depth, reasons);
+        }
+        setPrimaryEndnessReason(result, decision);
+        return decision.endness();
     }
 
     /**
-     * Calculate average ownership of human moves in the path.
-     * Ownership: +1 (black owns) to -1 (white owns)
-     * This is used to determine if stones added by human moves are clearly dead.
-     *
-     * @param node Current node (end of path)
-     * @param root Root node (start of path)
-     * @return Average ownership value
+     * Calculate average ownership of stones relevant to the scenario type.
+     * Ownership: +1 (black owns) to -1 (white owns).
+     * In invasion, ownership positions are target positions + player moves.
+     * In repel, ownership positions are target positions + computer moves.
      */
-    private double calculateHumanMovesOwnership(Node node, Node root) {
+    private OwnershipInfo calculateOwnershipInfo(Node node, Node root) {
+        int playerColor = root.getToMove();
+        boolean repel = isRepelScenario();
+        int ownershipStoneColor = repel ? oppositeColor(playerColor) : playerColor;
+
         if (node.kres == null || node.kres.ownership == null) {
             debugInfo.append("No ownership data, assuming unclear;");
-            return Double.NaN;
+            return new OwnershipInfo(Double.NaN, ownershipStoneColor, 0);
         }
 
-        List<Point> humanMovePositions = new ArrayList<>();
+        List<Point> ownershipPositions = new ArrayList<>();
+        addTargetPositions(ownershipPositions);
+
         Node current = node;
-        int playerColor = root.getToMove();
 
         while (current != null && current != root) {
-            boolean isHumanMove = (current.getToMove() != playerColor);
-            if (isHumanMove) {
+            boolean isPlayerMove = (current.getToMove() != playerColor);
+            boolean includeMove = repel ? !isPlayerMove : isPlayerMove;
+            if (includeMove) {
                 Point move = current.findMove();
-                if (move != null && move.x >= 0 && move.x < 19 && move.y >= 0 && move.y < 19) {
-                    humanMovePositions.add(move);
-                }
+                addUniqueBoardPoint(ownershipPositions, move);
             }
             current = current.mom;
         }
 
-        if (humanMovePositions.isEmpty()) {
-            debugInfo.append("No human moves found;");
-            return Double.NaN;
+        if (ownershipPositions.isEmpty()) {
+            debugInfo.append("No ownership positions found;");
+            return new OwnershipInfo(Double.NaN, ownershipStoneColor, 0);
         }
 
         double totalOwnership = 0.0;
         int validPositions = 0;
 
-        for (Point pos : humanMovePositions) {
+        for (Point pos : ownershipPositions) {
             int index = pos.x + pos.y * 19;
             if (index >= 0 && index < node.kres.ownership.size()) {
                 double ownership = node.kres.ownership.get(index);
@@ -1184,16 +1516,62 @@ public class Analysis {
 
         if (validPositions == 0) {
             debugInfo.append("No valid ownership positions;");
-            return Double.NaN;
+            return new OwnershipInfo(Double.NaN, ownershipStoneColor, 0);
         }
 
         double avgOwnership = totalOwnership / validPositions;
 
-        String playerColorStr = (playerColor == Intersection.BLACK) ? "B" : "W";
-        debugInfo.append(String.format("Ownership: %d moves (player=%s), avg=%.2f;",
-            validPositions, playerColorStr, avgOwnership));
+        String ownershipStoneColorStr = (ownershipStoneColor == Intersection.BLACK) ? "B" : "W";
+        debugInfo.append(String.format("Ownership: %d positions (type=%s, ownershipStone=%s, avg=%.2f);",
+            validPositions, repel ? "repel" : "invasion", ownershipStoneColorStr, avgOwnership));
 
-        return avgOwnership;
+        return new OwnershipInfo(avgOwnership, ownershipStoneColor, validPositions);
+    }
+
+    private boolean isRepelScenario() {
+        return scenarioType != null && scenarioType.equalsIgnoreCase("repel");
+    }
+
+    private int oppositeColor(int color) {
+        return color == Intersection.BLACK ? Intersection.WHITE : Intersection.BLACK;
+    }
+
+    private boolean isOwnedByOpponent(double ownership, int ownershipStoneColor) {
+        return ownershipStoneColor == Intersection.BLACK ? ownership < 0 : ownership > 0;
+    }
+
+    private boolean isClearlyOwnedByOpponent(double ownership, int ownershipStoneColor) {
+        return ownershipStoneColor == Intersection.BLACK
+            ? ownership < -config.ownershipThreshold
+            : ownership > config.ownershipThreshold;
+    }
+
+    private record OwnershipInfo(double average, int ownershipStoneColor, int positionCount) {}
+
+    private void addTargetPositions(List<Point> positions) {
+        if (config.metadata == null || config.metadata.targetPositions == null) {
+            return;
+        }
+
+        for (String target : config.metadata.targetPositions) {
+            if (target == null || target.isBlank()) {
+                continue;
+            }
+            try {
+                addUniqueBoardPoint(positions, Intersection.gtp2point(target));
+            } catch (RuntimeException ignored) {
+                // Ignore malformed target coordinates from scenario metadata.
+            }
+        }
+    }
+
+    private void addUniqueBoardPoint(List<Point> points, Point point) {
+        if (!isBoardPoint(point)) {
+            return;
+        }
+        if (!points.contains(point)) {
+            points.add(point);
+        }
     }
 
     /**
@@ -1213,20 +1591,26 @@ public class Analysis {
         // Get the best move
         try {
             List<MoveInfo> moves = node.kres.moveInfos;
-            Point currentMove = node.findMove();
-            List<Point> recentMoves = (currentMove != null) ? getRecentMoves(node, config.tenukiHistoryMoves) : new ArrayList<>();
 
             // Find the best non-tenuki move
             MoveInfo bestMove = null;
             for (MoveInfo moveInfo : moves) {
                 Point candidatePoint = Intersection.gtp2point(moveInfo.move);
 
-                if (!recentMoves.isEmpty() && isTenukiFromRecent(candidatePoint, recentMoves)) {
+                if (isTenukiFromActiveRegion(candidatePoint, node)) {
                     continue;
                 }
 
                 // Skip moves outside area constraints (check both sides since urgency is positional)
                 if (config.hasPlayerAreaConstraints() && !config.isPlayerMoveAllowed(candidatePoint)) {
+                    continue;
+                }
+
+                if (moveInfo.prior == null || moveInfo.prior < config.minUrgencyPolicy) {
+                    continue;
+                }
+
+                if (scoreDiffFromCurrentRoot(node, moveInfo.scoreLead) < config.minUrgencyScoreDelta) {
                     continue;
                 }
 
@@ -1236,9 +1620,11 @@ public class Analysis {
 
             if (bestMove == null) {
                 if (config.hasPlayerAreaConstraints()) {
-                    debugInfo.append("Urgency: 0.00 (all candidate moves are tenuki or outside area);");
+                    debugInfo.append(String.format("Urgency: 0.00 (all candidate moves are tenuki, outside area, below min urgency policy %.4f, or below min urgency score diff %.1f);",
+                        config.minUrgencyPolicy, config.minUrgencyScoreDelta));
                 } else {
-                    debugInfo.append("Urgency: 0.00 (all candidate moves are tenuki);");
+                    debugInfo.append(String.format("Urgency: 0.00 (all candidate moves are tenuki, below min urgency policy %.4f, or below min urgency score diff %.1f);",
+                        config.minUrgencyPolicy, config.minUrgencyScoreDelta));
                 }
                 return 0.0;
             }
@@ -1253,14 +1639,98 @@ public class Analysis {
             double passScore = passKata.rootInfo.scoreLead;
             double urgency = Math.abs(bestScore - passScore);
 
-            debugInfo.append(String.format("Urgency: %.2f (best non-tenuki=%s sc=%.1f, pass sc=%.1f);",
-                urgency, bestMove.move, bestScore, passScore));
+            String bestMovePolicy = bestMove.prior == null ? "?" : policyDf.format(bestMove.prior);
+            debugInfo.append(String.format("Urgency: %.2f (best non-tenuki=%s pol=%s sc=%.1f diff=%.1f, pass sc=%.1f);",
+                urgency, bestMove.move, bestMovePolicy, bestScore,
+                scoreDiffFromCurrentRoot(node, bestScore), passScore));
 
             return urgency;
         } catch (Exception e) {
             debugInfo.append("Error calculating urgency");
             return 0.0;
         }
+    }
+
+    private boolean hasValuablePlayerMove(Node node, double urgency) {
+        if (node.kres == null || node.kres.rootInfo == null ||
+            node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+            return false;
+        }
+
+        for (MoveInfo moveInfo : node.kres.moveInfos) {
+            Point candidatePoint = Intersection.gtp2point(moveInfo.move);
+
+            if (isTenukiFromActiveRegion(candidatePoint, node)) {
+                continue;
+            }
+
+            if (config.hasPlayerAreaConstraints() && !config.isPlayerMoveAllowed(candidatePoint)) {
+                continue;
+            }
+
+            if (scoreDiffFromCurrentRoot(node, moveInfo.scoreLead) < config.minUrgencyScoreDelta) {
+                continue;
+            }
+
+            double playerPolicy = playerPolicyForMove(node.kres, candidatePoint, moveInfo);
+            boolean valuableByUrgency = urgency >= config.minValuablePlayerUrgency
+                && moveInfo.prior != null
+                && moveInfo.prior >= config.minUrgencyPolicy;
+            boolean valuableByPlayerPolicy = playerPolicy >= config.minValuablePlayerPolicy;
+            if (valuableByUrgency || valuableByPlayerPolicy) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean hasStrongPlayerMove(Node node, double urgency) {
+        if (urgency < config.minStrongPlayerUrgency || node.kres == null ||
+            node.kres.moveInfos == null || node.kres.moveInfos.isEmpty()) {
+            return false;
+        }
+
+        for (MoveInfo moveInfo : node.kres.moveInfos) {
+            Point candidatePoint = Intersection.gtp2point(moveInfo.move);
+
+            if (isTenukiFromActiveRegion(candidatePoint, node)) {
+                continue;
+            }
+
+            if (config.hasPlayerAreaConstraints() && !config.isPlayerMoveAllowed(candidatePoint)) {
+                continue;
+            }
+
+            if (scoreDiffFromCurrentRoot(node, moveInfo.scoreLead) < config.minUrgencyScoreDelta) {
+                continue;
+            }
+
+            double playerPolicy = playerPolicyForMove(node.kres, candidatePoint, moveInfo);
+            if (playerPolicy >= config.minStrongPlayerPolicy) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private double playerPolicyForMove(KataAnalysisResult kata, Point point, MoveInfo moveInfo) {
+        if (kata != null && kata.humanPolicy != null && point != null) {
+            int index = point.x + point.y * 19;
+            if (index >= 0 && index < kata.humanPolicy.size()) {
+                Double policy = kata.humanPolicy.get(index);
+                if (policy != null && policy >= 0) {
+                    return policy;
+                }
+            }
+        }
+        return moveInfo.prior == null ? 0.0 : moveInfo.prior;
+    }
+
+    private double scoreDiffFromCurrentRoot(Node node, double scoreLead) {
+        double sign = node.kres.rootInfo.currentPlayer.equals("B") ? 1.0 : -1.0;
+        return (scoreLead - node.kres.rootInfo.scoreLead) * sign;
     }
 
     /**
@@ -1287,12 +1757,10 @@ public class Analysis {
             return false;
         }
 
-        List<Point> recentMoves = getRecentMoves(node, config.tenukiHistoryMoves);
-
         MoveInfo bestMove = node.kres.moveInfos.get(0);
         Point bestMovePoint = Intersection.gtp2point(bestMove.move);
 
-        if (isTenukiFromRecent(bestMovePoint, recentMoves)) {
+        if (isTenukiFromActiveRegion(bestMovePoint, node)) {
             debugInfo.append(String.format("Wants Tenuki(moveInfos): best=%s visits=%d;",
                 bestMove.move, bestMove.visits));
             return true;
@@ -1306,7 +1774,7 @@ public class Analysis {
     /**
      * Check if KataGo/human policy wants to tenuki
      * Uses humanPolicy if available, otherwise falls back to moveInfos.
-     * Checks against the last N moves to determine if a move is tenuki.
+     * Checks against the active local region to determine if a move is tenuki.
      * Conditions:
      * 1. Best move (by humanPolicy) is tenuki
      * 2. All high policy moves are tenuki
@@ -1326,9 +1794,6 @@ public class Analysis {
             return false;
         }
 
-        // Get recent moves for tenuki checking
-        List<Point> recentMoves = getRecentMoves(node, config.tenukiHistoryMoves);
-
         // Use humanPolicy if available, otherwise fall back to regular policy
         List<Double> policy = selectPolicy(node.kres);
         // if (policy == null) {
@@ -1346,8 +1811,8 @@ public class Analysis {
         Point bestMovePoint = new Point(bestMove.x, bestMove.y);
         String bestMoveStr = Intersection.toGTPloc(bestMove.x, bestMove.y);
 
-        // Best move must be tenuki (far from all recent moves)
-        if (!isTenukiFromRecent(bestMovePoint, recentMoves)) {
+        // Best move must be tenuki (far from the active local region)
+        if (!isTenukiFromActiveRegion(bestMovePoint, node)) {
             debugInfo.append(String.format("Best humanPolicy move %s (policy=%.4f) is not tenuki;",
                     bestMoveStr, bestMove.policy));
             return false;
@@ -1378,7 +1843,7 @@ public class Analysis {
             // candidate.policy already contains the value from policyToUse
             String candidateWithPolicy = String.format("%s(%s=%.2f)", candidateStr, policyLabel, candidate.policy);
 
-            if (isTenukiFromRecent(candidatePoint, recentMoves)) {
+            if (isTenukiFromActiveRegion(candidatePoint, node)) {
                 tenukiMoves.add(candidateWithPolicy);
             } else {
                 nonTenukiMoves.add(candidateWithPolicy);
@@ -1397,47 +1862,133 @@ public class Analysis {
     }
 
     /**
-     * Get the last N moves from the game tree.
-     *
-     * @param node Current node
-     * @param count Number of recent moves to retrieve
-     * @return List of recent move points (most recent first)
+     * Check if a move is tenuki from the active local fight.
+     * Target positions are always treated as part of the local fight.
      */
-    private List<Point> getRecentMoves(Node node, int count) {
-        List<Point> recentMoves = new ArrayList<>();
+    private boolean isTenukiFromActiveRegion(Point candidateMove, Node contextNode) {
+        return isTenukiFromActiveRegion(candidateMove, contextNode, 0);
+    }
+
+    private boolean isTenukiFromActiveRegion(Point candidateMove, Node contextNode, int recentHistoryMoves) {
+        return isTenukiFromActiveRegion(candidateMove, contextNode, recentHistoryMoves, null);
+    }
+
+    private boolean isTenukiFromActiveRegion(Point candidateMove, Node contextNode, int recentHistoryMoves, Point extraPoint) {
+        if (!isBoardPoint(candidateMove)) {
+            return false;
+        }
+
+        if (isNearTargetPosition(candidateMove)) {
+            return false;
+        }
+
+        List<Point> activeRegion = getActiveLocalRegion(contextNode);
+        addUniqueBoardPoint(activeRegion, extraPoint);
+        if (activeRegion.isEmpty()) {
+            return false;
+        }
+
+        if (!isNearAny(candidateMove, activeRegion, config.tenukiDistanceThreshold)) {
+            return true;
+        }
+
+        if (recentHistoryMoves <= 0) {
+            return false;
+        }
+
+        List<Point> recentMoves = getRecentBoardMoves(contextNode, recentHistoryMoves);
+        addUniqueBoardPoint(recentMoves, extraPoint);
+        return !recentMoves.isEmpty() && !isNearAny(candidateMove, recentMoves, config.tenukiDistanceThreshold);
+    }
+
+    /**
+     * Build the connected local region containing the latest move.
+     * Older moves are included only when they connect to that latest-move region.
+     */
+    private List<Point> getActiveLocalRegion(Node node) {
+        List<Point> history = new ArrayList<>();
         Node current = node;
 
-        while (current != null && recentMoves.size() < count) {
+        while (current != null) {
             Point move = current.findMove();
-            if (move != null) {
-                recentMoves.add(move);
+            if (isBoardPoint(move)) {
+                history.add(move);
             }
             current = current.mom;
         }
 
-        return recentMoves;
+        List<Point> region = new ArrayList<>();
+        if (history.isEmpty()) {
+            return region;
+        }
+
+        boolean[] included = new boolean[history.size()];
+        region.add(history.get(0));
+        included[0] = true;
+
+        boolean expanded;
+        do {
+            expanded = false;
+            for (int i = 1; i < history.size(); i++) {
+                if (!included[i] && isNearAny(history.get(i), region, config.tenukiRegionLinkDistance)) {
+                    region.add(history.get(i));
+                    included[i] = true;
+                    expanded = true;
+                }
+            }
+        } while (expanded);
+
+        return region;
     }
 
-    /**
-     * Check if a move is tenuki from all recent moves.
-     * A move is considered tenuki if it's far from all recent moves.
-     *
-     * @param candidateMove The move to check
-     * @param recentMoves List of recent moves
-     * @return true if the move is far from all recent moves
-     */
-    private boolean isTenukiFromRecent(Point candidateMove, List<Point> recentMoves) {
-        if (recentMoves.isEmpty()) {
+    private List<Point> getRecentBoardMoves(Node node, int maxHistoryMoves) {
+        List<Point> moves = new ArrayList<>();
+        Node current = node;
+
+        while (current != null && moves.size() < maxHistoryMoves) {
+            Point move = current.findMove();
+            if (isBoardPoint(move)) {
+                moves.add(move);
+            }
+            current = current.mom;
+        }
+
+        return moves;
+    }
+
+    private boolean isNearTargetPosition(Point move) {
+        if (config.metadata == null || config.metadata.targetPositions == null) {
             return false;
         }
 
-        for (Point recentMove : recentMoves) {
-            if (!isTenuki(recentMove, candidateMove)) {
-                return false;  // Close to at least one recent move
+        for (String target : config.metadata.targetPositions) {
+            if (target == null || target.isBlank()) {
+                continue;
+            }
+            try {
+                Point targetPoint = Intersection.gtp2point(target);
+                if (isBoardPoint(targetPoint) && distance(move, targetPoint) <= config.tenukiDistanceThreshold) {
+                    return true;
+                }
+            } catch (RuntimeException ignored) {
+                // Ignore malformed target coordinates from scenario metadata.
             }
         }
 
-        return true;  // Far from all recent moves
+        return false;
+    }
+
+    private boolean isNearAny(Point move, List<Point> points, double threshold) {
+        for (Point point : points) {
+            if (distance(move, point) <= threshold) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isBoardPoint(Point move) {
+        return move != null && move.x >= 0 && move.x < 19 && move.y >= 0 && move.y < 19;
     }
 
     // /**
@@ -1511,14 +2062,17 @@ public class Analysis {
      *
      * @param from Starting point
      * @param to Destination point
-     * @return true if the distance is >= tenukiDistanceThreshold
+     * @return true if the distance is > tenukiDistanceThreshold
      */
     private boolean isTenuki(Point from, Point to) {
-        double distance = Math.sqrt(
+        return distance(from, to) > config.tenukiDistanceThreshold;
+    }
+
+    private double distance(Point from, Point to) {
+        return Math.sqrt(
             Math.pow(to.x - from.x, 2) +
             Math.pow(to.y - from.y, 2)
         );
-        return distance >= config.tenukiDistanceThreshold;
     }
 
     /**
@@ -1576,6 +2130,7 @@ public class Analysis {
         List<String> senteMoves = new ArrayList<>();
         List<String> goteMoves = new ArrayList<>();
         List<String> lowPolicyMoves = new ArrayList<>();
+        List<String> lowDeltaMoves = new ArrayList<>();
         List<String> tenukiMoves = new ArrayList<>();
 
         for (MoveInfo moveInfo : moveInfos) {
@@ -1595,8 +2150,8 @@ public class Analysis {
 
             Point candidatePoint = Intersection.gtp2point(moveInfo.move);
 
-            // Skip if the candidate itself is a tenuki
-            if (isTenuki(currentMove, candidatePoint)) {
+            // Skip if the candidate itself is a tenuki from the active local region
+            if (isTenukiFromActiveRegion(candidatePoint, node, config.noSenteTenukiHistoryMoves)) {
                 tenukiMoves.add(String.format("%s(p=%.2f)", moveInfo.move, prior));
                 continue;
             }
@@ -1607,8 +2162,14 @@ public class Analysis {
                 continue;
             }
 
+            double scoreDelta = scoreDiffFromCurrentRoot(node, moveInfo.scoreLead);
+            if (scoreDelta < config.minSenteScoreDelta) {
+                lowDeltaMoves.add(formatSenteCandidate(node, moveInfo, prior));
+                continue;
+            }
+
             if (moveInfo.pv == null || moveInfo.pv.size() < 2) {
-                goteMoves.add(String.format("%s(p=%.2f)->?", moveInfo.move, prior));
+                goteMoves.add(formatSenteCandidate(node, moveInfo, prior) + "->?");
                 continue;  // No PV info for this move
             }
 
@@ -1617,12 +2178,13 @@ public class Analysis {
             String opponentResponseMove = moveInfo.pv.get(1);
             Point opponentResponse = Intersection.gtp2point(opponentResponseMove);
 
-            // If opponent's response is not tenuki, this is a sente move
-            if (!isTenuki(candidatePoint, opponentResponse)) {
+            // If opponent's response stays near the current active region or this candidate,
+            // this candidate keeps sente.
+            if (!isTenukiFromActiveRegion(opponentResponse, node, config.noSenteTenukiHistoryMoves, candidatePoint)) {
                 senteCount++;
-                senteMoves.add(String.format("%s(p=%.2f)->%s", moveInfo.move, prior, opponentResponseMove));
+                senteMoves.add(formatSenteCandidate(node, moveInfo, prior) + "->" + opponentResponseMove);
             } else {
-                goteMoves.add(String.format("%s(p=%.2f)->%s", moveInfo.move, prior, opponentResponseMove));
+                goteMoves.add(formatSenteCandidate(node, moveInfo, prior) + "->" + opponentResponseMove);
             }
         }
 
@@ -1641,6 +2203,11 @@ public class Analysis {
         if (!lowPolicyMoves.isEmpty()) {
             if (movesInfo.length() > 0) movesInfo.append(" ");
             movesInfo.append("lowP:").append(String.join(",", lowPolicyMoves));
+        }
+        if (!lowDeltaMoves.isEmpty()) {
+            if (movesInfo.length() > 0) movesInfo.append(" ");
+            movesInfo.append("lowDelta<").append(df.format(config.minSenteScoreDelta))
+                .append(":").append(String.join(",", lowDeltaMoves));
         }
 
         if (senteCount > 0) {
@@ -1676,6 +2243,11 @@ public class Analysis {
         // --- End old implementation ---
     }
 
+    private String formatSenteCandidate(Node node, MoveInfo moveInfo, double prior) {
+        return String.format("%s(p=%.2f sc=%.1f diff=%.1f)", moveInfo.move, prior,
+            moveInfo.scoreLead, scoreDiffFromCurrentRoot(node, moveInfo.scoreLead));
+    }
+
 
     /**
      * Detect if the current position involves a ko situation.
@@ -1686,6 +2258,10 @@ public class Analysis {
      * @return true if ko situation detected
      */
     private boolean isKoSituation(Node node) {
+        if (!config.detectKo) {
+            return false;
+        }
+
         Point currentMove = node.findMove();
         if (currentMove == null) {
             return false;

@@ -41,6 +41,13 @@ public class ScenarioTestSuite {
         this.props = props;
     }
 
+    private Properties testAnalysisProperties() {
+        Properties analysisProps = new Properties();
+        analysisProps.putAll(props);
+        analysisProps.setProperty("scenario.testcase_mode", "true");
+        return analysisProps;
+    }
+
     private List<ScenarioCase> fetchScenarioCases() throws Exception {
         ApiClient apiClient = new ApiClient();
 
@@ -141,6 +148,7 @@ public class ScenarioTestSuite {
         int passedTests = 0;
         int failedTests = 0;
         List<FailedTest> failedTestDetails = new ArrayList<>();
+        Properties analysisProps = testAnalysisProperties();
 
         KataBrain brain = new KataBrain(props);
         try {
@@ -170,13 +178,16 @@ public class ScenarioTestSuite {
                     // Run analysis
                     AnalysisRequest request = new AnalysisRequest();
                     request.scenario = new AnalysisRequest.Scenario();
+                    request.scenario.id = testCase.scenario.id;
+                    request.scenario.type = testCase.scenario.type;
                     request.scenario.sgf = testCase.scenario.sgf;
+                    request.scenario.metadata = testCase.scenario.metadata;
                     request.path = expectation.path;
                     request.difficulty = testCase.difficulty;
 
                     AnalysisResult[] results;
                     try {
-                        Analysis analysis = new Analysis(props, brain);
+                        Analysis analysis = new Analysis(analysisProps, brain);
                         results = analysis.analyze(request);
                     } catch (Exception e) {
                         System.err.println("\n  Failed to analyze: " + e.getMessage());
@@ -259,13 +270,13 @@ public class ScenarioTestSuite {
                 if (passed) {
                     passedTests++;
                     System.out.println(GREEN + "Test passed - Case ID: " + testCase.id + RESET);
-                    String url = buildResearchUrl(testCase.scenario.id, testCase.difficulty, expectation.path);
-                    System.out.println(GREEN + "URL: " + url + RESET);
+                    System.out.println(GREEN + "Case URL: " + buildCaseUrl(testCase.id) + RESET);
+                    System.out.println(GREEN + "Research URL: " + buildResearchUrl(testCase.scenario.id, testCase.difficulty, expectation.path) + RESET);
                 } else {
                     failedTests++;
                     System.out.println(RED + "Test failed - Case ID: " + testCase.id + RESET);
-                    String url = buildResearchUrl(testCase.scenario.id, testCase.difficulty, expectation.path);
-                    System.out.println(RED + "URL: " + url + RESET);
+                    System.out.println(RED + "Case URL: " + buildCaseUrl(testCase.id) + RESET);
+                    System.out.println(RED + "Research URL: " + buildResearchUrl(testCase.scenario.id, testCase.difficulty, expectation.path) + RESET);
                     failedTestDetails.add(new FailedTest(testCase.id, testCase.description, expectation.path, testCase.scenario.id, testCase.difficulty, new ArrayList<>(failures), tol, result.extraInfo));
                 }
             }
@@ -293,9 +304,8 @@ public class ScenarioTestSuite {
                     for (String failure : failed.failures) {
                         System.out.println("    " + YELLOW + "- " + failure + RESET);
                     }
-                    // Build and display the research URL
-                    String url = buildResearchUrl(failed.invasionId, failed.difficulty, failed.path);
-                    System.out.println("  " + YELLOW + "URL: " + url + RESET);
+                    System.out.println("  " + YELLOW + "Case URL: " + buildCaseUrl(failed.caseId) + RESET);
+                    System.out.println("  " + YELLOW + "Research URL: " + buildResearchUrl(failed.invasionId, failed.difficulty, failed.path) + RESET);
                     // Display debug info if available
                     if (failed.extraInfo != null && !failed.extraInfo.isEmpty()) {
                         System.out.println("  Debug Info: " + failed.extraInfo);
@@ -317,13 +327,21 @@ public class ScenarioTestSuite {
      * @return The research URL
      */
     private String buildResearchUrl(int invasionId, String difficulty, String path) {
-        String baseUrl = props.getProperty("baseurl", "https://staging.goproblems.com/");
-        if (baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-        }
         // URL encode the path: replace commas with %2C
         String encodedPath = path != null ? path.replace(",", "%2C") : "";
-        return baseUrl + "/invasions/" + invasionId + "/research?difficulty=" + difficulty + "&path=" + encodedPath;
+        return baseUrl() + "/invasions/" + invasionId + "/research?difficulty=" + difficulty + "&path=" + encodedPath;
+    }
+
+    private String buildCaseUrl(int caseId) {
+        return baseUrl() + "/scenario-cases/" + caseId;
+    }
+
+    private String baseUrl() {
+        String baseUrl = props.getProperty("baseurl", "https://staging.goproblems.com/");
+        if (baseUrl.endsWith("/")) {
+            return baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        return baseUrl;
     }
 
     private static final String invasion1 = "(;GM[1]FF[4]CA[UTF-8]AP[Drago:4.33]SZ[19]KM[9.5]AB[db][eb][nb][ob][hc][lc][qd][he][le][qe][ef][gf][if][pf][jg][lg][ch][eh][jh][kh][ph][pj][pk][ql][pm][qn][mo][oo][dp][gp][hp][ip][jp][np][op][dq][iq][kq][nq][pq][dr][or]AW[fb][hb][pb][cc][ec][fc][ic][jc][oc][qc][rc][dd][nd][pd][je][cf][jf][kf][lf][nf][kg][nh][nj][ok][ol][pl][mp][pp][qp][eq][gq][hq][jq][mq][er][ir][jr][kr][lr][nr][ms]PL[W])";

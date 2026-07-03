@@ -26,8 +26,10 @@ public class MercureClient {
 
     private String jwtToken = null;
     private long tokenExpiryTime = 0;
+    private long lastLoginAttemptTime = 0;
     private static final long TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
     private static final long TOKEN_VALIDITY_MS = 60 * 60 * 1000;
+    private static final long LOGIN_RETRY_DELAY_MS = 10 * 1000;
 
     private static final String MERCURE_BASEURL = "mercure.baseurl";
     private static final String MERCURE_HUB_URL = "mercure.hub.url";
@@ -120,9 +122,21 @@ public class MercureClient {
         }
 
         System.out.println("Obtaining new JWT token...");
+        waitForLoginRetryDelay();
         jwtToken = fetchJwtToken();
         tokenExpiryTime = now + TOKEN_VALIDITY_MS;
         System.out.println("JWT token obtained, valid until: " + new java.util.Date(tokenExpiryTime));
+    }
+
+    private void waitForLoginRetryDelay() throws InterruptedException {
+        long now = System.currentTimeMillis();
+        long nextAllowedLoginTime = lastLoginAttemptTime + LOGIN_RETRY_DELAY_MS;
+        if (lastLoginAttemptTime > 0 && now < nextAllowedLoginTime) {
+            long waitMs = nextAllowedLoginTime - now;
+            System.out.println("Waiting " + (waitMs / 1000) + "s before retrying login...");
+            Thread.sleep(waitMs);
+        }
+        lastLoginAttemptTime = System.currentTimeMillis();
     }
 
     /**

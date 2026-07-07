@@ -8,6 +8,7 @@ import autoprob.go.parse.Parser;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
+import autoprob.joseki.JosekiNodeRecalculator;
 import autoprob.problem.DifficultyEstimator;
 import autoprob.problem.SiteProblem;
 import autoprob.scenario.ScenarioNodeRecalculator;
@@ -68,6 +69,8 @@ public class GoTool {
             runScenarioHandlerCommand(props);
         } else if (command.equals("recalculatenodes")) {
             runRecalculateNodesCommand(props);
+        } else if (command.equals("josekinoderecalculate")) {
+            runJosekiNodeRecalculateCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -106,6 +109,12 @@ public class GoTool {
     private void runRecalculateNodesCommand(Properties props) throws Exception {
         System.out.println("Running scenario node recalculation...");
         ScenarioNodeRecalculator recalculator = new ScenarioNodeRecalculator(props);
+        recalculator.run();
+    }
+
+    private void runJosekiNodeRecalculateCommand(Properties props) throws Exception {
+        System.out.println("Running joseki node recalculation...");
+        JosekiNodeRecalculator recalculator = new JosekiNodeRecalculator(props);
         recalculator.run();
     }
 

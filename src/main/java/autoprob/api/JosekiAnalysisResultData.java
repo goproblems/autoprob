@@ -2,6 +2,7 @@ package autoprob.api;
 
 public class JosekiAnalysisResultData {
     public String path;
+    public String scope;
     public double score;
     public double loss;
     public int katagoPlayouts;

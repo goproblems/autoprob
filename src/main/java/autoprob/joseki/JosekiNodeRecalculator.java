@@ -37,7 +37,7 @@ import java.util.Set;
 import java.util.HashSet;
 
 public class JosekiNodeRecalculator {
-    public static final int CLIENT_VERSION = 2;
+    public static final int CLIENT_VERSION = 4;
 
     private static final int NODE_PAGE_LIMIT = 500;
     private static final String GREEN = "\033[32m";
@@ -52,6 +52,33 @@ public class JosekiNodeRecalculator {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private final Map<Integer, Set<String>> childMovesByParentId = new HashMap<>();
     private int queryCounter = 0;
+
+    private enum AnalysisScope {
+        LOCAL("local", true, false),
+        LOCAL_WITH_EXISTING_MOVES("local_with_existing_moves", true, true),
+        GLOBAL("global", false, false);
+
+        private final String value;
+        private final boolean restrictToNearbyMoves;
+        private final boolean includeExistingMoves;
+
+        AnalysisScope(String value, boolean restrictToNearbyMoves, boolean includeExistingMoves) {
+            this.value = value;
+            this.restrictToNearbyMoves = restrictToNearbyMoves;
+            this.includeExistingMoves = includeExistingMoves;
+        }
+
+        private static AnalysisScope fromConfig(String value) {
+            String normalized = value.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+            return switch (normalized) {
+                case "local" -> LOCAL;
+                case "local_with_existing_moves", "local_with_existing", "local_existing", "local+move", "local+existing" ->
+                    LOCAL_WITH_EXISTING_MOVES;
+                case "global", "whole_board", "wholeboard" -> GLOBAL;
+                default -> throw new IllegalArgumentException("Unknown joseki analysis scope: " + value);
+            };
+        }
+    }
 
     public JosekiNodeRecalculator(Properties props) {
         this.props = props;
@@ -133,9 +160,9 @@ public class JosekiNodeRecalculator {
                     + " path=" + formatPath(path)
                     + " version=" + entry.analysisClientVersion);
 
-                JosekiAnalysisResultData result = analyzeNode(entry, brain);
-                submitResult(result);
-                submittedResults++;
+                List<JosekiAnalysisResultData> results = analyzeNode(entry, brain);
+                submitResults(results);
+                submittedResults += results.size();
             } catch (Exception ex) {
                 failedNodes++;
                 System.out.println(RED + "Failed to recalculate joseki node " + entry.id
@@ -179,55 +206,87 @@ public class JosekiNodeRecalculator {
         return depth;
     }
 
-    private JosekiAnalysisResultData analyzeNode(JosekiNodeEntry entry, KataBrain brain) throws Exception {
+    private List<JosekiAnalysisResultData> analyzeNode(JosekiNodeEntry entry, KataBrain brain) throws Exception {
         String path = entry.path == null ? "" : entry.path;
         Node node = buildNode(path);
-        KataAnalysisResult parentResult = null;
-        MoveInfo moveInfo = null;
-        Double parentScore = null;
+        List<AnalysisScope> scopes = analysisScopes();
+        Set<String> currentChildMoves = fetchChildMoves(entry.id);
+        Set<String> parentChildMoves = new LinkedHashSet<>();
+        String nodeMove = lastMove(path);
 
         if (node.mom != null) {
-            Set<String> parentChildMoves = entry.parentId == null
+            parentChildMoves = entry.parentId == null
                 ? new LinkedHashSet<>()
                 : new LinkedHashSet<>(fetchChildMoves(entry.parentId));
-            String nodeMove = lastMove(path);
             if (nodeMove != null) {
                 parentChildMoves.add(nodeMove);
             }
-            parentResult = queryNode(brain, node.mom, "parent", parentChildMoves);
-            parentScore = parentResult.blackScore();
-            moveInfo = findMoveInfo(parentResult, node);
         }
 
-        KataAnalysisResult currentResult = queryNode(brain, node, "current", fetchChildMoves(entry.id));
-        double score = currentResult.blackScore();
-        Double moverScoreDelta = parentScore == null ? null : moveScoreDelta(node, parentScore, score);
+        List<JosekiAnalysisResultData> results = new ArrayList<>();
+        for (AnalysisScope scope : scopes) {
+            KataAnalysisResult parentResult = null;
+            MoveInfo moveInfo = null;
+            Double parentScore = null;
 
-        JosekiAnalysisResultData result = new JosekiAnalysisResultData();
-        result.path = path;
-        result.score = score;
-        result.loss = moverScoreDelta == null ? 0.0 : -moverScoreDelta;
-        result.katagoPlayouts = Integer.parseInt(props.getProperty("joseki.visits", "1000"));
-        result.katagoWeightsFile = katagoWeightsFile();
-        result.prior = moveInfo == null ? null : moveInfo.prior;
-        result.visits = moveInfo == null ? null : moveInfo.visits;
-        result.moveOrder = moveInfo == null ? null : moveInfo.order;
-        result.extraInfo = buildExtraInfo(parentScore, score, moverScoreDelta);
-        result.analysis = gson.toJson(currentResult);
+            if (node.mom != null) {
+                parentResult = queryNode(
+                    brain,
+                    node.mom,
+                    "parent",
+                    scope,
+                    scope.includeExistingMoves ? parentChildMoves : Set.of()
+                );
+                parentScore = parentResult.blackScore();
+                moveInfo = findMoveInfo(parentResult, node);
+            }
 
-        System.out.println("Joseki node " + formatPath(path)
-            + " score=" + DF.format(result.score)
-            + " loss=" + DF.format(result.loss)
-            + (result.prior == null ? "" : " prior=" + DF.format(result.prior * 1000.0))
-            + (result.visits == null ? "" : " visits=" + result.visits)
-            + (result.moveOrder == null ? "" : " order=" + result.moveOrder));
-        return result;
+            KataAnalysisResult currentResult = queryNode(
+                brain,
+                node,
+                "current",
+                scope,
+                scope.includeExistingMoves ? currentChildMoves : Set.of()
+            );
+            double score = currentResult.blackScore();
+            Double moverScoreDelta = parentScore == null ? null : moveScoreDelta(node, parentScore, score);
+
+            JosekiAnalysisResultData result = new JosekiAnalysisResultData();
+            result.path = path;
+            result.scope = scope.value;
+            result.score = score;
+            result.loss = moverScoreDelta == null ? 0.0 : -moverScoreDelta;
+            result.katagoPlayouts = Integer.parseInt(props.getProperty("joseki.visits", "1000"));
+            result.katagoWeightsFile = katagoWeightsFile();
+            result.prior = moveInfo == null ? null : moveInfo.prior;
+            result.visits = moveInfo == null ? null : moveInfo.visits;
+            result.moveOrder = moveInfo == null ? null : moveInfo.order;
+            result.extraInfo = buildExtraInfo(scope, parentScore, score, moverScoreDelta);
+            result.analysis = gson.toJson(currentResult);
+
+            System.out.println("Joseki node " + formatPath(path)
+                + " scope=" + scope.value
+                + " score=" + DF.format(result.score)
+                + " loss=" + DF.format(result.loss)
+                + (result.prior == null ? "" : " prior=" + DF.format(result.prior * 1000.0))
+                + (result.visits == null ? "" : " visits=" + result.visits)
+                + (result.moveOrder == null ? "" : " order=" + result.moveOrder));
+            results.add(result);
+        }
+
+        return results;
     }
 
-    private KataAnalysisResult queryNode(KataBrain brain, Node node, String role, Set<String> childMoves) throws Exception {
+    private KataAnalysisResult queryNode(
+        KataBrain brain,
+        Node node,
+        String role,
+        AnalysisScope scope,
+        Set<String> childMoves
+    ) throws Exception {
         QueryBuilder queryBuilder = new QueryBuilder();
         KataQuery query = queryBuilder.buildQuery(node);
-        query.id = "joseki:" + (++queryCounter) + ":" + role;
+        query.id = "joseki:" + (++queryCounter) + ":" + role + ":" + scope.value;
         query.includePolicy = true;
         query.analyzeTurns.clear();
         query.analyzeTurns.add(0);
@@ -239,7 +298,7 @@ public class JosekiNodeRecalculator {
         }
 
         int maxMoveDistance = Integer.parseInt(props.getProperty("joseki.max_move_distance", "4"));
-        if (maxMoveDistance >= 0) {
+        if (scope.restrictToNearbyMoves && maxMoveDistance >= 0) {
             restrictToNearbyMoves(node, query, maxMoveDistance, childMoves);
         }
 
@@ -390,9 +449,10 @@ public class JosekiNodeRecalculator {
         return delta;
     }
 
-    private String buildExtraInfo(Double parentScore, double score, Double moverScoreDelta) {
+    private String buildExtraInfo(AnalysisScope scope, Double parentScore, double score, Double moverScoreDelta) {
         Map<String, Object> info = new HashMap<>();
         info.put("clientVersion", CLIENT_VERSION);
+        info.put("scope", scope.value);
         info.put("parentScore", parentScore);
         info.put("score", score);
         info.put("moverScoreDelta", moverScoreDelta);
@@ -495,17 +555,40 @@ public class JosekiNodeRecalculator {
         return Boolean.parseBoolean(props.getProperty("force", "false"));
     }
 
-    private void submitResult(JosekiAnalysisResultData result) throws Exception {
+    private List<AnalysisScope> analysisScopes() {
+        String configured = props.getProperty("joseki.analysis_scopes", "local");
+        List<AnalysisScope> scopes = new ArrayList<>();
+        Set<AnalysisScope> seen = new LinkedHashSet<>();
+        for (String rawScope : configured.split(",")) {
+            if (rawScope.isBlank()) {
+                continue;
+            }
+
+            AnalysisScope scope = AnalysisScope.fromConfig(rawScope);
+            if (seen.add(scope)) {
+                scopes.add(scope);
+            }
+        }
+
+        if (scopes.isEmpty()) {
+            scopes.add(AnalysisScope.LOCAL);
+        }
+
+        return scopes;
+    }
+
+    private void submitResults(List<JosekiAnalysisResultData> results) throws Exception {
         JosekiAnalysisSubmitBody body = new JosekiAnalysisSubmitBody();
         body.source = "recalculate";
         body.clientVersion = CLIENT_VERSION;
-        body.results = List.of(result);
+        body.results = results;
 
         String requestBody = gson.toJson(body);
         if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
             System.out.println("Submitting joseki recalculation JSON: " + requestBody);
         } else {
-            System.out.println("Submitting joseki recalculated result for path=" + formatPath(result.path));
+            System.out.println("Submitting " + results.size()
+                + " joseki recalculated results for path=" + formatPath(results.get(0).path));
         }
 
         ApiClient.ApiResponse<Object> response = apiClient.makePostRequest(

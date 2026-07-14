@@ -40,6 +40,8 @@ public class JosekiNodeRecalculator {
     public static final int CLIENT_VERSION = 4;
 
     private static final int NODE_PAGE_LIMIT = 500;
+    private static final int DEFAULT_API_MAX_ATTEMPTS = 20;
+    private static final long DEFAULT_API_RETRY_DELAY_MS = 5000L;
     private static final String GREEN = "\033[32m";
     private static final String YELLOW = "\033[33m";
     private static final String CYAN = "\033[36m";
@@ -116,7 +118,16 @@ public class JosekiNodeRecalculator {
 
     private record ProcessNodesResult(int submittedResults, int failedNodes) {}
 
-    private record RecalculationResult(int processedNodes, int submittedResults, int failedNodes) {}
+    private record RecalculationResult(
+        int processedNodes,
+        int submittedResults,
+        int failedNodes
+    ) {}
+
+    @FunctionalInterface
+    private interface ThrowingSupplier<T> {
+        T get() throws Exception;
+    }
 
     private RecalculationResult processScope(
         KataBrain brain,
@@ -180,7 +191,11 @@ public class JosekiNodeRecalculator {
             }
         }
 
-        return new RecalculationResult(processedNodeIds.size() - processedNodesBefore, submittedResults, failedNodes);
+        return new RecalculationResult(
+            processedNodeIds.size() - processedNodesBefore,
+            submittedResults,
+            failedNodes
+        );
     }
 
     private ProcessNodesResult processNodes(List<JosekiNodeEntry> entries, KataBrain brain,
@@ -214,8 +229,7 @@ public class JosekiNodeRecalculator {
                     + " candidateScope=" + candidateScope.value
                     + " path=" + formatPath(path)
                     + " version=" + entry.analysisClientVersion
-                    + ": " + ex.getClass().getSimpleName()
-                    + (ex.getMessage() == null ? "" : " - " + ex.getMessage())
+                    + ": " + describeException(ex)
                     + RESET);
                 if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
                     ex.printStackTrace(System.out);
@@ -521,19 +535,22 @@ public class JosekiNodeRecalculator {
         System.out.println(GREEN + "Joseki nodes API URL: "
             + apiClient.buildUrl("api.joseki.nodes", null, queryString, props) + RESET);
 
-        ApiClient.ApiResponse<JosekiNodeListResponse> response = apiClient.makeGetRequest(
-            "api.joseki.nodes", null, queryString, JosekiNodeListResponse.class, props);
-        if (!response.isSuccess()) {
-            throw new RuntimeException("Failed to fetch joseki nodes: HTTP "
-                + response.getStatusCode() + " - " + response.getErrorMessage());
-        }
+        return withApiRetries("fetch joseki nodes page scope=" + scope.value
+            + " offset=" + offset + " limit=" + limit, () -> {
+                ApiClient.ApiResponse<JosekiNodeListResponse> response = apiClient.makeGetRequest(
+                    "api.joseki.nodes", null, queryString, JosekiNodeListResponse.class, props);
+                if (!response.isSuccess()) {
+                    throw new RuntimeException("Failed to fetch joseki nodes: HTTP "
+                        + response.getStatusCode() + " - " + response.getErrorMessage());
+                }
 
-        JosekiNodeListResponse page = response.getData();
-        if (page == null) {
-            page = new JosekiNodeListResponse();
-            page.entries = List.of();
-        }
-        return page;
+                JosekiNodeListResponse page = response.getData();
+                if (page == null) {
+                    page = new JosekiNodeListResponse();
+                    page.entries = List.of();
+                }
+                return page;
+            });
     }
 
     private Set<String> fetchChildMoves(int parentId) throws Exception {
@@ -573,19 +590,22 @@ public class JosekiNodeRecalculator {
         addQueryParam(params, "offset", String.valueOf(offset));
         String queryString = "?" + String.join("&", params);
 
-        ApiClient.ApiResponse<JosekiNodeListResponse> response = apiClient.makeGetRequest(
-            "api.joseki.nodes", null, queryString, JosekiNodeListResponse.class, props);
-        if (!response.isSuccess()) {
-            throw new RuntimeException("Failed to fetch joseki child nodes for parent " + parentId + ": HTTP "
-                + response.getStatusCode() + " - " + response.getErrorMessage());
-        }
+        return withApiRetries("fetch joseki child nodes parent=" + parentId
+            + " offset=" + offset + " limit=" + limit, () -> {
+                ApiClient.ApiResponse<JosekiNodeListResponse> response = apiClient.makeGetRequest(
+                    "api.joseki.nodes", null, queryString, JosekiNodeListResponse.class, props);
+                if (!response.isSuccess()) {
+                    throw new RuntimeException("Failed to fetch joseki child nodes for parent " + parentId + ": HTTP "
+                        + response.getStatusCode() + " - " + response.getErrorMessage());
+                }
 
-        JosekiNodeListResponse page = response.getData();
-        if (page == null) {
-            page = new JosekiNodeListResponse();
-            page.entries = List.of();
-        }
-        return page;
+                JosekiNodeListResponse page = response.getData();
+                if (page == null) {
+                    page = new JosekiNodeListResponse();
+                    page.entries = List.of();
+                }
+                return page;
+            });
     }
 
     private String buildNodesQuery(int limit, int offset, AnalysisScope scope) {
@@ -610,6 +630,61 @@ public class JosekiNodeRecalculator {
 
     private boolean forceRecalculate() {
         return Boolean.parseBoolean(props.getProperty("force", "false"));
+    }
+
+    private <T> T withApiRetries(String operation, ThrowingSupplier<T> supplier) throws Exception {
+        int maxAttempts = apiMaxAttempts();
+        long retryDelayMs = apiRetryDelayMs();
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return supplier.get();
+            } catch (Exception ex) {
+                if (attempt >= maxAttempts) {
+                    throw ex;
+                }
+
+                System.out.println(YELLOW + "Joseki API " + operation
+                    + " failed on attempt " + attempt + "/" + maxAttempts
+                    + ": " + describeException(ex)
+                    + "; retrying in " + retryDelayMs + "ms"
+                    + RESET);
+                sleepBeforeRetry(operation, retryDelayMs);
+            }
+        }
+
+        throw new RuntimeException("Joseki API " + operation + " failed without returning a result");
+    }
+
+    private void sleepBeforeRetry(String operation, long retryDelayMs) {
+        if (retryDelayMs <= 0) {
+            return;
+        }
+
+        try {
+            Thread.sleep(retryDelayMs);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while retrying joseki API " + operation, ex);
+        }
+    }
+
+    private int apiMaxAttempts() {
+        return Math.max(1, Integer.parseInt(props.getProperty(
+            "joseki.api_max_attempts",
+            String.valueOf(DEFAULT_API_MAX_ATTEMPTS)
+        )));
+    }
+
+    private long apiRetryDelayMs() {
+        return Math.max(0L, Long.parseLong(props.getProperty(
+            "joseki.api_retry_delay_ms",
+            String.valueOf(DEFAULT_API_RETRY_DELAY_MS)
+        )));
+    }
+
+    private String describeException(Exception ex) {
+        return ex.getClass().getSimpleName()
+            + (ex.getMessage() == null ? "" : " - " + ex.getMessage());
     }
 
     private List<AnalysisScope> analysisScopes() {
@@ -655,12 +730,15 @@ public class JosekiNodeRecalculator {
                 + " joseki recalculated results for path=" + formatPath(results.get(0).path));
         }
 
-        ApiClient.ApiResponse<Object> response = apiClient.makePostRequest(
-            "api.joseki.analysis_results", null, requestBody, Object.class, props);
-        if (!response.isSuccess()) {
-            throw new RuntimeException("Failed to submit joseki recalculated result: HTTP "
-                + response.getStatusCode() + " - " + response.getErrorMessage());
-        }
+        withApiRetries("submit joseki recalculated results path=" + formatPath(results.get(0).path), () -> {
+            ApiClient.ApiResponse<Object> response = apiClient.makePostRequest(
+                "api.joseki.analysis_results", null, requestBody, Object.class, props);
+            if (!response.isSuccess()) {
+                throw new RuntimeException("Failed to submit joseki recalculated result: HTTP "
+                    + response.getStatusCode() + " - " + response.getErrorMessage());
+            }
+            return null;
+        });
     }
 
     private void addOptionalQueryParam(List<String> params, String key) {

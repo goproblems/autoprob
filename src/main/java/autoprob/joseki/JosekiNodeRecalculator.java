@@ -55,7 +55,7 @@ public class JosekiNodeRecalculator {
 
     private enum AnalysisScope {
         LOCAL("local", true, false),
-        LOCAL_WITH_EXISTING_MOVES("local_with_existing_moves", true, true),
+        LOCAL_WITH_MOVES("local_with_moves", true, true),
         GLOBAL("global", false, false);
 
         private final String value;
@@ -72,9 +72,8 @@ public class JosekiNodeRecalculator {
             String normalized = value.trim().toLowerCase(Locale.ROOT).replace('-', '_');
             return switch (normalized) {
                 case "local" -> LOCAL;
-                case "local_with_existing_moves", "local_with_existing", "local_existing", "local+move", "local+existing" ->
-                    LOCAL_WITH_EXISTING_MOVES;
-                case "global", "whole_board", "wholeboard" -> GLOBAL;
+                case "local_with_moves" -> LOCAL_WITH_MOVES;
+                case "global" -> GLOBAL;
                 default -> throw new IllegalArgumentException("Unknown joseki analysis scope: " + value);
             };
         }
@@ -86,64 +85,108 @@ public class JosekiNodeRecalculator {
 
     public void run() throws Exception {
         boolean force = forceRecalculate();
+        List<AnalysisScope> scopes = analysisScopes();
         System.out.println(force
-            ? "Force recalculating joseki nodes, ignoring existing analysis client version (limit=" + NODE_PAGE_LIMIT + ")"
-            : "Recalculating joseki nodes below client version " + CLIENT_VERSION + " (limit=" + NODE_PAGE_LIMIT + ")");
+            ? "Force recalculating joseki nodes, ignoring existing analysis client version for scopes "
+                + formatScopes(scopes) + " (limit=" + NODE_PAGE_LIMIT + ")"
+            : "Recalculating joseki nodes below client version " + CLIENT_VERSION + " for scopes "
+                + formatScopes(scopes) + " (limit=" + NODE_PAGE_LIMIT + ")");
 
+        int processedNodes = 0;
         int submittedResults = 0;
         int failedNodes = 0;
-        int queryOffset = 0;
         Set<Integer> processedNodeIds = new HashSet<>();
+        List<AnalysisScope> candidateScopes = force ? List.of(scopes.get(0)) : scopes;
 
         KataBrain brain = new KataBrain(props);
         try {
-            while (true) {
-                JosekiNodeListResponse page = fetchNodes(NODE_PAGE_LIMIT, queryOffset);
-                List<JosekiNodeEntry> entries = page.entries == null ? List.of() : page.entries;
-                if (entries.isEmpty()) {
-                    if (queryOffset == 0) {
-                        System.out.println("No more joseki nodes to recalculate.");
-                    } else {
-                        System.out.println("No more joseki nodes after skipping nodes already attempted in this run.");
-                    }
-                    break;
-                }
-
-                int before = processedNodeIds.size();
-                int totalNodesEstimate = force
-                    ? page.totalRecords
-                    : Math.max(processedNodeIds.size() + page.totalRecords, processedNodeIds.size());
-                ProcessNodesResult result = processNodes(entries, brain, processedNodeIds, totalNodesEstimate);
+            for (AnalysisScope candidateScope : candidateScopes) {
+                RecalculationResult result = processScope(brain, candidateScope, scopes, force, processedNodeIds);
+                processedNodes += result.processedNodes();
                 submittedResults += result.submittedResults();
                 failedNodes += result.failedNodes();
-
-                System.out.println("Joseki recalculation: processed " + processedNodeIds.size()
-                    + " nodes, submitted " + submittedResults + " analysis results, failed " + failedNodes
-                    + " nodes. Remaining reported by API after current offset: "
-                    + Math.max(0, page.totalRecords - queryOffset - entries.size()));
-
-                if (force || processedNodeIds.size() == before) {
-                    queryOffset += entries.size();
-                    if (processedNodeIds.size() == before) {
-                        System.out.println("No new joseki nodes processed from latest page; advancing offset to "
-                            + queryOffset + " to skip nodes already attempted in this run.");
-                    }
-                } else {
-                    queryOffset = 0;
-                }
             }
         } finally {
             brain.stopKataBrain();
         }
 
-        System.out.println("Joseki recalculation complete. Processed " + processedNodeIds.size()
+        System.out.println("Joseki recalculation complete. Processed " + processedNodes
             + " nodes, submitted " + submittedResults + " results, failed " + failedNodes + " nodes.");
     }
 
     private record ProcessNodesResult(int submittedResults, int failedNodes) {}
 
+    private record RecalculationResult(int processedNodes, int submittedResults, int failedNodes) {}
+
+    private RecalculationResult processScope(
+        KataBrain brain,
+        AnalysisScope candidateScope,
+        List<AnalysisScope> analysisScopes,
+        boolean force,
+        Set<Integer> processedNodeIds
+    ) throws Exception {
+        System.out.println("Starting joseki recalculation candidate scope=" + candidateScope.value
+            + ", analysis scopes=" + formatScopes(analysisScopes));
+
+        int submittedResults = 0;
+        int failedNodes = 0;
+        int queryOffset = 0;
+        int processedNodesBefore = processedNodeIds.size();
+
+        while (true) {
+            JosekiNodeListResponse page = fetchNodes(NODE_PAGE_LIMIT, queryOffset, candidateScope);
+            List<JosekiNodeEntry> entries = page.entries == null ? List.of() : page.entries;
+            if (entries.isEmpty()) {
+                if (queryOffset == 0) {
+                    System.out.println("No more joseki nodes to recalculate for candidate scope="
+                        + candidateScope.value + ".");
+                } else {
+                    System.out.println("No more joseki nodes after skipping nodes already attempted in this run for candidate scope="
+                        + candidateScope.value + ".");
+                }
+                break;
+            }
+
+            int before = processedNodeIds.size();
+            int totalNodesEstimate = force
+                ? page.totalRecords
+                : Math.max(processedNodeIds.size() + page.totalRecords, processedNodeIds.size());
+            ProcessNodesResult result = processNodes(
+                entries,
+                brain,
+                candidateScope,
+                analysisScopes,
+                processedNodeIds,
+                totalNodesEstimate
+            );
+            submittedResults += result.submittedResults();
+            failedNodes += result.failedNodes();
+
+            System.out.println("Joseki recalculation candidate scope=" + candidateScope.value
+                + ": processed " + processedNodeIds.size()
+                + " nodes, submitted " + submittedResults + " analysis results, failed " + failedNodes
+                + " nodes. Remaining reported by API after current offset: "
+                + Math.max(0, page.totalRecords - queryOffset - entries.size()));
+
+            if (force || processedNodeIds.size() == before) {
+                queryOffset += entries.size();
+                if (processedNodeIds.size() == before) {
+                    System.out.println("No new joseki nodes processed from latest page for candidate scope="
+                        + candidateScope.value
+                        + "; advancing offset to " + queryOffset + " to skip nodes already attempted in this run.");
+                }
+            } else {
+                queryOffset = 0;
+            }
+        }
+
+        return new RecalculationResult(processedNodeIds.size() - processedNodesBefore, submittedResults, failedNodes);
+    }
+
     private ProcessNodesResult processNodes(List<JosekiNodeEntry> entries, KataBrain brain,
-                                            Set<Integer> processedNodeIds, int totalNodesEstimate) {
+                                            AnalysisScope candidateScope, List<AnalysisScope> analysisScopes,
+                                            Set<Integer> processedNodeIds,
+                                            int totalNodesEstimate) {
         sortEntries(entries);
 
         int submittedResults = 0;
@@ -157,15 +200,18 @@ public class JosekiNodeRecalculator {
             try {
                 printProgressBar(processedNodeIds.size(), totalNodesEstimate, entry);
                 System.out.println("Recalculating joseki node " + entry.id
+                    + " candidateScope=" + candidateScope.value
+                    + " analysisScopes=" + formatScopes(analysisScopes)
                     + " path=" + formatPath(path)
                     + " version=" + entry.analysisClientVersion);
 
-                List<JosekiAnalysisResultData> results = analyzeNode(entry, brain);
+                List<JosekiAnalysisResultData> results = analyzeNode(entry, brain, analysisScopes);
                 submitResults(results);
                 submittedResults += results.size();
             } catch (Exception ex) {
                 failedNodes++;
                 System.out.println(RED + "Failed to recalculate joseki node " + entry.id
+                    + " candidateScope=" + candidateScope.value
                     + " path=" + formatPath(path)
                     + " version=" + entry.analysisClientVersion
                     + ": " + ex.getClass().getSimpleName()
@@ -206,15 +252,30 @@ public class JosekiNodeRecalculator {
         return depth;
     }
 
-    private List<JosekiAnalysisResultData> analyzeNode(JosekiNodeEntry entry, KataBrain brain) throws Exception {
+    private List<JosekiAnalysisResultData> analyzeNode(
+        JosekiNodeEntry entry,
+        KataBrain brain,
+        List<AnalysisScope> scopes
+    ) throws Exception {
+        List<JosekiAnalysisResultData> results = new ArrayList<>();
+        for (AnalysisScope scope : scopes) {
+            results.add(analyzeNode(entry, brain, scope));
+        }
+        return results;
+    }
+
+    private JosekiAnalysisResultData analyzeNode(
+        JosekiNodeEntry entry,
+        KataBrain brain,
+        AnalysisScope scope
+    ) throws Exception {
         String path = entry.path == null ? "" : entry.path;
         Node node = buildNode(path);
-        List<AnalysisScope> scopes = analysisScopes();
-        Set<String> currentChildMoves = fetchChildMoves(entry.id);
+        Set<String> currentChildMoves = scope.includeExistingMoves ? fetchChildMoves(entry.id) : Set.of();
         Set<String> parentChildMoves = new LinkedHashSet<>();
         String nodeMove = lastMove(path);
 
-        if (node.mom != null) {
+        if (scope.includeExistingMoves && node.mom != null) {
             parentChildMoves = entry.parentId == null
                 ? new LinkedHashSet<>()
                 : new LinkedHashSet<>(fetchChildMoves(entry.parentId));
@@ -223,58 +284,53 @@ public class JosekiNodeRecalculator {
             }
         }
 
-        List<JosekiAnalysisResultData> results = new ArrayList<>();
-        for (AnalysisScope scope : scopes) {
-            KataAnalysisResult parentResult = null;
-            MoveInfo moveInfo = null;
-            Double parentScore = null;
+        KataAnalysisResult parentResult = null;
+        MoveInfo moveInfo = null;
+        Double parentScore = null;
 
-            if (node.mom != null) {
-                parentResult = queryNode(
-                    brain,
-                    node.mom,
-                    "parent",
-                    scope,
-                    scope.includeExistingMoves ? parentChildMoves : Set.of()
-                );
-                parentScore = parentResult.blackScore();
-                moveInfo = findMoveInfo(parentResult, node);
-            }
-
-            KataAnalysisResult currentResult = queryNode(
+        if (node.mom != null) {
+            parentResult = queryNode(
                 brain,
-                node,
-                "current",
+                node.mom,
+                "parent",
                 scope,
-                scope.includeExistingMoves ? currentChildMoves : Set.of()
+                parentChildMoves
             );
-            double score = currentResult.blackScore();
-            Double moverScoreDelta = parentScore == null ? null : moveScoreDelta(node, parentScore, score);
-
-            JosekiAnalysisResultData result = new JosekiAnalysisResultData();
-            result.path = path;
-            result.scope = scope.value;
-            result.score = score;
-            result.loss = moverScoreDelta == null ? 0.0 : -moverScoreDelta;
-            result.katagoPlayouts = Integer.parseInt(props.getProperty("joseki.visits", "1000"));
-            result.katagoWeightsFile = katagoWeightsFile();
-            result.prior = moveInfo == null ? null : moveInfo.prior;
-            result.visits = moveInfo == null ? null : moveInfo.visits;
-            result.moveOrder = moveInfo == null ? null : moveInfo.order;
-            result.extraInfo = buildExtraInfo(scope, parentScore, score, moverScoreDelta);
-            result.analysis = gson.toJson(currentResult);
-
-            System.out.println("Joseki node " + formatPath(path)
-                + " scope=" + scope.value
-                + " score=" + DF.format(result.score)
-                + " loss=" + DF.format(result.loss)
-                + (result.prior == null ? "" : " prior=" + DF.format(result.prior * 1000.0))
-                + (result.visits == null ? "" : " visits=" + result.visits)
-                + (result.moveOrder == null ? "" : " order=" + result.moveOrder));
-            results.add(result);
+            parentScore = parentResult.blackScore();
+            moveInfo = findMoveInfo(parentResult, node);
         }
 
-        return results;
+        KataAnalysisResult currentResult = queryNode(
+            brain,
+            node,
+            "current",
+            scope,
+            currentChildMoves
+        );
+        double score = currentResult.blackScore();
+        Double moverScoreDelta = parentScore == null ? null : moveScoreDelta(node, parentScore, score);
+
+        JosekiAnalysisResultData result = new JosekiAnalysisResultData();
+        result.path = path;
+        result.scope = scope.value;
+        result.score = score;
+        result.loss = moverScoreDelta == null ? 0.0 : -moverScoreDelta;
+        result.katagoPlayouts = Integer.parseInt(props.getProperty("joseki.visits", "1000"));
+        result.katagoWeightsFile = katagoWeightsFile();
+        result.prior = moveInfo == null ? null : moveInfo.prior;
+        result.visits = moveInfo == null ? null : moveInfo.visits;
+        result.moveOrder = moveInfo == null ? null : moveInfo.order;
+        result.extraInfo = buildExtraInfo(scope, parentScore, score, moverScoreDelta);
+        result.analysis = gson.toJson(currentResult);
+
+        System.out.println("Joseki node " + formatPath(path)
+            + " scope=" + scope.value
+            + " score=" + DF.format(result.score)
+            + " loss=" + DF.format(result.loss)
+            + (result.prior == null ? "" : " prior=" + DF.format(result.prior * 1000.0))
+            + (result.visits == null ? "" : " visits=" + result.visits)
+            + (result.moveOrder == null ? "" : " order=" + result.moveOrder));
+        return result;
     }
 
     private KataAnalysisResult queryNode(
@@ -460,8 +516,8 @@ public class JosekiNodeRecalculator {
         return gson.toJson(info);
     }
 
-    private JosekiNodeListResponse fetchNodes(int limit, int offset) throws Exception {
-        String queryString = buildNodesQuery(limit, offset);
+    private JosekiNodeListResponse fetchNodes(int limit, int offset, AnalysisScope scope) throws Exception {
+        String queryString = buildNodesQuery(limit, offset, scope);
         System.out.println(GREEN + "Joseki nodes API URL: "
             + apiClient.buildUrl("api.joseki.nodes", null, queryString, props) + RESET);
 
@@ -532,8 +588,9 @@ public class JosekiNodeRecalculator {
         return page;
     }
 
-    private String buildNodesQuery(int limit, int offset) {
+    private String buildNodesQuery(int limit, int offset, AnalysisScope scope) {
         List<String> params = new ArrayList<>();
+        addQueryParam(params, "scope", scope.value);
         if (!forceRecalculate()) {
             addQueryParam(params, "analysisClientVersionLessThan", String.valueOf(CLIENT_VERSION));
         }
@@ -575,6 +632,13 @@ public class JosekiNodeRecalculator {
         }
 
         return scopes;
+    }
+
+    private String formatScopes(List<AnalysisScope> scopes) {
+        return scopes.stream()
+            .map(scope -> scope.value)
+            .toList()
+            .toString();
     }
 
     private void submitResults(List<JosekiAnalysisResultData> results) throws Exception {

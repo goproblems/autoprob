@@ -111,9 +111,7 @@ public class JosekiNodeRecalculator {
 
     private ProcessNodesResult processNodes(List<JosekiNodeEntry> entries, KataBrain brain,
                                             Set<Integer> processedNodeIds, int totalNodesEstimate) {
-        entries.sort(Comparator
-            .comparing((JosekiNodeEntry entry) -> entry.path == null || entry.path.isEmpty() ? 0 : 1)
-            .thenComparing(entry -> entry.path == null ? "" : entry.path));
+        sortEntries(entries);
 
         int submittedResults = 0;
         int failedNodes = 0;
@@ -146,6 +144,33 @@ public class JosekiNodeRecalculator {
             }
         }
         return new ProcessNodesResult(submittedResults, failedNodes);
+    }
+
+    private void sortEntries(List<JosekiNodeEntry> entries) {
+        if ("breadth".equals(props.getProperty("sort"))) {
+            entries.sort(Comparator
+                .comparingInt((JosekiNodeEntry entry) -> pathDepth(entry.path))
+                .thenComparing(entry -> entry.path == null ? "" : entry.path));
+            return;
+        }
+
+        entries.sort(Comparator
+            .comparing((JosekiNodeEntry entry) -> entry.path == null || entry.path.isEmpty() ? 0 : 1)
+            .thenComparing(entry -> entry.path == null ? "" : entry.path));
+    }
+
+    private int pathDepth(String path) {
+        if (path == null || path.isBlank()) {
+            return 0;
+        }
+
+        int depth = 1;
+        for (int i = 0; i < path.length(); i++) {
+            if (path.charAt(i) == ',') {
+                depth++;
+            }
+        }
+        return depth;
     }
 
     private JosekiAnalysisResultData analyzeNode(JosekiNodeEntry entry, KataBrain brain) throws Exception {

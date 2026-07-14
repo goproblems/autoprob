@@ -58,8 +58,10 @@ public class JosekiNodeRecalculator {
     }
 
     public void run() throws Exception {
-        System.out.println("Recalculating joseki nodes below client version " + CLIENT_VERSION
-            + " (limit=" + NODE_PAGE_LIMIT + ")");
+        boolean force = forceRecalculate();
+        System.out.println(force
+            ? "Force recalculating joseki nodes, ignoring existing analysis client version (limit=" + NODE_PAGE_LIMIT + ")"
+            : "Recalculating joseki nodes below client version " + CLIENT_VERSION + " (limit=" + NODE_PAGE_LIMIT + ")");
 
         int submittedResults = 0;
         int failedNodes = 0;
@@ -81,7 +83,9 @@ public class JosekiNodeRecalculator {
                 }
 
                 int before = processedNodeIds.size();
-                int totalNodesEstimate = Math.max(processedNodeIds.size() + page.totalRecords, processedNodeIds.size());
+                int totalNodesEstimate = force
+                    ? page.totalRecords
+                    : Math.max(processedNodeIds.size() + page.totalRecords, processedNodeIds.size());
                 ProcessNodesResult result = processNodes(entries, brain, processedNodeIds, totalNodesEstimate);
                 submittedResults += result.submittedResults();
                 failedNodes += result.failedNodes();
@@ -91,10 +95,12 @@ public class JosekiNodeRecalculator {
                     + " nodes. Remaining reported by API after current offset: "
                     + Math.max(0, page.totalRecords - queryOffset - entries.size()));
 
-                if (processedNodeIds.size() == before) {
+                if (force || processedNodeIds.size() == before) {
                     queryOffset += entries.size();
-                    System.out.println("No new joseki nodes processed from latest page; advancing offset to "
-                        + queryOffset + " to skip nodes already attempted in this run.");
+                    if (processedNodeIds.size() == before) {
+                        System.out.println("No new joseki nodes processed from latest page; advancing offset to "
+                            + queryOffset + " to skip nodes already attempted in this run.");
+                    }
                 } else {
                     queryOffset = 0;
                 }
@@ -468,7 +474,9 @@ public class JosekiNodeRecalculator {
 
     private String buildNodesQuery(int limit, int offset) {
         List<String> params = new ArrayList<>();
-        addQueryParam(params, "analysisClientVersionLessThan", String.valueOf(CLIENT_VERSION));
+        if (!forceRecalculate()) {
+            addQueryParam(params, "analysisClientVersionLessThan", String.valueOf(CLIENT_VERSION));
+        }
         addQueryParam(params, "limit", String.valueOf(limit));
         addQueryParam(params, "offset", String.valueOf(offset));
 
@@ -481,6 +489,10 @@ public class JosekiNodeRecalculator {
         addOptionalQueryParam(params, "sort");
 
         return "?" + String.join("&", params);
+    }
+
+    private boolean forceRecalculate() {
+        return Boolean.parseBoolean(props.getProperty("force", "false"));
     }
 
     private void submitResult(JosekiAnalysisResultData result) throws Exception {

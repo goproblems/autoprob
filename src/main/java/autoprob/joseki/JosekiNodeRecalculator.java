@@ -48,6 +48,7 @@ public class JosekiNodeRecalculator {
     private static final String RED = "\033[31m";
     private static final String RESET = "\033[0m";
     private static final DecimalFormat DF = new DecimalFormat("0.00");
+    private static final int ROOT_LOCAL_SIZE = 10;
 
     private final Properties props;
     private final ApiClient apiClient = new ApiClient();
@@ -407,17 +408,17 @@ public class JosekiNodeRecalculator {
             }
         }
 
-        if (!hasAnchorStone) {
-            return;
-        }
-
         Set<String> moves = new LinkedHashSet<>();
-        for (int x = 0; x < 19; x++) {
-            for (int y = 0; y < 19; y++) {
-                if (allowSpots[x][y] && node.board.board[x][y].stone == Intersection.EMPTY) {
-                    moves.add(Intersection.toGTPloc(x, y, 19));
+        if (hasAnchorStone) {
+            for (int x = 0; x < 19; x++) {
+                for (int y = 0; y < 19; y++) {
+                    if (allowSpots[x][y] && node.board.board[x][y].stone == Intersection.EMPTY) {
+                        moves.add(Intersection.toGTPloc(x, y, 19));
+                    }
                 }
             }
+        } else {
+            addUpperRightRootMoves(moves, node);
         }
         addChildMoves(moves, node, childMoves);
 
@@ -431,6 +432,18 @@ public class JosekiNodeRecalculator {
         allowMove.moves = new ArrayList<>(moves);
         query.allowMoves = new ArrayList<>();
         query.allowMoves.add(allowMove);
+    }
+
+    private void addUpperRightRootMoves(Set<String> moves, Node node) {
+        int minX = Math.max(0, node.board.boardX - ROOT_LOCAL_SIZE);
+        int maxY = Math.min(ROOT_LOCAL_SIZE, node.board.boardY);
+        for (int x = minX; x < node.board.boardX; x++) {
+            for (int y = 0; y < maxY; y++) {
+                if (node.board.board[x][y].stone == Intersection.EMPTY) {
+                    moves.add(Intersection.toGTPloc(x, y, node.board.boardY));
+                }
+            }
+        }
     }
 
     private void addChildMoves(Set<String> moves, Node node, Set<String> childMoves) {

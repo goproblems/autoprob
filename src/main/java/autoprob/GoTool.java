@@ -5,6 +5,7 @@ import autoprob.go.Node;
 import autoprob.go.StoneGroupLogic;
 import autoprob.go.action.MoveAction;
 import autoprob.go.parse.Parser;
+import autoprob.collection.CollectionDetectionCommand;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
@@ -71,6 +72,8 @@ public class GoTool {
             runRecalculateNodesCommand(props);
         } else if (command.equals("josekinoderecalculate")) {
             runJosekiNodeRecalculateCommand(props);
+        } else if (command.equals("detectcollection")) {
+            runDetectCollectionCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -116,6 +119,10 @@ public class GoTool {
         System.out.println("Running joseki node recalculation...");
         JosekiNodeRecalculator recalculator = new JosekiNodeRecalculator(props);
         recalculator.run();
+    }
+
+    private void runDetectCollectionCommand(Properties props) throws Exception {
+        new CollectionDetectionCommand(props).run();
     }
 
     private Node loadPassedSgf(Properties props) throws Exception {

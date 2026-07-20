@@ -33,6 +33,20 @@ If you are having problems, and things aren't working for some reason, try passi
 
 The general approach is to take configuration parameters from the properties file, optionally overridden by using the same names on the command line (with the format `name=value`). The first command line parameter must be a path to the properties file, and this is the only unnamed parameter. A default file is provided. There are a lot of options!
 
+# Detecting problem collections
+
+`GoTool` can scan live GoProblems SGFs for positions matching a named collection detector. The first detector is `center-tubes`: all starting stones of at least one color must fit an interior 3-by-X bounding rectangle whose long axis is at least 5 intersections, with at least 3 rows or columns of board space between each long side and its parallel board edge, and opposing stones extending beyond it on the left, right, top, and bottom. It does not require KataGo.
+
+Test one problem:
+
+`java -cp "autoprob.jar;gson.jar" autoprob.GoTool config.properties cmd=detectcollection collection=center-tubes id=59154`
+
+Check a consecutive range of problem IDs:
+
+`java -cp "autoprob.jar;gson.jar" autoprob.GoTool config.properties cmd=detectcollection collection=center-tubes startid=59000 count=200`
+
+Omit `id`, `startid`, and `count` to paginate the complete live-problem list and check every problem. Matching IDs, links, and ASCII starting positions are printed to standard output. API requests are spaced 500 ms apart by default; override this with `detectcollection.delay.ms` when appropriate.
+
 # Developer IDE
 
 This has been loaded in both IntelliJ and Eclipse. Some project files may exist and work.

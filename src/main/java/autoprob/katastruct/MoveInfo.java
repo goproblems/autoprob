@@ -20,6 +20,9 @@ public class MoveInfo {
 	@SerializedName("prior")
 	@Expose
 	public Double prior;
+	@SerializedName("humanPrior")
+	@Expose
+	public Double humanPrior;
 	@SerializedName("pv")
 	@Expose
 	public List<String> pv = null;

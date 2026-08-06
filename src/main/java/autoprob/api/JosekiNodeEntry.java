@@ -1,5 +1,7 @@
 package autoprob.api;
 
+import java.util.List;
+
 public class JosekiNodeEntry {
     public int id;
     public String path;
@@ -13,4 +15,5 @@ public class JosekiNodeEntry {
     public String deletedAt;
     public String createdAt;
     public String updatedAt;
+    public List<String> missingHumanPolicyProfiles;
 }

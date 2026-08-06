@@ -6,4 +6,5 @@ public class JosekiAnalysisSubmitBody {
     public String source;
     public int clientVersion;
     public List<JosekiAnalysisResultData> results;
+    public List<JosekiHumanPolicyData> humanPolicies;
 }

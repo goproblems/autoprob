@@ -3,6 +3,8 @@ package autoprob;
 import java.awt.Point;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import autoprob.go.Board;
 import autoprob.go.Intersection;
@@ -117,6 +119,68 @@ public class QueryBuilder {
 		Point loc = moveAction.loc;
 		kq.moves.add(Arrays.asList(moveAction.stone == Intersection.BLACK ? "B" : "W", Intersection.toGTPloc(loc.x, loc.y, b.boardY)));
 
+		return kq;
+	}
+
+	// builds a query for the given node's position, replaying the full move
+	// history from the root so that humanSLProfile with ignorePreRootHistory=false
+	// sees the sequence of moves that led to this position
+	public KataQuery buildQueryWithHistory(Node node) {
+		Node root = node.getRoot();
+		var kq = new KataQuery();
+		kq.includeOwnership = false;
+		kq.includeMovesOwnership = false;
+		kq.includeOwnershipStdev = false;
+		// Use komi from root node's SGF if available, otherwise default to 7.5
+		kq.komi = getKomi(root);
+		int toMove = root.getToMove();
+		kq.initialPlayer = Intersection.color2katagoname(toMove);
+
+		// initial stones: the base position, without any joseki path moves
+		kq.initialStones = new ArrayList<>();
+		Board b = root.board;
+		for (int i = 0; i < 19; i++) {
+			for (int j = 0; j < 19; j++) {
+				Intersection insec = b.board[i][j];
+				if (insec.stone == Intersection.BLACK) {
+					kq.initialStones.add(Arrays.asList("B", Intersection.toGTPloc(i, j, b.boardY)));
+				} else if (insec.stone == Intersection.WHITE) {
+					kq.initialStones.add(Arrays.asList("W", Intersection.toGTPloc(i, j, b.boardY)));
+				}
+			}
+		}
+
+		// moves: every move from the root down to the given node, in order
+		kq.moves = new ArrayList<>();
+		List<Node> path = new ArrayList<>();
+		Node n = node;
+		while (n != root) {
+			path.add(n);
+			n = n.mom;
+		}
+		Collections.reverse(path);
+		for (Node pathNode : path) {
+			MoveAction moveAction = pathNode.getMoveAction();
+			if (moveAction == null) {
+				continue;
+			}
+			Point loc = moveAction.loc;
+			if (loc.x == root.board.boardX || loc.y == root.board.boardY) {
+				kq.moves.add(Arrays.asList(
+					moveAction.stone == Intersection.BLACK ? "B" : "W",
+					"pass"
+				));
+			} else if (loc.x >= 0 && loc.y >= 0) {
+				kq.moves.add(Arrays.asList(
+					moveAction.stone == Intersection.BLACK ? "B" : "W",
+					Intersection.toGTPloc(loc.x, loc.y, root.board.boardY)
+				));
+			}
+		}
+
+		// analyze only the final position (the node's position)
+		kq.analyzeTurns = new ArrayList<>();
+		kq.analyzeTurns.add(kq.moves.size());
 		return kq;
 	}
 

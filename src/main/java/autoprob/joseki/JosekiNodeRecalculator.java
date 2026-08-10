@@ -258,8 +258,8 @@ public class JosekiNodeRecalculator {
         int processedNodesBefore = processedNodeIds.size();
 
         JosekiHumanPolicyTaskProgress progress = fetchHumanPolicyTaskProgress();
-        int totalMissingAtStart = Math.max(0, progress.pendingNodes);
-        System.out.println("Human Policy tasks this run: 0/" + totalMissingAtStart
+        int totalTasksEstimate = Math.max(0, progress.pendingNodes);
+        System.out.println("Human Policy tasks this run: 0/" + totalTasksEstimate
             + " missing at start"
             + " (completed=" + progress.completedNodes
             + ", pruned=" + progress.prunedNodes
@@ -285,7 +285,7 @@ public class JosekiNodeRecalculator {
                 try {
                     printProgressBar(
                         processedNodeIds.size() - processedNodesBefore,
-                        totalMissingAtStart,
+                        totalTasksEstimate,
                         entry
                     );
                     if (entry.missingHumanPolicyProfiles == null) {
@@ -314,10 +314,20 @@ public class JosekiNodeRecalculator {
                 }
             }
 
+            progress = fetchHumanPolicyTaskProgress();
+            int processedThisRun = processedNodeIds.size() - processedNodesBefore;
+            totalTasksEstimate = Math.max(
+                processedThisRun,
+                processedThisRun + Math.max(0, progress.pendingNodes)
+            );
             System.out.println("Missing human policy pass: processed " + processedNodeIds.size()
                 + " nodes, submitted " + submittedHumanPolicies + " human policies, failed " + failedNodes
-                + " nodes. Ready tasks reported by API after current offset: "
-                + Math.max(0, page.totalRecords - queryOffset - entries.size()));
+                + " nodes. Refreshed progress=" + processedThisRun + "/" + totalTasksEstimate
+                + " (completed=" + progress.completedNodes
+                + ", pruned=" + progress.prunedNodes
+                + ", pending=" + progress.pendingNodes
+                + ", ready=" + progress.readyNodes
+                + ", blocked=" + progress.blockedNodes + ").");
 
             if (processedNodeIds.size() != before) {
                 queryOffset = 0;

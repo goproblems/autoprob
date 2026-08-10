@@ -6,6 +6,7 @@ import autoprob.QueryBuilder;
 import autoprob.api.JosekiAnalysisResultData;
 import autoprob.api.JosekiAnalysisSubmitBody;
 import autoprob.api.JosekiHumanPolicyDistributionData;
+import autoprob.api.JosekiHumanPolicyTaskListResponse;
 import autoprob.api.JosekiHumanPolicyTaskProgress;
 import autoprob.api.JosekiNodeEntry;
 import autoprob.api.JosekiNodeListResponse;
@@ -267,7 +268,7 @@ public class JosekiNodeRecalculator {
             + ", blocked=" + progress.blockedNodes + ").");
 
         while (true) {
-            JosekiNodeListResponse page = fetchMissingHumanPolicyNodes(NODE_PAGE_LIMIT, queryOffset);
+            JosekiHumanPolicyTaskListResponse page = fetchMissingHumanPolicyNodes(NODE_PAGE_LIMIT, queryOffset);
             List<JosekiNodeEntry> entries = page.entries == null ? List.of() : page.entries;
             if (entries.isEmpty()) {
                 System.out.println("No more joseki nodes missing human policy.");
@@ -958,23 +959,23 @@ public class JosekiNodeRecalculator {
             });
     }
 
-    private JosekiNodeListResponse fetchMissingHumanPolicyNodes(int limit, int offset) throws Exception {
+    private JosekiHumanPolicyTaskListResponse fetchMissingHumanPolicyNodes(int limit, int offset) throws Exception {
         String queryString = buildMissingHumanPolicyNodesQuery(limit, offset);
         System.out.println(GREEN + "Joseki Human Policy tasks API URL: "
             + apiClient.buildUrl("api.joseki.human_policy_tasks", null, queryString, props) + RESET);
 
         return withApiRetries("fetch joseki nodes missing human policy"
             + " offset=" + offset + " limit=" + limit, () -> {
-                ApiClient.ApiResponse<JosekiNodeListResponse> response = apiClient.makeGetRequest(
-                    "api.joseki.human_policy_tasks", null, queryString, JosekiNodeListResponse.class, props);
+                ApiClient.ApiResponse<JosekiHumanPolicyTaskListResponse> response = apiClient.makeGetRequest(
+                    "api.joseki.human_policy_tasks", null, queryString, JosekiHumanPolicyTaskListResponse.class, props);
                 if (!response.isSuccess()) {
                     throw new RuntimeException("Failed to fetch joseki Human Policy tasks: HTTP "
                         + response.getStatusCode() + " - " + response.getErrorMessage());
                 }
 
-                JosekiNodeListResponse page = response.getData();
+                JosekiHumanPolicyTaskListResponse page = response.getData();
                 if (page == null) {
-                    page = new JosekiNodeListResponse();
+                    page = new JosekiHumanPolicyTaskListResponse();
                     page.entries = List.of();
                 }
                 return page;

@@ -13,6 +13,8 @@ public class JosekiNodeEntry {
     public Integer sortOrder;
     public Integer analysisClientVersion;
     public String deletedAt;
+    public Double maxHumanPolicy;
+    public Double minHumanPolicyOnPath;
     public String createdAt;
     public String updatedAt;
     public List<String> missingHumanPolicyProfiles;

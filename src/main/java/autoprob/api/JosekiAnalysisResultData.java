@@ -8,6 +8,7 @@ public class JosekiAnalysisResultData {
     public int katagoPlayouts;
     public String katagoWeightsFile;
     public Double prior;
+    public Double policyMass;
     public Integer visits;
     public Integer moveOrder;
     public String extraInfo;

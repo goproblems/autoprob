@@ -1026,6 +1026,7 @@ public class JosekiNodeRecalculator {
             addQueryParam(params, "humanPolicyModel", humanModel);
         }
         addQueryParam(params, "policyThreshold", String.valueOf(lowPolicyThreshold()));
+        addQueryParam(params, "localPolicyThreshold", String.valueOf(localPolicyThreshold()));
 
         if (props.containsKey("path")) {
             addQueryParam(params, "path", props.getProperty("path", ""));
@@ -1124,6 +1125,16 @@ public class JosekiNodeRecalculator {
         if (!Double.isFinite(threshold) || threshold < 0.0 || threshold > 1.0) {
             throw new IllegalArgumentException(
                 "joseki.low_policy_threshold must be between 0 and 1"
+            );
+        }
+        return threshold;
+    }
+
+    private double localPolicyThreshold() {
+        double threshold = Double.parseDouble(props.getProperty("joseki.local_policy_threshold", "0.05"));
+        if (!Double.isFinite(threshold) || threshold < 0.0 || threshold > 1.0) {
+            throw new IllegalArgumentException(
+                "joseki.local_policy_threshold must be between 0 and 1"
             );
         }
         return threshold;

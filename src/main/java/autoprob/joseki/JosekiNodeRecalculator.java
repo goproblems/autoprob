@@ -27,7 +27,6 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -39,12 +38,9 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.HashSet;
-import java.util.HexFormat;
 
 public class JosekiNodeRecalculator {
     public static final int CLIENT_VERSION = 4;
-    private static final int HUMAN_POLICY_NORMALIZATION_VERSION = 1;
-
     private static final int NODE_PAGE_LIMIT = 500;
     private static final int DEFAULT_API_MAX_ATTEMPTS = 20;
     private static final long DEFAULT_API_RETRY_DELAY_MS = 5000L;
@@ -68,7 +64,6 @@ public class JosekiNodeRecalculator {
     private final ApiClient apiClient = new ApiClient();
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private final Map<Integer, Set<String>> childMovesByParentId = new HashMap<>();
-    private String cachedHumanModelIdentity = null;
     private int queryCounter = 0;
 
     private enum AnalysisScope {
@@ -106,7 +101,7 @@ public class JosekiNodeRecalculator {
         boolean force = forceRecalculate();
         List<AnalysisScope> scopes = humanPolicyOnly ? List.of() : analysisScopes();
         if (humanPolicyOnly) {
-            if (humanModelIdentity() == null) {
+            if (!humanModelConfigured()) {
                 throw new IllegalArgumentException(
                     "humanPolicyOnly=true requires kata.human_model to be configured"
                 );
@@ -550,8 +545,7 @@ public class JosekiNodeRecalculator {
         List<String> profiles
     ) {
         List<JosekiHumanPolicyDistributionData> distributions = new ArrayList<>();
-        String humanModel = humanModelIdentity();
-        if (humanModel == null || humanModel.isBlank()) {
+        if (!humanModelConfigured()) {
             System.out.println(YELLOW + "Skipping human policy fill: no kata.human_model configured" + RESET);
             return distributions;
         }
@@ -591,11 +585,9 @@ public class JosekiNodeRecalculator {
                 JosekiHumanPolicyDistributionData distribution = new JosekiHumanPolicyDistributionData();
                 distribution.path = path;
                 distribution.profile = profile;
-                distribution.humanModel = humanModel;
                 distribution.distribution = new ArrayList<>(result.humanPolicy);
                 distribution.localPolicyMass = calculatePolicyMass(result.humanPolicy, localMoves);
                 distribution.maxMoveDistance = maxMoveDistance;
-                distribution.normalizationVersion = HUMAN_POLICY_NORMALIZATION_VERSION;
                 distributions.add(distribution);
             } catch (Exception ex) {
                 System.out.println(YELLOW + "Failed to query human policy profile=" + profile
@@ -675,67 +667,9 @@ public class JosekiNodeRecalculator {
         return profiles;
     }
 
-    private String humanModelIdentity() {
-        if (cachedHumanModelIdentity != null) {
-            return cachedHumanModelIdentity;
-        }
-
+    private boolean humanModelConfigured() {
         String model = props.getProperty("kata.human_model");
-        if (model == null || model.isBlank()) {
-            return null;
-        }
-
-        try {
-            Path modelPath = Path.of(model);
-            if (!Files.isRegularFile(modelPath)) {
-                throw new IllegalStateException("Human model file does not exist: " + modelPath);
-            }
-
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            updateDigest(digest, "human-policy-query-v1");
-            updateDigest(digest, "humanVisits=" + props.getProperty("joseki.human_visits", "1"));
-            updateDigest(digest, "humanSymmetries=" + props.getProperty("joseki.human_sl_symmetries", "2"));
-            updateDigest(digest, "komi=" + props.getProperty("joseki.komi", "6.5"));
-            updateDigest(digest, "ignorePreRootHistory=false");
-            updateDigestWithFile(digest, modelPath);
-            updateDigestWithOptionalFile(digest, props.getProperty("kata.config"));
-            updateDigestWithOptionalFile(digest, props.getProperty("joseki.base_sgf"));
-
-            String fileName = modelPath.getFileName().toString();
-            if (fileName.length() > 180) {
-                fileName = fileName.substring(0, 180);
-            }
-            cachedHumanModelIdentity = fileName + "@" + HexFormat.of().formatHex(digest.digest());
-            return cachedHumanModelIdentity;
-        } catch (Exception ex) {
-            throw new IllegalStateException("Failed to calculate Human model identity", ex);
-        }
-    }
-
-    private void updateDigest(MessageDigest digest, String value) {
-        digest.update(value.getBytes(StandardCharsets.UTF_8));
-        digest.update((byte) 0);
-    }
-
-    private void updateDigestWithOptionalFile(MessageDigest digest, String fileName) throws Exception {
-        if (fileName == null || fileName.isBlank()) {
-            updateDigest(digest, "<none>");
-            return;
-        }
-        updateDigestWithFile(digest, Path.of(fileName));
-    }
-
-    private void updateDigestWithFile(MessageDigest digest, Path path) throws Exception {
-        updateDigest(digest, path.getFileName().toString());
-        try (var input = Files.newInputStream(path)) {
-            byte[] buffer = new byte[1024 * 1024];
-            int read;
-            while ((read = input.read(buffer)) >= 0) {
-                if (read > 0) {
-                    digest.update(buffer, 0, read);
-                }
-            }
-        }
+        return model != null && !model.isBlank();
     }
 
     private Set<String> nearbyMoves(Node node, int distance, Set<String> childMoves) {
@@ -1021,10 +955,6 @@ public class JosekiNodeRecalculator {
 
     private void addHumanPolicyTaskFilters(List<String> params) {
         addQueryParam(params, "humanPolicyProfiles", String.join(",", humanSLProfiles()));
-        String humanModel = humanModelIdentity();
-        if (humanModel != null) {
-            addQueryParam(params, "humanPolicyModel", humanModel);
-        }
         addQueryParam(params, "policyThreshold", String.valueOf(lowPolicyThreshold()));
         addQueryParam(params, "localPolicyThreshold", String.valueOf(localPolicyThreshold()));
 

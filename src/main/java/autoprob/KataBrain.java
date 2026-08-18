@@ -32,6 +32,7 @@ public class KataBrain {
 		this.props = props;
 		String kataPath = props.getProperty("katago").trim();
 		String configPath = props.getProperty("kata.config").trim();
+		System.out.println("KataGo config: " + new File(configPath).getAbsolutePath());
 		modelPath = props.getProperty("kata.model").trim();
 		String humanModelPath = props.getProperty("kata.human_model");
 		if (modelPathOverride != null) {

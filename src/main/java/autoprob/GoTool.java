@@ -13,6 +13,7 @@ import autoprob.problem.DifficultyEstimator;
 import autoprob.problem.SiteProblem;
 import autoprob.scenario.ScenarioNodeRecalculator;
 import autoprob.scenario.ScenarioTestSuite;
+import autoprob.validate.ProblemRedoer;
 
 import java.awt.Point;
 import java.io.File;
@@ -71,6 +72,8 @@ public class GoTool {
             runRecalculateNodesCommand(props);
         } else if (command.equals("josekinoderecalculate")) {
             runJosekiNodeRecalculateCommand(props);
+        } else if (command.equals("redo")) {
+            runRedoCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -116,6 +119,13 @@ public class GoTool {
         System.out.println("Running joseki node recalculation...");
         JosekiNodeRecalculator recalculator = new JosekiNodeRecalculator(props);
         recalculator.run();
+    }
+
+    // regenerate the solution path of an existing problem and score it against the original
+    private void runRedoCommand(Properties props) throws Exception {
+        System.out.println("Running problem redo...");
+        ProblemRedoer redoer = new ProblemRedoer(props);
+        redoer.run();
     }
 
     private Node loadPassedSgf(Properties props) throws Exception {

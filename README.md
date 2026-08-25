@@ -92,3 +92,22 @@ Many problems need a little touching up in an SGF editor after this stage before
 
 
 
+
+# Redoing existing problems (validation)
+
+The `redo` command takes an existing, well crafted problem SGF, excises the correct (RIGHT) solution paths, regenerates a solution line from scratch with katago plus the human policy network, and scores the regenerated line against the original human data. This measures how close automated path creation is to high quality human choices, especially where paths should end.
+
+```
+java -cp autoprob.jar autoprob.GoTool config.properties cmd=redo path=sample_problems/gp-721.sgf
+```
+
+Pass a directory as `path` to evaluate every problem in it and print a summary table (`sample_problems/` contains 20 validated goproblems.com life and death problems for this purpose). Add `csvout.path=results.csv` to record results for comparing tuning runs.
+
+How it works:
+
+1. The problem position is isolated: the rest of the board is filled with balanced static stones (see `BalancedFortress`) and komi is adjusted so that the life and death result decides the game, with the solver slightly ahead after correct play.
+2. The stones at stake are identified by comparing best play with the solver passing.
+3. The solution line is generated move by move: the solver plays katago's best move; the opponent answers with its primary resistance, but only while that move still constitutes a real threat (measured by the ownership change near the stake stones if the move were ignored). When the opponent's best move no longer threatens anything, the path ends.
+4. The generated line is compared against every RIGHT path in the original: first move match, common prefix, and length difference. A regenerated SGF with the generated line grafted in (comment GENERATED) is written to `redo.output.dir` for eyeballing.
+
+The `redo.*` settings in config.properties control visits, threat thresholds, and ending behavior.

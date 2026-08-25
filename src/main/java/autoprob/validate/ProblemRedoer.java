@@ -125,9 +125,13 @@ public class ProblemRedoer {
         ProblemIsolator isolator = new ProblemIsolator(props, brain);
         ProblemIsolator.IsolatedProblem iso = isolator.isolate(root);
         System.out.println(iso.problem.board);
+        result.notes.addAll(iso.warnings);
 
         // regenerate the solution line
         SolutionPathGenerator generator = new SolutionPathGenerator(props, brain, iso);
+        if (Boolean.parseBoolean(props.getProperty("redo.force_first_move", "false")) && !refPaths.isEmpty()) {
+            generator.setForcedFirstMove(refPaths.get(0).moves.get(0).loc);
+        }
         GenResult gen = generator.generateMainLine();
         result.notes.addAll(gen.notes);
         result.endedNaturally = gen.endedNaturally;

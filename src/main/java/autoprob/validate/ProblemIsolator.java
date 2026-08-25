@@ -27,6 +27,7 @@ public class ProblemIsolator {
         public double komi;
         public KataAnalysisResult rootKar; // analysis of the balanced root position
         public ArrayList<Point> stakes = new ArrayList<>(); // stones whose life depends on solving
+        public ArrayList<String> warnings = new ArrayList<>();
 
         public boolean isFilled(int x, int y) {
             return filledStones.board[x][y].stone != Intersection.EMPTY;
@@ -89,9 +90,27 @@ public class ProblemIsolator {
                 + " -> komi " + newKomi + " (solver " + Intersection.color2name(iso.solverColor) + ")");
     }
 
-    // figure out which stones are at stake: compare best play with the solver passing
+    // figure out which stones are at stake: compare best play with the solver passing.
+    // retries with more visits if nothing shows up, since subtle tesujis can hide the
+    // stakes from a shallow search.
     private void calcStakes(IsolatedProblem iso) throws Exception {
         int visits = Integer.parseInt(props.getProperty("redo.visits_root", "2000"));
+        calcStakesPass(iso, visits);
+        if (iso.stakes.isEmpty()) {
+            System.out.println("no stakes found, retrying with more visits");
+            calcStakesPass(iso, visits * 2);
+            if (!iso.stakes.isEmpty()) {
+                iso.warnings.add("stakes only found on deeper retry, consider higher redo.visits_root");
+            }
+        }
+        if (iso.stakes.isEmpty()) {
+            String warning = "no stones seem to be at stake -- position may already be settled";
+            System.out.println("WARNING: " + warning);
+            iso.warnings.add(warning);
+        }
+    }
+
+    private void calcStakesPass(IsolatedProblem iso, int visits) throws Exception {
         double threshold = Double.parseDouble(props.getProperty("redo.stake_threshold", "1.3"));
         NodeAnalyzer na = new NodeAnalyzer(props);
 
@@ -108,6 +127,7 @@ public class ProblemIsolator {
             throw new RuntimeException("pass analysis failed: " + karPass.error);
         }
 
+        iso.stakes.clear();
         StringBuilder sb = new StringBuilder();
         for (int x = 0; x < 19; x++)
             for (int y = 0; y < 19; y++) {
@@ -121,9 +141,5 @@ public class ProblemIsolator {
                 }
             }
         System.out.println("stakes (" + iso.stakes.size() + "): " + sb);
-
-        if (iso.stakes.isEmpty()) {
-            System.out.println("WARNING: no stones seem to be at stake -- position may already be settled");
-        }
     }
 }

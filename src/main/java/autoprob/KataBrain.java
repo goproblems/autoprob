@@ -20,6 +20,7 @@ public class KataBrain {
 	private BufferedReader reader;
 	private Map<String, KataAnalysisResult> results = new Hashtable<>();
 	private Map<String, String> errors = new Hashtable<>();
+	private volatile boolean processEnded = false;
 	private static final DecimalFormat df = new DecimalFormat("0.00");
 	public String modelPath;
 	private Thread thread;
@@ -66,6 +67,7 @@ public class KataBrain {
 						} catch (Exception e) {
 							e.printStackTrace();
 						} finally {
+							processEnded = true; // wake up any getResult waiters
 							if (process != null) {
 								process.destroy(); // Ensure process is terminated when done
 							}
@@ -191,6 +193,9 @@ public class KataBrain {
 		String nm = id + targetTurn; // lookup
 		long startTime = System.currentTimeMillis();
 		while (true) {
+			// read before checking the maps: if the process ended, any result it
+			// produced is already visible, so a miss below means it will never come
+			boolean ended = processEnded;
 			synchronized (this) {
 				if (errors.containsKey(id)) {
 					String errorMsg = errors.remove(id);
@@ -205,6 +210,14 @@ public class KataBrain {
 //					System.out.println("brain found: " + id + " : " + targetTurn);
 					return results.remove(nm);
 				}
+			}
+			if (ended) {
+				System.err.println("KataGo process ended while waiting for id=" + id + ", turn=" + targetTurn);
+				KataAnalysisResult errorResult = new KataAnalysisResult();
+				errorResult.id = id;
+				errorResult.turnNumber = targetTurn;
+				errorResult.error = "katago process ended unexpectedly";
+				return errorResult;
 			}
 			if (timeoutMs > 0 && System.currentTimeMillis() - startTime > timeoutMs) {
 				System.err.println("KataGo query timed out after " + (timeoutMs / 1000) +

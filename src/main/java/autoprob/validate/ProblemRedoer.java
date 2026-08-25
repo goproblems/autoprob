@@ -34,6 +34,8 @@ public class ProblemRedoer {
         public int bestPrefix;
         public boolean firstMoveMatch;
         public boolean exact;
+        public int inTreeDepth; // how long the generated line stays inside the original tree
+        public boolean endsOnRight; // the deepest in-tree node reached is a RIGHT node
         public List<String> notes = new ArrayList<>();
 
         public int lengthDelta() {
@@ -142,6 +144,7 @@ public class ProblemRedoer {
         System.out.println("generated (" + result.generated.length() + " moves): " + result.generated);
 
         evaluate(result, refPaths);
+        evaluateTreeWalk(result, root);
         writeOutputSgf(file, sgf, result);
         printFileReport(result);
     }
@@ -167,6 +170,22 @@ public class ProblemRedoer {
         result.exact = bestPrefix == result.generated.length() && bestPrefix == best.length();
     }
 
+    // walk the original tree along the generated moves: a generated move that exists
+    // anywhere in the tree (even off the RIGHT paths) was considered by the author.
+    // this separates legitimate alternative resistance from genuinely foreign moves.
+    private void evaluateTreeWalk(RedoResult result, Node root) {
+        Node cur = root;
+        int depth = 0;
+        for (MovePath.Move move : result.generated.moves) {
+            Node next = cur.getChildWithMove(move.loc);
+            if (next == null) break;
+            cur = next;
+            depth++;
+        }
+        result.inTreeDepth = depth;
+        result.endsOnRight = cur.result == autoprob.go.Intersection.RIGHT;
+    }
+
     private void printFileReport(RedoResult result) {
         System.out.println();
         System.out.println("--- report for " + result.file + " ---");
@@ -176,7 +195,9 @@ public class ProblemRedoer {
                 + ", common prefix: " + result.bestPrefix
                 + ", generated " + result.generated.length() + " vs ref " + result.bestRef.length()
                 + " moves (delta " + (result.lengthDelta() >= 0 ? "+" : "") + result.lengthDelta() + ")"
-                + ", exact: " + (result.exact ? "yes" : "no"));
+                + ", exact: " + (result.exact ? "yes" : "no")
+                + ", in tree: " + result.inTreeDepth + "/" + result.generated.length()
+                + (result.endsOnRight ? " ending RIGHT" : ""));
         for (String note : result.notes) {
             System.out.println("note: " + note);
         }
@@ -239,6 +260,7 @@ public class ProblemRedoer {
                     + " ref:" + r.bestRef.length()
                     + " delta:" + (r.lengthDelta() >= 0 ? "+" : "") + r.lengthDelta()
                     + " exact:" + (r.exact ? "y" : "n")
+                    + " tree:" + r.inTreeDepth + (r.endsOnRight ? "R" : "")
                     + (r.endedNaturally ? "" : " (truncated)"));
         }
         if (ok > 0) {
@@ -260,15 +282,16 @@ public class ProblemRedoer {
             return;
         }
         try (PrintWriter writer = new PrintWriter(csvPath)) {
-            writer.println("file,error,refpaths,firstmatch,prefix,genlen,reflen,delta,exact,natural,generated");
+            writer.println("file,error,refpaths,firstmatch,prefix,genlen,reflen,delta,exact,natural,intree,endsright,generated");
             for (RedoResult r : results) {
                 if (r.error != null) {
-                    writer.println(r.file + "," + r.error.replace(',', ';') + ",,,,,,,,,");
+                    writer.println(r.file + "," + r.error.replace(',', ';') + ",,,,,,,,,,,");
                     continue;
                 }
                 writer.println(r.file + ",," + r.refCount + "," + r.firstMoveMatch + "," + r.bestPrefix
                         + "," + r.generated.length() + "," + r.bestRef.length() + "," + r.lengthDelta()
                         + "," + r.exact + "," + r.endedNaturally
+                        + "," + r.inTreeDepth + "," + r.endsOnRight
                         + "," + r.generated.toString().replace(',', ' '));
             }
         }

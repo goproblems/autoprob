@@ -128,13 +128,34 @@ public class ProblemRedoer {
         ProblemIsolator.IsolatedProblem iso = isolator.isolate(root);
         System.out.println(iso.problem.board);
         result.notes.addAll(iso.warnings);
+        writeIsolatedSgf(file, iso);
 
         // regenerate the solution line
+        boolean forceFirst = Boolean.parseBoolean(props.getProperty("redo.force_first_move", "false"));
         SolutionPathGenerator generator = new SolutionPathGenerator(props, brain, iso);
-        if (Boolean.parseBoolean(props.getProperty("redo.force_first_move", "false")) && !refPaths.isEmpty()) {
+        if (forceFirst && !refPaths.isEmpty()) {
             generator.setForcedFirstMove(refPaths.get(0).moves.get(0).loc);
         }
         GenResult gen = generator.generateMainLine();
+
+        // if the score drifted, the isolation baseline missed the solution's value:
+        // recalibrate stakes and komi from the discovered line and regenerate once
+        if (gen.endNode != null && hasDriftNote(gen.notes)
+                && Boolean.parseBoolean(props.getProperty("redo.recalibrate", "true"))) {
+            System.out.println("=== recalibrating isolation from the discovered line and regenerating ===");
+            isolator.recalibrate(iso, gen.endNode);
+            writeIsolatedSgf(file, iso); // refresh with corrected stakes and komi
+            iso.problem.removeAllChildren(); // discard the first generation's tree
+            generator = new SolutionPathGenerator(props, brain, iso);
+            if (forceFirst && !refPaths.isEmpty()) {
+                generator.setForcedFirstMove(refPaths.get(0).moves.get(0).loc);
+            }
+            GenResult gen2 = generator.generateMainLine();
+            if (gen2.endNode != null) {
+                gen2.notes.add(0, "regenerated after recalibration");
+                gen = gen2;
+            }
+        }
         result.notes.addAll(gen.notes);
         result.endedNaturally = gen.endedNaturally;
         if (gen.endNode == null) {
@@ -170,6 +191,13 @@ public class ProblemRedoer {
         result.exact = bestPrefix == result.generated.length() && bestPrefix == best.length();
     }
 
+    private boolean hasDriftNote(List<String> notes) {
+        for (String note : notes) {
+            if (note.contains("score drifted")) return true;
+        }
+        return false;
+    }
+
     // walk the original tree along the generated moves: a generated move that exists
     // anywhere in the tree (even off the RIGHT paths) was considered by the author.
     // this separates legitimate alternative resistance from genuinely foreign moves.
@@ -203,16 +231,54 @@ public class ProblemRedoer {
         }
     }
 
-    // write the original problem with the generated line grafted in for eyeballing
-    private void writeOutputSgf(File file, String sgf, RedoResult result) throws Exception {
-        if (!Boolean.parseBoolean(props.getProperty("redo.write_file", "true"))) {
+    // write the exact board the engine evaluates (fortress fill + balanced komi),
+    // so it can be loaded in a GUI to inspect what katago sees. note the tool
+    // queries with tromp-taylor rules, so match that when analyzing by hand.
+    private void writeIsolatedSgf(File file, ProblemIsolator.IsolatedProblem iso) throws Exception {
+        if (!Boolean.parseBoolean(props.getProperty("redo.output.isolated", "false"))) {
             return;
         }
+        // build a throwaway copy so the live problem node stays untouched
+        Node out = new Node(null);
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++)
+                out.board.board[x][y].stone = iso.problem.board.board[x][y].stone;
+        out.addXtraTag("KM", String.valueOf(iso.komi));
+        out.addXtraTag("PL", iso.solverColor == autoprob.go.Intersection.BLACK ? "B" : "W");
+        // mark the stones the tool believes are at stake
+        StringBuilder stakes = new StringBuilder();
+        for (java.awt.Point p : iso.stakes) {
+            out.addAct(new autoprob.go.action.TriangleAction(p.x, p.y));
+            if (stakes.length() > 0) stakes.append(" ");
+            stakes.append(autoprob.go.Intersection.toGTPloc(p.x, p.y, 19));
+        }
+        out.addAct(new CommentAction("isolated evaluation board (tromp-taylor rules). komi " + iso.komi
+                + ", " + (iso.solverColor == autoprob.go.Intersection.BLACK ? "black" : "white")
+                + " to solve. triangles mark the stones whose fate the tool thinks depends on solving: " + stakes));
+
+        String baseName = file.getName().replaceAll("\\.sgf$", "");
+        File outFile = new File(getOutDir(), baseName + "_isolated.sgf");
+        try (PrintWriter writer = new PrintWriter(outFile)) {
+            writer.println("(" + out.outputSGF(true) + ")");
+        }
+        System.out.println("wrote isolated board: " + outFile.getPath());
+    }
+
+    private File getOutDir() {
         String outDirName = props.getProperty("redo.output.dir", "redo_out");
         File outDir = new File(outDirName);
         if (!outDir.exists() && !outDir.mkdirs()) {
             throw new RuntimeException("cannot create output directory: " + outDirName);
         }
+        return outDir;
+    }
+
+    // write the original problem with the generated line grafted in for eyeballing
+    private void writeOutputSgf(File file, String sgf, RedoResult result) throws Exception {
+        if (!Boolean.parseBoolean(props.getProperty("redo.write_file", "true"))) {
+            return;
+        }
+        File outDir = getOutDir();
 
         // fresh parse so we do not disturb evaluation state
         Parser parser = new Parser();

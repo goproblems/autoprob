@@ -165,6 +165,7 @@ public class SolutionPathGenerator {
                 break;
             }
             checkStakesHeld(karAfter, moveCount, result);
+            checkScoreDrift(karAfter, moveCount, result);
 
             if (moveCount >= maxMoves) {
                 result.notes.add("hit max moves (" + maxMoves + "), truncating");
@@ -192,11 +193,27 @@ public class SolutionPathGenerator {
         return result;
     }
 
+    private boolean scoreDriftNoted = false;
+
+    // a big gap between the score and the komi balance target means the isolation
+    // baseline missed part of the solution -- the game is no longer close
+    private void checkScoreDrift(KataAnalysisResult kar, int moveCount, GenResult result) {
+        if (scoreDriftNoted) return;
+        double drift = kar.blackScore() - iso.targetLead;
+        if (Math.abs(drift) > 15) {
+            String note = "WARNING: score drifted " + df.format(drift) + " from the komi target after move "
+                    + moveCount + " -- komi baseline likely missed the solution";
+            System.out.println(note);
+            result.notes.add(note);
+            scoreDriftNoted = true;
+        }
+    }
+
     // warn if the stake stones are no longer settled the way the root solution expects
     private void checkStakesHeld(KataAnalysisResult kar, int moveCount, GenResult result) {
         int flipped = 0;
         for (Point s : iso.stakes) {
-            double rootOwn = iso.rootKar.ownership.get(s.x + s.y * 19);
+            double rootOwn = iso.solvedKar.ownership.get(s.x + s.y * 19);
             double nowOwn = kar.ownership.get(s.x + s.y * 19);
             if (rootOwn * nowOwn < 0 && Math.abs(nowOwn) > 0.3) {
                 flipped++;

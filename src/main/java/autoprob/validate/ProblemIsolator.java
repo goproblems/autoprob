@@ -25,7 +25,8 @@ public class ProblemIsolator {
         public Board filledStones = new Board(); // artificial stones we placed
         public int solverColor;
         public double komi;
-        public KataAnalysisResult rootKar; // analysis of the balanced root position
+        public KataAnalysisResult solvedKar; // analysis of the solved state (after the best first move)
+        public double targetLead; // black score the komi balance aims for with correct play
         public ArrayList<Point> stakes = new ArrayList<>(); // stones whose life depends on solving
         public ArrayList<String> warnings = new ArrayList<>();
 
@@ -63,11 +64,50 @@ public class ProblemIsolator {
         return iso;
     }
 
+    // after a generation run discovered value the isolation baseline missed (score
+    // drift), rebuild the stakes and komi from the solved end position of that run.
+    // endNode holds the board after the generated line was played out.
+    public void recalibrate(IsolatedProblem iso, Node endNode) throws Exception {
+        int visits = Integer.parseInt(props.getProperty("redo.visits_root", "2000"));
+        double threshold = Double.parseDouble(props.getProperty("redo.stake_threshold", "1.3"));
+        NodeAnalyzer na = new NodeAnalyzer(props);
+
+        KataAnalysisResult karEnd = na.analyzeNode(brain, endNode, visits);
+        if (karEnd.isError()) {
+            throw new RuntimeException("recalibration end analysis failed: " + karEnd.error);
+        }
+        Node passNode = iso.problem.addBasicMove(19, 19);
+        KataAnalysisResult karPass = na.analyzeNode(brain, passNode, visits);
+        iso.problem.removeChildNode(passNode);
+        if (karPass.isError()) {
+            throw new RuntimeException("recalibration pass analysis failed: " + karPass.error);
+        }
+
+        iso.solvedKar = karEnd;
+        iso.stakes.clear();
+        StringBuilder sb = new StringBuilder();
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                if (iso.problem.board.board[x][y].stone == Intersection.EMPTY) continue;
+                if (iso.isFilled(x, y)) continue;
+                double od = karEnd.ownership.get(x + y * 19) - karPass.ownership.get(x + y * 19);
+                if (Math.abs(od) > threshold) {
+                    iso.stakes.add(new Point(x, y));
+                    if (sb.length() > 0) sb.append(" ");
+                    sb.append(Intersection.toGTPloc(x, y, 19));
+                }
+            }
+        double drift = karEnd.blackScore() - iso.targetLead;
+        setKomi(iso, iso.komi + drift);
+        System.out.println("recalibrated: komi " + iso.komi + ", stakes (" + iso.stakes.size() + "): " + sb);
+    }
+
     // adjust komi so that with correct play the solver is slightly ahead:
     // solving decides the game, and any slack move loses
     private void balanceKomi(IsolatedProblem iso) throws Exception {
         int visits = Integer.parseInt(props.getProperty("redo.balance_visits", "1500"));
         double margin = Double.parseDouble(props.getProperty("redo.komi_margin", "2.5"));
+        iso.targetLead = (iso.solverColor == Intersection.BLACK) ? margin : -margin;
         NodeAnalyzer na = new NodeAnalyzer(props);
 
         KataAnalysisResult kar = na.analyzeNode(brain, iso.problem, visits);
@@ -75,32 +115,37 @@ public class ProblemIsolator {
             throw new RuntimeException("komi balance analysis failed: " + kar.error);
         }
         double lead = kar.blackScore(); // black perspective
-        double targetLead = (iso.solverColor == Intersection.BLACK) ? margin : -margin;
         double oldKomi = 7.5; // fresh problem root has no KM tag yet
-        double newKomi = oldKomi + (lead - targetLead);
-        newKomi = Math.round(newKomi * 2.0) / 2.0;
-        if (Math.abs(newKomi) > 150) {
-            System.out.println("WARNING: clamping komi " + newKomi + " to katago limit, the game will not be balanced");
-            newKomi = Math.copySign(150, newKomi);
-        }
-        iso.problem.setXtraTag("KM", String.valueOf(newKomi));
-        iso.komi = newKomi;
-
+        setKomi(iso, oldKomi + (lead - iso.targetLead));
         System.out.println("komi balance: lead " + df.format(lead) + " at komi " + oldKomi
-                + " -> komi " + newKomi + " (solver " + Intersection.color2name(iso.solverColor) + ")");
+                + " -> komi " + iso.komi + " (solver " + Intersection.color2name(iso.solverColor) + ")");
     }
 
-    // figure out which stones are at stake: compare best play with the solver passing.
-    // retries with more visits if nothing shows up, since subtle tesujis can hide the
-    // stakes from a shallow search.
+    private void setKomi(IsolatedProblem iso, double komi) {
+        komi = Math.round(komi * 2.0) / 2.0;
+        if (Math.abs(komi) > 150) {
+            System.out.println("WARNING: clamping komi " + komi + " to katago limit, the game will not be balanced");
+            komi = Math.copySign(150, komi);
+        }
+        iso.problem.setXtraTag("KM", String.valueOf(komi));
+        iso.komi = komi;
+    }
+
+    // figure out which stones are at stake: compare the solved state with the solver
+    // passing. the solved side is anchored on the position after the best first move,
+    // where the search is concentrated -- a diffuse root analysis can miss a hard
+    // tesuji entirely and make the whole group look unconditionally settled.
+    // retries with more visits when the result looks inconsistent.
     private void calcStakes(IsolatedProblem iso) throws Exception {
         int visits = Integer.parseInt(props.getProperty("redo.visits_root", "2000"));
-        calcStakesPass(iso, visits);
-        if (iso.stakes.isEmpty()) {
-            System.out.println("no stakes found, retrying with more visits");
+        int minStones = Integer.parseInt(props.getProperty("redo.threat_stones", "4"));
+        double scoreSwing = calcStakesPass(iso, visits);
+        if (iso.stakes.isEmpty() || (iso.stakes.size() < minStones && Math.abs(scoreSwing) > 10)) {
+            System.out.println("stakes look inconsistent (" + iso.stakes.size() + " stones, swing "
+                    + df.format(scoreSwing) + "), retrying with more visits");
             calcStakesPass(iso, visits * 2);
             if (!iso.stakes.isEmpty()) {
-                iso.warnings.add("stakes only found on deeper retry, consider higher redo.visits_root");
+                iso.warnings.add("stakes only settled on deeper retry, consider higher redo.visits_root");
             }
         }
         if (iso.stakes.isEmpty()) {
@@ -108,9 +153,21 @@ public class ProblemIsolator {
             System.out.println("WARNING: " + warning);
             iso.warnings.add(warning);
         }
+
+        // the first komi balance ran on the root analysis; if the solved state scores
+        // differently (root search missed the solution), rebalance on the solved state
+        double drift = iso.solvedKar.blackScore() - iso.targetLead;
+        if (Math.abs(drift) > 5) {
+            setKomi(iso, iso.komi + drift);
+            String note = "komi rebalanced by " + df.format(drift)
+                    + " to " + iso.komi + ": root analysis missed part of the solution value";
+            System.out.println(note);
+            iso.warnings.add(note);
+        }
     }
 
-    private void calcStakesPass(IsolatedProblem iso, int visits) throws Exception {
+    // returns the score swing between the solved state and the solver passing
+    private double calcStakesPass(IsolatedProblem iso, int visits) throws Exception {
         double threshold = Double.parseDouble(props.getProperty("redo.stake_threshold", "1.3"));
         NodeAnalyzer na = new NodeAnalyzer(props);
 
@@ -118,7 +175,19 @@ public class ProblemIsolator {
         if (karRoot.isError()) {
             throw new RuntimeException("root analysis failed: " + karRoot.error);
         }
-        iso.rootKar = karRoot;
+
+        // anchor the solved state on the best first move
+        KataAnalysisResult karSolved = karRoot;
+        if (!karRoot.moveInfos.isEmpty() && !karRoot.moveInfos.get(0).move.equals("pass")) {
+            Point m1 = Intersection.gtp2point(karRoot.moveInfos.get(0).move);
+            Node tike = iso.problem.addBasicMove(m1.x, m1.y);
+            KataAnalysisResult karMove = na.analyzeNode(brain, tike, visits);
+            iso.problem.removeChildNode(tike);
+            if (!karMove.isError()) {
+                karSolved = karMove;
+            }
+        }
+        iso.solvedKar = karSolved;
 
         Node passNode = iso.problem.addBasicMove(19, 19);
         KataAnalysisResult karPass = na.analyzeNode(brain, passNode, visits);
@@ -133,7 +202,7 @@ public class ProblemIsolator {
             for (int y = 0; y < 19; y++) {
                 if (iso.problem.board.board[x][y].stone == Intersection.EMPTY) continue;
                 if (iso.isFilled(x, y)) continue;
-                double od = karRoot.ownership.get(x + y * 19) - karPass.ownership.get(x + y * 19);
+                double od = karSolved.ownership.get(x + y * 19) - karPass.ownership.get(x + y * 19);
                 if (Math.abs(od) > threshold) {
                     iso.stakes.add(new Point(x, y));
                     if (sb.length() > 0) sb.append(" ");
@@ -141,5 +210,6 @@ public class ProblemIsolator {
                 }
             }
         System.out.println("stakes (" + iso.stakes.size() + "): " + sb);
+        return karSolved.blackScore() - karPass.blackScore();
     }
 }

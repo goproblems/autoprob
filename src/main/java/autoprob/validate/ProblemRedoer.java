@@ -75,6 +75,7 @@ public class ProblemRedoer {
 
         KataBrain brain = new KataBrain(props);
         List<RedoResult> results = new ArrayList<>();
+        int engineRestarts = 0;
         try {
             for (File file : files) {
                 System.out.println();
@@ -88,6 +89,24 @@ public class ProblemRedoer {
                 } catch (Exception e) {
                     e.printStackTrace();
                     result.error = e.getMessage();
+                }
+                // if katago died mid problem, restart it and retry this file once
+                if (!brain.isAlive() && engineRestarts < 3) {
+                    engineRestarts++;
+                    System.out.println("katago died, restarting engine (restart " + engineRestarts
+                            + ") and retrying " + file.getName());
+                    brain.stopKataBrain();
+                    brain = new KataBrain(props);
+                    RedoResult retry = new RedoResult();
+                    retry.file = file.getName();
+                    try {
+                        redoFile(brain, file, retry);
+                        result = retry;
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        retry.error = e.getMessage();
+                        result = retry;
+                    }
                 }
                 results.add(result);
             }

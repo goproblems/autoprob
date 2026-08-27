@@ -173,6 +173,11 @@ public class KataBrain {
 		}
 	}
 
+	// false once the katago process has exited; pending queries will error out
+	public boolean isAlive() {
+		return !processEnded;
+	}
+
 	public void doQuery(KataQuery query) throws Exception {
 		Gson gson = new Gson();
 		String qjson = gson.toJson(query, KataQuery.class);

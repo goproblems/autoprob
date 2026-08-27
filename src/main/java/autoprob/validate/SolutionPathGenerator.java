@@ -120,13 +120,7 @@ public class SolutionPathGenerator {
     }
 
     private KataAnalysisResult analyzeNear(Node node, int v) throws Exception {
-        KataAnalysisResult kar = na.analyzeNode(brain, node, v, nearDist, true, iso.filledStones);
-        if (kar.isError() && brain.isAlive()) {
-            // a single stalled query should not kill the whole generation
-            System.out.println("analysis failed (" + kar.error + "), retrying once");
-            kar = na.analyzeNode(brain, node, v, nearDist, true, iso.filledStones);
-        }
-        return kar;
+        return na.analyzeNode(brain, node, v, nearDist, true, iso.filledStones);
     }
 
     public GenResult generateMainLine() throws Exception {

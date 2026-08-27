@@ -90,6 +90,14 @@ public class NodeAnalyzer {
 		brain.doQuery(query);
 		KataAnalysisResult kres = brain.getResult(query.id, query.analyzeTurns.get(0));
 
+		if (kres.isError() && brain.isAlive()) {
+			// the engine sometimes stalls past the query timeout but recovers;
+			// one retry saves the whole run from a transient stall
+			System.out.println("analysis error (" + kres.error + "), retrying once");
+			query.id = query.id + "r";
+			brain.doQuery(query);
+			kres = brain.getResult(query.id, query.analyzeTurns.get(0));
+		}
 		if (kres.isError()) {
 			return kres;
 		}

@@ -67,7 +67,9 @@ public class ProblemIsolator {
     // after a generation run discovered value the isolation baseline missed (score
     // drift), rebuild the stakes and komi from the solved end position of that run.
     // endNode holds the board after the generated line was played out.
-    public void recalibrate(IsolatedProblem iso, Node endNode) throws Exception {
+    // returns true if the baseline actually moved: a mid-line drift can be a
+    // transient capture-phase dip, in which case regenerating is a waste.
+    public boolean recalibrate(IsolatedProblem iso, Node endNode) throws Exception {
         int visits = Integer.parseInt(props.getProperty("redo.visits_root", "2000"));
         double threshold = Double.parseDouble(props.getProperty("redo.stake_threshold", "1.3"));
         NodeAnalyzer na = new NodeAnalyzer(props);
@@ -99,7 +101,9 @@ public class ProblemIsolator {
             }
         double drift = karEnd.blackScore() - iso.targetLead;
         setKomi(iso, iso.komi + drift);
-        System.out.println("recalibrated: komi " + iso.komi + ", stakes (" + iso.stakes.size() + "): " + sb);
+        System.out.println("recalibrated: komi " + iso.komi + ", stakes (" + iso.stakes.size() + "): " + sb
+                + ", end drift " + df.format(drift));
+        return Math.abs(drift) > 5;
     }
 
     // adjust komi so that with correct play the solver is slightly ahead:

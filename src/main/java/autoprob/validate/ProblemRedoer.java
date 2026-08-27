@@ -142,18 +142,23 @@ public class ProblemRedoer {
         // recalibrate stakes and komi from the discovered line and regenerate once
         if (gen.endNode != null && hasDriftNote(gen.notes)
                 && Boolean.parseBoolean(props.getProperty("redo.recalibrate", "true"))) {
-            System.out.println("=== recalibrating isolation from the discovered line and regenerating ===");
-            isolator.recalibrate(iso, gen.endNode);
+            System.out.println("=== recalibrating isolation from the discovered line ===");
+            boolean baselineMoved = isolator.recalibrate(iso, gen.endNode);
             writeIsolatedSgf(file, iso); // refresh with corrected stakes and komi
-            iso.problem.removeAllChildren(); // discard the first generation's tree
-            generator = new SolutionPathGenerator(props, brain, iso);
-            if (forceFirst && !refPaths.isEmpty()) {
-                generator.setForcedFirstMove(refPaths.get(0).moves.get(0).loc);
-            }
-            GenResult gen2 = generator.generateMainLine();
-            if (gen2.endNode != null) {
-                gen2.notes.add(0, "regenerated after recalibration");
-                gen = gen2;
+            if (baselineMoved) {
+                System.out.println("=== baseline was wrong, regenerating ===");
+                iso.problem.removeAllChildren(); // discard the first generation's tree
+                generator = new SolutionPathGenerator(props, brain, iso);
+                if (forceFirst && !refPaths.isEmpty()) {
+                    generator.setForcedFirstMove(refPaths.get(0).moves.get(0).loc);
+                }
+                GenResult gen2 = generator.generateMainLine();
+                if (gen2.endNode != null) {
+                    gen2.notes.add(0, "regenerated after recalibration");
+                    gen = gen2;
+                }
+            } else {
+                System.out.println("end of line was on target, keeping the first generation");
             }
         }
         result.notes.addAll(gen.notes);

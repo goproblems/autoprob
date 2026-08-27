@@ -149,6 +149,9 @@ public class KataBrain {
 
 			if (line.startsWith("{")) {
 				KataAnalysisResult kres = gson.fromJson(line, KataAnalysisResult.class);
+				if (kres.id != null && kres.id.startsWith("nudge")) {
+					continue; // wake-up query, result is meaningless
+				}
 				total++;
 				double avgTime = (System.currentTimeMillis() - startTime) / (double)total;
 				if (printSummary)
@@ -192,11 +195,33 @@ public class KataBrain {
 	 * Waits for a KataGo result. Timeout is read from props (kata.query.timeout.ms).
 	 * A value of 0 means no timeout (wait indefinitely).
 	 */
+	// the analysis engine can lose the wakeup for a request it has already read and
+	// parsed: it then sits idle until the next request arrives, which flushes the
+	// stuck one immediately. when a result is overdue we send a trivial one-visit
+	// query purely to kick the scheduler.
+	private void nudgeEngine() {
+		try {
+			KataQuery kq = new KataQuery();
+			kq.id = "nudge" + Math.random();
+			kq.initialStones = new java.util.ArrayList<>();
+			kq.moves = new java.util.ArrayList<>();
+			kq.analyzeTurns = new java.util.ArrayList<>();
+			kq.analyzeTurns.add(0);
+			kq.maxVisits = 1;
+			System.out.println("result overdue, nudging katago scheduler");
+			doQuery(kq);
+		} catch (Exception e) {
+			System.out.println("nudge failed: " + e.getMessage());
+		}
+	}
+
 	public KataAnalysisResult getResult(String id, int targetTurn) {
 //		System.out.println("brain fetching: " + id + " : " + targetTurn);
 		long timeoutMs = Long.parseLong(props.getProperty("kata.query.timeout.ms", "0"));
+		long nudgeMs = Long.parseLong(props.getProperty("kata.nudge.ms", "30000"));
 		String nm = id + targetTurn; // lookup
 		long startTime = System.currentTimeMillis();
+		long lastNudge = startTime;
 		while (true) {
 			// read before checking the maps: if the process ended, any result it
 			// produced is already visible, so a miss below means it will never come
@@ -223,6 +248,10 @@ public class KataBrain {
 				errorResult.turnNumber = targetTurn;
 				errorResult.error = "katago process ended unexpectedly";
 				return errorResult;
+			}
+			if (nudgeMs > 0 && System.currentTimeMillis() - lastNudge > nudgeMs) {
+				nudgeEngine();
+				lastNudge = System.currentTimeMillis();
 			}
 			if (timeoutMs > 0 && System.currentTimeMillis() - startTime > timeoutMs) {
 				System.err.println("KataGo query timed out after " + (timeoutMs / 1000) +

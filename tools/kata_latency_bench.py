@@ -71,12 +71,13 @@ def wait_for(qid, deadline_s):
                 outcome = f"stalled_then_{'flushed_by_nudge' if dt < 5 else 'late'}"
             return outcome, time.time() - t0, nudged_at
 
-while True:
-    ts, line = lines.get()
-    if line is None: sys.exit("engine died at startup")
-    if "ready to begin handling requests" in line.lower():
-        break
-log(f"engine ready ({LABEL})")
+# warmup: katago queues stdin until ready, and the response proves readiness
+# without parsing startup chatter (which goes to stderr, not stdout)
+send({"id": "warmup", "initialStones": [], "moves": [], "rules": "tromp-taylor",
+      "komi": 7.5, "boardXSize": 19, "boardYSize": 19, "analyzeTurns": [0], "maxVisits": 1})
+outcome, dt, _ = wait_for("warmup", 600)
+if outcome == "engine_died": sys.exit("engine died at startup")
+log(f"engine ready ({LABEL}) after {dt:.1f}s warmup")
 
 taken = set(st[1] for st in base["initialStones"])
 cols = "ABCDEFGHJKLMNOPQRST"

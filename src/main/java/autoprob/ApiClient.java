@@ -19,6 +19,7 @@ import com.google.gson.JsonParser;
 public class ApiClient {
 
     private Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    private final JwtAuthClient jwtAuthClient = new JwtAuthClient();
 
     public class ApiResponse<T> {
         private int statusCode;
@@ -87,14 +88,27 @@ public class ApiClient {
             java.lang.reflect.Type responseType, Properties props) throws Exception {
         boolean debug = Boolean.parseBoolean(props.getProperty("debug", "false"));
         boolean printCurl = Boolean.parseBoolean(props.getProperty("curl", "false"));
-
-        String apiKey = props.getProperty("apikey");
-        if (apiKey == null) {
-            throw new RuntimeException("Missing required property: apikey");
-        }
-        
         String urlString = buildUrl(endpointKey, pathParams, queryString, props);
 
+        boolean josekiApi = endpointKey.startsWith("api.joseki.");
+        boolean jwtCredentialsConfigured = false;
+        String apiKey = "";
+        String bearerToken = "";
+        if (josekiApi) {
+            jwtCredentialsConfigured = jwtAuthClient.hasConfiguredCredentials(props);
+            if (!jwtCredentialsConfigured) {
+                throw new RuntimeException(
+                    "Missing Josekipedia credentials: configure api.joseki.username and api.joseki.password"
+                );
+            }
+            bearerToken = jwtAuthClient.getAccessToken(props);
+        } else {
+            apiKey = props.getProperty("apikey", "").trim();
+            if (apiKey.isEmpty()) {
+                throw new RuntimeException("Missing required property: apikey");
+            }
+        }
+        
         if (Boolean.parseBoolean(props.getProperty("api.debug", "false"))) {
             System.out.println("Calling API URL: " + urlString);
         }
@@ -102,7 +116,12 @@ public class ApiClient {
         if (printCurl) {
             StringBuilder curlCmd = new StringBuilder("curl -X " + method + " \\\n");
             curlCmd.append("  \"" + urlString + "\" \\\n");
-            curlCmd.append("  -H \"X-Api-Key: " + apiKey + "\" \\\n");
+            if (!apiKey.isEmpty()) {
+                curlCmd.append("  -H \"X-Api-Key: <redacted>\" \\\n");
+            }
+            if (!bearerToken.isEmpty()) {
+                curlCmd.append("  -H \"Authorization: Bearer <redacted>\" \\\n");
+            }
             curlCmd.append("  -H \"Accept: application/json\" \\\n");
             
             if ("POST".equals(method) && requestBody != null && !requestBody.isEmpty()) {
@@ -114,11 +133,49 @@ public class ApiClient {
             System.out.println(curlCmd.toString());
             System.out.println();
         }
-        
+
+        ApiResponse<T> response = executeApiRequest(
+            method,
+            urlString,
+            requestBody,
+            responseType,
+            apiKey,
+            bearerToken,
+            debug
+        );
+        if (response.getStatusCode() == 401 && jwtCredentialsConfigured) {
+            bearerToken = jwtAuthClient.refreshAfterUnauthorized(props, bearerToken);
+            response = executeApiRequest(
+                method,
+                urlString,
+                requestBody,
+                responseType,
+                apiKey,
+                bearerToken,
+                debug
+            );
+        }
+
+        return response;
+    }
+
+    private <T> ApiResponse<T> executeApiRequest(
+            String method,
+            String urlString,
+            String requestBody,
+            java.lang.reflect.Type responseType,
+            String apiKey,
+            String bearerToken,
+            boolean debug) throws Exception {
         URL url = new URL(urlString);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod(method);
-        connection.setRequestProperty("X-Api-Key", apiKey);
+        if (!apiKey.isEmpty()) {
+            connection.setRequestProperty("X-Api-Key", apiKey);
+        }
+        if (!bearerToken.isEmpty()) {
+            connection.setRequestProperty("Authorization", "Bearer " + bearerToken);
+        }
         connection.setRequestProperty("Accept", "application/json");
         connection.setConnectTimeout(60000);
         connection.setReadTimeout(60000);
@@ -141,7 +198,7 @@ public class ApiClient {
         }
         
         int responseCode = connection.getResponseCode();
-        if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+        if (debug) {
             System.out.println("Response code: " + responseCode);
         }
         

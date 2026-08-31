@@ -71,6 +71,8 @@ public class GoTool {
             runRecalculateNodesCommand(props);
         } else if (command.equals("josekinoderecalculate")) {
             runJosekiNodeRecalculateCommand(props);
+        } else if (command.equals("josekihandler")) {
+            runJosekiAnalysisRequestCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -116,6 +118,12 @@ public class GoTool {
         System.out.println("Running joseki node recalculation...");
         JosekiNodeRecalculator recalculator = new JosekiNodeRecalculator(props);
         recalculator.run();
+    }
+
+    private void runJosekiAnalysisRequestCommand(Properties props) throws Exception {
+        System.out.println("Running joseki on-demand analysis request handler...");
+        JosekiNodeRecalculator recalculator = new JosekiNodeRecalculator(props);
+        recalculator.runAnalysisRequests();
     }
 
     private Node loadPassedSgf(Properties props) throws Exception {

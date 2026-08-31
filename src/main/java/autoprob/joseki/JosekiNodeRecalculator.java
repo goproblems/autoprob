@@ -4,6 +4,7 @@ import autoprob.ApiClient;
 import autoprob.KataBrain;
 import autoprob.QueryBuilder;
 import autoprob.api.JosekiAnalysisResultData;
+import autoprob.api.JosekiAnalysisRequestData;
 import autoprob.api.JosekiAnalysisSubmitBody;
 import autoprob.api.JosekiHumanPolicyDistributionData;
 import autoprob.api.JosekiHumanPolicyTaskListResponse;
@@ -151,6 +152,68 @@ public class JosekiNodeRecalculator {
         System.out.println("Joseki recalculation complete. Processed " + processedNodes
             + " nodes, submitted " + submittedResults + " results + " + submittedHumanPolicies
             + " human policies, failed " + failedNodes + " nodes.");
+    }
+
+    public void runAnalysisRequests() throws Exception {
+        List<AnalysisScope> scopes = analysisScopes();
+        long pollIntervalMs = Math.max(250L, Long.parseLong(
+            props.getProperty("joseki.request_poll_interval_ms", "2000")
+        ));
+        System.out.println("Waiting for josekipedia analysis requests"
+            + " (scopes=" + formatScopes(scopes)
+            + ", poll interval=" + pollIntervalMs + "ms)");
+
+        KataBrain brain = new KataBrain(props);
+        try {
+            while (!Thread.currentThread().isInterrupted()) {
+                JosekiAnalysisRequestData request;
+                try {
+                    request = fetchNextAnalysisRequest();
+                } catch (SecurityException ex) {
+                    throw ex;
+                } catch (Exception ex) {
+                    System.out.println(RED + "Failed to fetch next joseki analysis request: "
+                        + describeException(ex) + RESET);
+                    sleepForRequests(pollIntervalMs);
+                    continue;
+                }
+
+                if (request == null) {
+                    sleepForRequests(pollIntervalMs);
+                    continue;
+                }
+
+                long startedAt = System.currentTimeMillis();
+                String path = request.path == null ? "" : request.path;
+                try {
+                    System.out.println("Processing joseki analysis request " + request.id
+                        + " source=" + request.source
+                        + " path=" + formatPath(path));
+                    JosekiNodeEntry entry = resolveNodeForAnalysis(path);
+                    List<JosekiAnalysisResultData> results = analyzeNode(entry, brain, scopes);
+                    long durationMs = Math.max(1L, System.currentTimeMillis() - startedAt);
+                    submitResults(
+                        results,
+                        List.of(),
+                        request.id,
+                        request.source == null ? "recalculate" : request.source,
+                        durationMs
+                    );
+                    System.out.println("Completed joseki analysis request " + request.id
+                        + " in " + durationMs + "ms");
+                } catch (Exception ex) {
+                    String message = describeException(ex);
+                    System.out.println(RED + "Failed joseki analysis request " + request.id
+                        + " path=" + formatPath(path) + ": " + message + RESET);
+                    if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                        ex.printStackTrace(System.out);
+                    }
+                    reportAnalysisRequestError(request.id, message);
+                }
+            }
+        } finally {
+            brain.stopKataBrain();
+        }
     }
 
     private record ProcessNodesResult(int submittedResults, int submittedHumanPolicies, int failedNodes) {}
@@ -435,7 +498,9 @@ public class JosekiNodeRecalculator {
     ) throws Exception {
         String path = entry.path == null ? "" : entry.path;
         Node node = buildNode(path);
-        Set<String> currentChildMoves = scope.includeExistingMoves ? fetchChildMoves(entry.id) : Set.of();
+        Set<String> currentChildMoves = scope.includeExistingMoves && entry.id > 0
+            ? fetchChildMoves(entry.id)
+            : Set.of();
         Set<String> parentChildMoves = new LinkedHashSet<>();
         String nodeMove = lastMove(path);
 
@@ -893,6 +958,120 @@ public class JosekiNodeRecalculator {
             });
     }
 
+    private JosekiAnalysisRequestData fetchNextAnalysisRequest() throws Exception {
+        List<String> params = new ArrayList<>();
+        addQueryParam(params, "clientVersion", String.valueOf(CLIENT_VERSION));
+        String clientId = props.getProperty("clientId", "").trim();
+        if (!clientId.isEmpty()) {
+            addQueryParam(params, "clientId", clientId);
+        }
+        String queryString = "?" + String.join("&", params);
+        ApiClient.ApiResponse<JosekiAnalysisRequestData> response = apiClient.makeGetRequest(
+            "api.joseki.analysis_requests_next",
+            null,
+            queryString,
+            JosekiAnalysisRequestData.class,
+            props
+        );
+        if (response.getStatusCode() == 204) {
+            return null;
+        }
+        if (response.getStatusCode() == 404) {
+            String error = response.getErrorMessage();
+            if (error != null && error.contains("No joseki analysis request found")) {
+                return null;
+            }
+            throw new RuntimeException("Failed to fetch next joseki analysis request: HTTP 404 - " + error);
+        }
+        if (response.getStatusCode() == 401 || response.getStatusCode() == 403) {
+            throw new SecurityException("Josekipedia rejected the analysis worker credentials: HTTP "
+                + response.getStatusCode() + " - " + response.getErrorMessage());
+        }
+        if (!response.isSuccess()) {
+            throw new RuntimeException("Failed to fetch next joseki analysis request: HTTP "
+                + response.getStatusCode() + " - " + response.getErrorMessage());
+        }
+        return response.getData();
+    }
+
+    private JosekiNodeEntry resolveNodeForAnalysis(String path) throws Exception {
+        JosekiNodeEntry entry = fetchNodeByPath(path);
+        if (entry != null) {
+            return entry;
+        }
+
+        entry = new JosekiNodeEntry();
+        entry.path = path;
+        String parentPath = parentPath(path);
+        if (parentPath != null) {
+            JosekiNodeEntry parent = fetchNodeByPath(parentPath);
+            entry.parentId = parent == null ? null : parent.id;
+        }
+        return entry;
+    }
+
+    private JosekiNodeEntry fetchNodeByPath(String path) throws Exception {
+        List<String> params = new ArrayList<>();
+        addQueryParam(params, "path", path);
+        addQueryParam(params, "limit", "1");
+        String queryString = "?" + String.join("&", params);
+        ApiClient.ApiResponse<JosekiNodeListResponse> response = apiClient.makeGetRequest(
+            "api.joseki.nodes",
+            null,
+            queryString,
+            JosekiNodeListResponse.class,
+            props
+        );
+        if (!response.isSuccess()) {
+            throw new RuntimeException("Failed to fetch joseki node for path " + formatPath(path)
+                + ": HTTP " + response.getStatusCode() + " - " + response.getErrorMessage());
+        }
+
+        JosekiNodeListResponse page = response.getData();
+        List<JosekiNodeEntry> entries = page == null || page.entries == null
+            ? List.of()
+            : page.entries;
+        if (entries.isEmpty()) {
+            return null;
+        }
+        if (entries.size() != 1 || !path.equals(entries.get(0).path)) {
+            throw new IllegalStateException("Unexpected joseki node response for path " + formatPath(path));
+        }
+        return entries.get(0);
+    }
+
+    private void reportAnalysisRequestError(int requestId, String message) {
+        try {
+            Map<String, String> pathParams = new HashMap<>();
+            pathParams.put("id", String.valueOf(requestId));
+            Map<String, String> body = new HashMap<>();
+            body.put("message", message.length() <= 2000 ? message : message.substring(0, 2000));
+            ApiClient.ApiResponse<Object> response = apiClient.makePostRequest(
+                "api.joseki.analysis_request_error",
+                pathParams,
+                gson.toJson(body),
+                Object.class,
+                props
+            );
+            if (!response.isSuccess()) {
+                System.out.println(RED + "Failed to report joseki analysis request " + requestId
+                    + " error: HTTP " + response.getStatusCode()
+                    + " - " + response.getErrorMessage() + RESET);
+            }
+        } catch (Exception ex) {
+            System.out.println(RED + "Failed to report joseki analysis request " + requestId
+                + " error: " + describeException(ex) + RESET);
+        }
+    }
+
+    private void sleepForRequests(long pollIntervalMs) {
+        try {
+            Thread.sleep(pollIntervalMs);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private JosekiHumanPolicyTaskListResponse fetchMissingHumanPolicyNodes(int limit, int offset) throws Exception {
         String queryString = buildMissingHumanPolicyNodesQuery(limit, offset);
         System.out.println(GREEN + "Joseki Human Policy tasks API URL: "
@@ -1158,8 +1337,20 @@ public class JosekiNodeRecalculator {
         List<JosekiAnalysisResultData> results,
         List<JosekiHumanPolicyDistributionData> humanPolicyDistributions
     ) throws Exception {
+        submitResults(results, humanPolicyDistributions, null, "recalculate", null);
+    }
+
+    private void submitResults(
+        List<JosekiAnalysisResultData> results,
+        List<JosekiHumanPolicyDistributionData> humanPolicyDistributions,
+        Integer requestId,
+        String source,
+        Long durationMs
+    ) throws Exception {
         JosekiAnalysisSubmitBody body = new JosekiAnalysisSubmitBody();
-        body.source = "recalculate";
+        body.requestId = requestId;
+        body.durationMs = durationMs;
+        body.source = source;
         body.clientVersion = CLIENT_VERSION;
         body.lowPolicyThreshold = lowPolicyThreshold();
         body.results = results;
@@ -1178,11 +1369,11 @@ public class JosekiNodeRecalculator {
                 + " Human Policy distributions for path=" + pathLabel);
         }
 
-        withApiRetries("submit joseki recalculated results path=" + pathLabel, () -> {
+        withApiRetries("submit joseki analysis results path=" + pathLabel, () -> {
             ApiClient.ApiResponse<Object> response = apiClient.makePostRequest(
                 "api.joseki.analysis_results", null, requestBody, Object.class, props);
             if (!response.isSuccess()) {
-                throw new RuntimeException("Failed to submit joseki recalculated result: HTTP "
+                throw new RuntimeException("Failed to submit joseki analysis result: HTTP "
                     + response.getStatusCode() + " - " + response.getErrorMessage());
             }
             return null;
@@ -1224,6 +1415,14 @@ public class JosekiNodeRecalculator {
             }
         }
         return null;
+    }
+
+    private String parentPath(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        int separator = path.lastIndexOf(',');
+        return separator < 0 ? "" : path.substring(0, separator);
     }
 
     private void printProgressBar(int current, int total, JosekiNodeEntry node) {

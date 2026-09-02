@@ -8,6 +8,7 @@ import autoprob.go.parse.Parser;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
+import autoprob.joseki.JosekiNodeCompleter;
 import autoprob.joseki.JosekiNodeRecalculator;
 import autoprob.problem.DifficultyEstimator;
 import autoprob.problem.SiteProblem;
@@ -73,6 +74,8 @@ public class GoTool {
             runJosekiNodeRecalculateCommand(props);
         } else if (command.equals("josekihandler")) {
             runJosekiAnalysisRequestCommand(props);
+        } else if (command.equals("josekinodecomplete")) {
+            runJosekiNodeCompleteCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -124,6 +127,11 @@ public class GoTool {
         System.out.println("Running joseki on-demand analysis request handler...");
         JosekiNodeRecalculator recalculator = new JosekiNodeRecalculator(props);
         recalculator.runAnalysisRequests();
+    }
+
+    private void runJosekiNodeCompleteCommand(Properties props) throws Exception {
+        System.out.println("Finding missing high-policy joseki nodes...");
+        new JosekiNodeCompleter(props).run();
     }
 
     private Node loadPassedSgf(Properties props) throws Exception {

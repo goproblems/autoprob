@@ -191,16 +191,19 @@ public class JosekiNodeRecalculator {
                         + " path=" + formatPath(path));
                     JosekiNodeEntry entry = resolveNodeForAnalysis(path);
                     List<JosekiAnalysisResultData> results = analyzeNode(entry, brain, scopes);
+                    List<JosekiHumanPolicyDistributionData> humanPolicyDistributions =
+                        analyzeHumanPolicies(entry, brain, humanSLProfiles());
                     long durationMs = Math.max(1L, System.currentTimeMillis() - startedAt);
                     submitResults(
                         results,
-                        List.of(),
+                        humanPolicyDistributions,
                         request.id,
                         request.source == null ? "recalculate" : request.source,
                         durationMs
                     );
                     System.out.println("Completed joseki analysis request " + request.id
-                        + " in " + durationMs + "ms");
+                        + " with " + humanPolicyDistributions.size()
+                        + " Human Policy distributions in " + durationMs + "ms");
                 } catch (Exception ex) {
                     String message = describeException(ex);
                     System.out.println(RED + "Failed joseki analysis request " + request.id

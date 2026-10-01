@@ -31,3 +31,11 @@ hs_err_pid*
 
 # VS Code workspace settings
 .vscode/
+
+# OS and build noise
+.DS_Store
+target/
+
+# autoprob scan progress and benchmark run output
+zpos
+*.stderr

@@ -74,6 +74,8 @@ public class GoTool {
             runJosekiNodeRecalculateCommand(props);
         } else if (command.equals("redo")) {
             runRedoCommand(props);
+        } else if (command.equals("fuseki")) {
+            runFusekiCommand(props);
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -126,6 +128,12 @@ public class GoTool {
         System.out.println("Running problem redo...");
         ProblemRedoer redoer = new ProblemRedoer(props);
         redoer.run();
+    }
+
+    // scan games for whole board fuseki choice problems (prototype)
+    private void runFusekiCommand(Properties props) throws Exception {
+        System.out.println("Running fuseki scan...");
+        new autoprob.fuseki.FusekiScanner(props).run();
     }
 
     private Node loadPassedSgf(Properties props) throws Exception {

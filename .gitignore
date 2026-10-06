@@ -39,3 +39,6 @@ target/
 # autoprob scan progress and benchmark run output
 zpos
 *.stderr
+
+# fuseki scan output
+fuseki_out/

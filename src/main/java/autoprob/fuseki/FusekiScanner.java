@@ -1,0 +1,882 @@
+package autoprob.fuseki;
+
+import java.awt.Point;
+import java.io.File;
+import java.nio.file.Files;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import autoprob.KataBrain;
+import autoprob.go.Board;
+import autoprob.go.Intersection;
+import autoprob.go.Node;
+import autoprob.go.action.MoveAction;
+import autoprob.go.parse.Parser;
+import autoprob.katastruct.AllowMove;
+import autoprob.katastruct.KataAnalysisResult;
+import autoprob.katastruct.KataQuery;
+import autoprob.katastruct.MoveInfo;
+
+// scans games for whole board fuseki choice problems. a position qualifies when
+// the move actually played lost points in a calm opening: every corner taken, no
+// tactical fighting, and several different moves that all keep the balance. the
+// problem pairs the game move (plausible because someone played it) with the most
+// human-natural of the good moves, one move deep.
+//
+// stage 1: fast net batch-analyzes every turn in the move window, keeps game moves that lost points
+// stage 2: fast net evaluates candidate moves with equal visits to check calmness and pick the answer
+// stage 3: strong net (kata.model) confirms the gap between the answer and the game move
+public class FusekiScanner {
+    public static final int STAGE_SCREEN = 1;
+    public static final int STAGE_CALM = 2;
+    public static final int STAGE_VERIFY = 3;
+
+    public static class Game {
+        public String file;
+        public String name;
+        public String pb, pw, br, wr, dt, pc;
+        public double gameKomi = Double.NaN;
+        public int moveCount;
+        public String skipped; // why the game was not scanned, null if scanned
+        List<List<String>> moves = new ArrayList<>(); // katago move list
+        List<Node> moveNodes = new ArrayList<>();
+    }
+
+    public static class Candidate {
+        public String move;
+        public Point p;
+        public String sources = ""; // k = katago top move, p = katago policy, h = human policy, g = game move
+        public double score = Double.NaN; // mover's perspective, equal visits per candidate
+        public List<String> pv = new ArrayList<>();
+        public double naturalPolicy; // human policy at fuseki.natural_rank
+        public PvTactics tactics;
+    }
+
+    public static class Reason {
+        public final String code;
+        public final String text;
+
+        Reason(String code, String text) {
+            this.code = code;
+            this.text = text;
+        }
+    }
+
+    public static class Position {
+        public Game game;
+        public int turn; // moves already played
+        public int moveNumber; // the move being chosen (turn + 1)
+        public int color; // side to play
+        public Board board; // position before the game move
+        public Point lastMove; // the opponent's previous move
+        public String gameMove;
+        public int stage; // furthest stage reached
+        public List<Reason> reasons = new ArrayList<>();
+        public long millis;
+
+        // stage 1, fast net batch
+        public double scoreLead = Double.NaN; // mover's perspective at the analysis komi
+        public double screenLoss = Double.NaN;
+        public boolean cornersOk, scoreOk;
+
+        // stage 2, fast net equal-visit candidates
+        public List<Candidate> candidates = new ArrayList<>();
+        public List<Candidate> good = new ArrayList<>();
+        public Candidate best, answer, mistake;
+        public int goodIdeas;
+        public double stdevMean = Double.NaN, stdevMax = Double.NaN;
+        public String moverRank;
+        public double mistakeHumanPolicy = Double.NaN;
+        public int mistakeHumanOrder;
+        public LinkedHashMap<String, Double> curve = new LinkedHashMap<>(); // rank -> P(pick answer over mistake)
+        public String crossover = "";
+
+        // stage 3, strong net
+        public boolean verified;
+        public String strongBestMove;
+        public double strongBest = Double.NaN, strongAnswer = Double.NaN, strongMistake = Double.NaN;
+
+        public String sgfPath; // relative to the run directory
+
+        public boolean accepted() {
+            return verified && reasons.isEmpty();
+        }
+
+        public boolean awaitingVerify() {
+            return stage == STAGE_VERIFY && !verified && reasons.isEmpty();
+        }
+
+        public double gap() {
+            return answer.score - mistake.score;
+        }
+
+        public double strongGap() {
+            return strongAnswer - strongMistake;
+        }
+
+        public double strongAnswerLoss() {
+            return Math.max(strongBest, strongAnswer) - strongAnswer;
+        }
+
+        public boolean hasReason(String code) {
+            for (Reason r : reasons) {
+                if (r.code.equals(code)) return true;
+            }
+            return false;
+        }
+
+        public String reasonText() {
+            List<String> l = new ArrayList<>();
+            for (Reason r : reasons) l.add(r.text);
+            return String.join("; ", l);
+        }
+
+        public String status() {
+            if (accepted()) return "accepted";
+            if (awaitingVerify()) return "awaiting strong net";
+            if (stage == STAGE_SCREEN) return "screened out";
+            if (stage == STAGE_CALM) return "rejected at calm check";
+            return "rejected by strong net";
+        }
+
+        // choices are labeled in board order so the label never gives the answer away
+        public String label(Candidate c) {
+            Candidate first = answer.p.x < mistake.p.x || (answer.p.x == mistake.p.x && answer.p.y < mistake.p.y) ? answer : mistake;
+            return c == first ? "A" : "B";
+        }
+
+        public String colorName() {
+            return Intersection.color2name(color, true);
+        }
+
+        public String id() {
+            return game.name + "_move" + moveNumber;
+        }
+    }
+
+    private final Properties props;
+    private final int minMove, maxMove;
+    private final Double fixedKomi;
+    private final int cornerSize;
+    private final double maxAbsScore;
+    private final String screenModel;
+    private final int screenVisits;
+    private final double screenMinLoss;
+    private final int rootVisits, evalVisits, candidatesPerSource;
+    private final double goodMargin, ideaDist;
+    private final int minGoodIdeas, pvCheckMoves;
+    private final int verifyRootVisits, verifyVisits;
+    private final double minGap, screenMinGap, verifyAnswerMargin;
+    private final String profilePrefix, naturalRank, defaultRank;
+    private final List<String> curveRanks;
+    private int queryCount = 0;
+
+    final List<Game> games = new ArrayList<>();
+    final List<Position> positions = new ArrayList<>();
+    String startedAt;
+    String strongModel;
+
+    public FusekiScanner(Properties props) {
+        this.props = props;
+        minMove = intProp("fuseki.min_move", 10);
+        maxMove = intProp("fuseki.max_move", 50);
+        String k = props.getProperty("fuseki.komi", "7.5").trim();
+        fixedKomi = k.isEmpty() ? null : Double.parseDouble(k);
+        cornerSize = intProp("fuseki.corner_size", 6);
+        maxAbsScore = doubleProp("fuseki.max_abs_score", 8);
+        screenModel = props.getProperty("fuseki.screen_model", props.getProperty("kata.model")).trim();
+        screenVisits = intProp("fuseki.screen_visits", 400);
+        screenMinLoss = doubleProp("fuseki.screen_min_loss", 1.5);
+        rootVisits = intProp("fuseki.root_visits", 1500);
+        evalVisits = intProp("fuseki.eval_visits", 600);
+        candidatesPerSource = intProp("fuseki.candidates_per_source", 6);
+        goodMargin = doubleProp("fuseki.good_margin", 0.5);
+        ideaDist = doubleProp("fuseki.idea_dist", 2.0);
+        minGoodIdeas = intProp("fuseki.min_good_ideas", 3);
+        pvCheckMoves = intProp("fuseki.pv_check_moves", 6);
+        verifyRootVisits = intProp("fuseki.verify_root_visits", 1000);
+        verifyVisits = intProp("fuseki.verify_visits", 1600);
+        minGap = doubleProp("fuseki.min_gap", 2.5);
+        screenMinGap = doubleProp("fuseki.screen_min_gap", 2.0);
+        verifyAnswerMargin = doubleProp("fuseki.verify_answer_margin", 1.0);
+        profilePrefix = props.getProperty("fuseki.profile_prefix", "rank_").trim();
+        naturalRank = props.getProperty("fuseki.natural_rank", "3d").trim();
+        defaultRank = props.getProperty("fuseki.default_rank", "1d").trim();
+        curveRanks = Arrays.asList(props.getProperty("fuseki.curve_ranks", "20k,15k,10k,5k,1k,3d,6d,9d").trim().split("\\s*,\\s*"));
+        strongModel = props.getProperty("kata.model").trim();
+    }
+
+    public void run() throws Exception {
+        String path = props.getProperty("path");
+        if (path == null) {
+            throw new RuntimeException("you must pass in a path to an SGF game file or directory");
+        }
+        File f = new File(path);
+        if (!f.exists()) {
+            throw new RuntimeException("no such file or directory: " + path);
+        }
+        List<File> files = new ArrayList<>();
+        collectSgfs(f, files);
+        files.sort((a, b) -> a.getPath().compareTo(b.getPath()));
+        startedAt = new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date());
+        File outDir = new File(props.getProperty("fuseki.output.dir", "fuseki_out"),
+                new SimpleDateFormat("yyyyMMdd-HHmm").format(new Date()));
+        FusekiReport report = new FusekiReport(this, outDir);
+        long start = System.currentTimeMillis();
+
+        // stages 1 and 2 on the fast net
+        KataBrain brain = new KataBrain(props, screenModel);
+        int restarts = 0;
+        try {
+            for (File file : files) {
+                Game game = loadGame(file);
+                games.add(game);
+                System.out.println();
+                System.out.println("==== " + game.file + (game.skipped != null ? " skipped: " + game.skipped : ""));
+                if (game.skipped != null) continue;
+                List<Position> found = null;
+                try {
+                    found = scanGame(brain, game);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                if (found == null && !brain.isAlive() && restarts < 3) {
+                    restarts++;
+                    System.out.println("katago died, restarting engine (restart " + restarts + ") and rescanning " + game.name);
+                    brain.stopKataBrain();
+                    brain = new KataBrain(props, screenModel);
+                    try {
+                        found = scanGame(brain, game);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+                if (found == null) {
+                    game.skipped = "analysis failed";
+                    if (!brain.isAlive()) {
+                        brain.stopKataBrain();
+                        brain = new KataBrain(props, screenModel);
+                    }
+                    continue;
+                }
+                positions.addAll(found);
+            }
+        } finally {
+            brain.stopKataBrain();
+        }
+        System.out.println("fast net stages done in " + minutes(start));
+        report.write(false);
+
+        // stage 3 on the strong net
+        List<Position> toVerify = new ArrayList<>();
+        for (Position pos : positions) {
+            if (pos.awaitingVerify()) toVerify.add(pos);
+        }
+        if (!toVerify.isEmpty()) {
+            KataBrain strong = new KataBrain(props);
+            try {
+                int i = 0;
+                for (Position pos : toVerify) {
+                    i++;
+                    System.out.println("verify " + i + "/" + toVerify.size() + ": " + pos.id());
+                    try {
+                        verify(strong, pos);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        if (!strong.isAlive() && restarts < 6) {
+                            restarts++;
+                            System.out.println("katago died, restarting strong engine and retrying " + pos.id());
+                            strong.stopKataBrain();
+                            strong = new KataBrain(props);
+                            try {
+                                verify(strong, pos);
+                            } catch (Exception e2) {
+                                e2.printStackTrace();
+                            }
+                        }
+                    }
+                    if (!pos.verified && pos.reasons.isEmpty()) {
+                        pos.reasons.add(new Reason("error", "strong net analysis failed"));
+                    }
+                }
+            } finally {
+                strong.stopKataBrain();
+            }
+        }
+        System.out.println("all stages done in " + minutes(start));
+        report.write(true);
+        report.printSummary();
+    }
+
+    private void collectSgfs(File f, List<File> out) {
+        if (f.isFile()) {
+            if (f.getName().endsWith(".sgf")) out.add(f);
+            return;
+        }
+        File[] listing = f.listFiles();
+        if (listing == null) return;
+        for (File c : listing) {
+            collectSgfs(c, out);
+        }
+    }
+
+    private Game loadGame(File file) throws Exception {
+        Game game = new Game();
+        game.file = file.getPath();
+        game.name = file.getName().replaceAll("\\.sgf$", "");
+        String sgf = Files.readString(file.toPath());
+        Matcher sz = Pattern.compile("SZ\\[(\\d+)").matcher(sgf);
+        if (sz.find() && !sz.group(1).equals("19")) {
+            game.skipped = "board size " + sz.group(1);
+            return game;
+        }
+        Node root;
+        try {
+            root = new Parser().parse(sgf);
+        } catch (Exception e) {
+            game.skipped = "parse error: " + e.getMessage();
+            return game;
+        }
+        game.pb = root.getXtra("PB");
+        game.pw = root.getXtra("PW");
+        game.br = root.getXtra("BR");
+        game.wr = root.getXtra("WR");
+        game.dt = root.getXtra("DT");
+        game.pc = root.getXtra("PC");
+        String km = root.getXtra("KM");
+        if (km != null) {
+            try {
+                game.gameKomi = Double.parseDouble(km.trim());
+            } catch (NumberFormatException e) {
+                // leave unknown
+            }
+        }
+        String ha = root.getXtra("HA");
+        if (ha != null && !ha.trim().isEmpty() && !ha.trim().equals("0")) {
+            game.skipped = "handicap " + ha.trim();
+            return game;
+        }
+        for (int x = 0; x < 19; x++) {
+            for (int y = 0; y < 19; y++) {
+                if (!root.board.board[x][y].isEmpty()) {
+                    game.skipped = "setup stones";
+                    return game;
+                }
+            }
+        }
+        // the main line, stopping at the first pass: the opening is over by then
+        Node n = root;
+        while (n != null) {
+            MoveAction ma = n.getMoveAction();
+            if (ma != null) {
+                Point p = ma.loc;
+                if (p.x < 0 || p.x > 18 || p.y < 0 || p.y > 18) break;
+                game.moveNodes.add(n);
+                game.moves.add(Arrays.asList(ma.stone == Intersection.BLACK ? "B" : "W", Intersection.toGTPloc(p.x, p.y)));
+            }
+            n = n.favoriteSon();
+        }
+        game.moveCount = game.moves.size();
+        if (game.moveCount < minMove) {
+            game.skipped = "only " + game.moveCount + " moves";
+        }
+        return game;
+    }
+
+    // stage 1: batch screen of every turn in the window, then stage 2 for survivors
+    private List<Position> scanGame(KataBrain brain, Game game) throws Exception {
+        int lastMove = Math.min(maxMove, game.moveCount);
+        long start = System.currentTimeMillis();
+        // turn t is the position before move t+1; turn t+1 shows what the game move left
+        KataQuery q = baseQuery(game, lastMove, screenVisits, null);
+        q.analyzeTurns = new ArrayList<>();
+        for (int t = minMove - 1; t <= lastMove; t++) {
+            q.analyzeTurns.add(t);
+        }
+        brain.doQuery(q);
+        Map<Integer, KataAnalysisResult> res = new HashMap<>();
+        for (int t : q.analyzeTurns) {
+            KataAnalysisResult r = brain.getResult(q.id, t);
+            if (r.isError()) {
+                throw new RuntimeException("screen failed at turn " + t + ": " + r.error);
+            }
+            res.put(t, r);
+        }
+        System.out.println("screened moves " + minMove + "-" + lastMove + " in " + seconds(start));
+
+        List<Position> out = new ArrayList<>();
+        for (int n = minMove; n <= lastMove; n++) {
+            long posStart = System.currentTimeMillis();
+            Position pos = newPosition(game, n - 1);
+            int sign = pos.color == Intersection.BLACK ? 1 : -1;
+            KataAnalysisResult before = res.get(pos.turn);
+            KataAnalysisResult after = res.get(pos.turn + 1);
+            pos.stage = STAGE_SCREEN;
+            pos.scoreLead = sign * before.rootInfo.scoreLead;
+            pos.screenLoss = sign * before.moveInfos.get(0).scoreLead - sign * after.rootInfo.scoreLead;
+            String empty = emptyCorners(pos.board);
+            pos.cornersOk = empty == null;
+            pos.scoreOk = Math.abs(pos.scoreLead) <= maxAbsScore;
+            if (!pos.cornersOk) {
+                pos.reasons.add(new Reason("corner", "no stone in the " + empty + " corner"));
+            }
+            if (!pos.scoreOk) {
+                pos.reasons.add(new Reason("score", "score " + lead(pos, pos.scoreLead) + " is outside +-" + fmt(maxAbsScore)));
+            }
+            if (pos.screenLoss < screenMinLoss) {
+                pos.reasons.add(new Reason("loss", "game move lost only " + fmt(pos.screenLoss)));
+            }
+            if (pos.reasons.isEmpty()) {
+                try {
+                    calmCheck(brain, pos);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    pos.reasons.add(new Reason("error", "analysis failed: " + e.getMessage()));
+                    if (!brain.isAlive()) throw e;
+                }
+            }
+            pos.millis = System.currentTimeMillis() - posStart;
+            if (pos.stage >= STAGE_CALM) {
+                System.out.println(describe(pos));
+            }
+            out.add(pos);
+        }
+        return out;
+    }
+
+    private Position newPosition(Game game, int turn) throws Exception {
+        Position pos = new Position();
+        pos.game = game;
+        pos.turn = turn;
+        pos.moveNumber = turn + 1;
+        pos.board = turn == 0 ? new Board() : (Board) game.moveNodes.get(turn - 1).board.clone();
+        pos.lastMove = turn == 0 ? null : game.moveNodes.get(turn - 1).findMove();
+        pos.color = game.moveNodes.get(turn).getMoveAction().stone;
+        pos.gameMove = game.moves.get(turn).get(1);
+        return pos;
+    }
+
+    // stage 2: equal-visit evaluation of candidate moves from several sources
+    private void calmCheck(KataBrain brain, Position pos) throws Exception {
+        pos.stage = STAGE_CALM;
+        Game game = pos.game;
+        int sign = pos.color == Intersection.BLACK ? 1 : -1;
+        pos.moverRank = normalizeRank(pos.color == Intersection.BLACK ? game.br : game.wr);
+
+        // root search for candidates and ownership spread, human policy queries for the curve
+        KataQuery rootQ = baseQuery(game, pos.turn, rootVisits, profilePrefix + naturalRank);
+        rootQ.includeOwnership = true;
+        rootQ.includeOwnershipStdev = true;
+        brain.doQuery(rootQ);
+        LinkedHashMap<String, KataQuery> humanQs = new LinkedHashMap<>();
+        for (String r : curveRanks) {
+            humanQs.put(r, baseQuery(game, pos.turn, 1, profilePrefix + r));
+        }
+        if (!humanQs.containsKey(pos.moverRank)) {
+            humanQs.put(pos.moverRank, baseQuery(game, pos.turn, 1, profilePrefix + pos.moverRank));
+        }
+        for (KataQuery hq : humanQs.values()) {
+            brain.doQuery(hq);
+        }
+        KataAnalysisResult root = fetch(brain, rootQ);
+        if (root.isError()) {
+            throw new RuntimeException("root analysis: " + root.error);
+        }
+        Map<String, List<Double>> human = new HashMap<>();
+        for (Map.Entry<String, KataQuery> e : humanQs.entrySet()) {
+            KataAnalysisResult hr = fetch(brain, e.getValue());
+            if (hr.isError() || hr.humanPolicy == null) {
+                System.out.println("no human policy for " + e.getKey() + ": " + hr.error);
+                continue;
+            }
+            human.put(e.getKey(), hr.humanPolicy);
+        }
+
+        // candidates: katago's searched moves, its raw policy, the natural human policy, and the game move
+        LinkedHashMap<String, Candidate> cands = new LinkedHashMap<>();
+        for (int i = 0; i < Math.min(candidatesPerSource, root.moveInfos.size()); i++) {
+            addCandidate(cands, root.moveInfos.get(i).move, "k");
+        }
+        for (String mv : topLegal(root.policy, pos.board, candidatesPerSource)) {
+            addCandidate(cands, mv, "p");
+        }
+        for (String mv : topLegal(root.humanPolicy, pos.board, candidatesPerSource)) {
+            addCandidate(cands, mv, "h");
+        }
+        addCandidate(cands, pos.gameMove, "g");
+
+        List<KataQuery> evalQs = new ArrayList<>();
+        for (Candidate c : cands.values()) {
+            KataQuery eq = evalQuery(pos, c.move, evalVisits);
+            brain.doQuery(eq);
+            evalQs.add(eq);
+        }
+        int qi = 0;
+        for (Candidate c : cands.values()) {
+            KataAnalysisResult er = fetch(brain, evalQs.get(qi++));
+            if (er.isError()) {
+                throw new RuntimeException("eval of " + c.move + ": " + er.error);
+            }
+            MoveInfo mi = moveInfo(er, c.move);
+            c.score = sign * mi.scoreLead;
+            c.pv = mi.pv == null ? new ArrayList<>() : mi.pv;
+            c.naturalPolicy = policyAt(root.humanPolicy, c.p);
+            c.tactics = PvTactics.replay(pos.board, pos.color, c.pv, pvCheckMoves);
+        }
+        pos.candidates = new ArrayList<>(cands.values());
+        pos.candidates.sort((x, y) -> Double.compare(y.score, x.score));
+        pos.best = pos.candidates.get(0);
+        pos.mistake = cands.get(pos.gameMove);
+        for (Candidate c : pos.candidates) {
+            if (pos.best.score - c.score <= goodMargin) pos.good.add(c);
+        }
+        pos.goodIdeas = countIdeas(pos.good);
+
+        // unsettled stones show up as ownership that keeps flipping inside the search
+        if (root.ownershipStdev != null) {
+            double sum = 0, max = 0;
+            int cnt = 0;
+            for (int x = 0; x < 19; x++) {
+                for (int y = 0; y < 19; y++) {
+                    if (pos.board.board[x][y].isEmpty()) continue;
+                    double s = root.ownershipStdev.get(x + y * 19);
+                    sum += s;
+                    max = Math.max(max, s);
+                    cnt++;
+                }
+            }
+            pos.stdevMean = cnt > 0 ? sum / cnt : 0;
+            pos.stdevMax = max;
+        }
+
+        // the answer: the good move strong humans like most
+        for (Candidate c : pos.good) {
+            if (c == pos.mistake) continue;
+            if (pos.answer == null || c.naturalPolicy > pos.answer.naturalPolicy) pos.answer = c;
+        }
+        if (pos.answer == null) {
+            pos.reasons.add(new Reason("fine", "game move is the best move on closer look"));
+            return;
+        }
+
+        List<Double> moverPolicy = human.get(pos.moverRank);
+        if (moverPolicy != null) {
+            pos.mistakeHumanPolicy = policyAt(moverPolicy, pos.mistake.p);
+            int order = 1;
+            for (int i = 0; i < 361; i++) {
+                if (moverPolicy.get(i) > pos.mistakeHumanPolicy) order++;
+            }
+            pos.mistakeHumanOrder = order;
+        }
+        int firstAbove = -1;
+        int idx = 0;
+        for (String r : curveRanks) {
+            List<Double> hp = human.get(r);
+            double p = Double.NaN;
+            if (hp != null) {
+                double pa = policyAt(hp, pos.answer.p), pb = policyAt(hp, pos.mistake.p);
+                if (pa + pb > 0) p = pa / (pa + pb);
+            }
+            pos.curve.put(r, p);
+            if (firstAbove < 0 && p >= 0.5) firstAbove = idx;
+            idx++;
+        }
+        if (firstAbove < 0) {
+            pos.crossover = "never: every rank prefers the mistake";
+        } else if (firstAbove == 0) {
+            pos.crossover = "already at " + curveRanks.get(0);
+        } else {
+            pos.crossover = curveRanks.get(firstAbove);
+        }
+
+        if (pos.good.contains(pos.mistake)) {
+            pos.reasons.add(new Reason("fine", "game move is within " + fmt(goodMargin) + " of the best on closer look"));
+        } else if (pos.gap() < screenMinGap) {
+            pos.reasons.add(new Reason("gap", "answer beats the game move by only " + fmt(pos.gap())));
+        }
+        if (pos.goodIdeas < minGoodIdeas) {
+            pos.reasons.add(new Reason("ideas", "only " + pos.goodIdeas + " good idea" + (pos.goodIdeas == 1 ? "" : "s")
+                    + " (" + moveList(pos.good, pos.best.score) + ")"));
+        }
+        List<Candidate> lines = new ArrayList<>();
+        for (Candidate c : Arrays.asList(pos.best, pos.answer, pos.mistake)) {
+            if (!lines.contains(c)) lines.add(c);
+        }
+        for (Candidate c : lines) {
+            if (c.tactics.isTactical()) {
+                pos.reasons.add(new Reason("tactics", "fight in the line after " + c.move + ": " + c.tactics.firstEvent));
+            }
+        }
+        if (pos.reasons.isEmpty()) {
+            pos.stage = STAGE_VERIFY;
+        }
+    }
+
+    // stage 3: the strong net must agree the answer is near its best and well ahead of the game move
+    private void verify(KataBrain brain, Position pos) throws Exception {
+        int sign = pos.color == Intersection.BLACK ? 1 : -1;
+        KataQuery rootQ = baseQuery(pos.game, pos.turn, verifyRootVisits, null);
+        KataQuery answerQ = evalQuery(pos, pos.answer.move, verifyVisits);
+        KataQuery mistakeQ = evalQuery(pos, pos.mistake.move, verifyVisits);
+        brain.doQuery(rootQ);
+        brain.doQuery(answerQ);
+        brain.doQuery(mistakeQ);
+        KataAnalysisResult root = fetch(brain, rootQ);
+        KataAnalysisResult ar = fetch(brain, answerQ);
+        KataAnalysisResult mr = fetch(brain, mistakeQ);
+        if (root.isError() || ar.isError() || mr.isError()) {
+            throw new RuntimeException("strong net analysis failed for " + pos.id());
+        }
+        pos.strongBestMove = root.moveInfos.get(0).move;
+        pos.strongBest = sign * root.moveInfos.get(0).scoreLead;
+        pos.strongAnswer = sign * moveInfo(ar, pos.answer.move).scoreLead;
+        pos.strongMistake = sign * moveInfo(mr, pos.mistake.move).scoreLead;
+        pos.verified = true;
+        if (pos.strongGap() < minGap) {
+            pos.reasons.add(new Reason("strong_gap", "strong net gap only " + fmt(pos.strongGap())));
+        }
+        if (pos.strongAnswerLoss() > verifyAnswerMargin) {
+            pos.reasons.add(new Reason("strong_best", "strong net puts " + pos.answer.move + " "
+                    + fmt(pos.strongAnswerLoss()) + " behind " + pos.strongBestMove));
+        }
+        System.out.println("  strong net: answer " + pos.answer.move + " " + fmt(pos.strongAnswer)
+                + ", game move " + pos.mistake.move + " " + fmt(pos.strongMistake)
+                + ", gap " + fmt(pos.strongGap()) + " (fast " + fmt(pos.gap()) + "), best " + pos.strongBestMove
+                + " -> " + pos.status());
+    }
+
+    private KataQuery baseQuery(Game game, int turn, int visits, String humanProfile) {
+        KataQuery q = new KataQuery();
+        q.id = "fz" + (++queryCount) + "_"; // trailing separator: the brain keys results by id + turn
+        q.initialStones = new ArrayList<>();
+        q.moves = new ArrayList<>(game.moves.subList(0, turn));
+        q.initialPlayer = "B";
+        q.komi = komiFor(game);
+        q.analyzeTurns = new ArrayList<>();
+        q.analyzeTurns.add(turn);
+        q.maxVisits = visits;
+        q.includeOwnership = false;
+        q.includeOwnershipStdev = false;
+        q.includeMovesOwnership = false;
+        q.includePolicy = humanProfile != null;
+        if (humanProfile != null) {
+            KataQuery.OverrideSettings os = new KataQuery.OverrideSettings();
+            os.humanSLProfile = humanProfile;
+            os.rootNumSymmetriesToSample = 8; // steadier policy for the curve
+            q.setOverrideSettings(os);
+        }
+        return q;
+    }
+
+    private KataQuery evalQuery(Position pos, String move, int visits) {
+        KataQuery q = baseQuery(pos.game, pos.turn, visits, null);
+        AllowMove am = new AllowMove();
+        am.player = Intersection.color2katagoname(pos.color);
+        am.moves = new ArrayList<>();
+        am.moves.add(move);
+        am.untilDepth = 1;
+        q.allowMoves = new ArrayList<>();
+        q.allowMoves.add(am);
+        return q;
+    }
+
+    // collects a submitted query's result, retrying once on a transient engine error
+    private KataAnalysisResult fetch(KataBrain brain, KataQuery q) throws Exception {
+        int turn = q.analyzeTurns.get(0);
+        KataAnalysisResult r = brain.getResult(q.id, turn);
+        if (r.isError() && brain.isAlive()) {
+            System.out.println("analysis error (" + r.error + "), retrying once");
+            q.id = q.id + "r_";
+            brain.doQuery(q);
+            r = brain.getResult(q.id, turn);
+        }
+        return r;
+    }
+
+    private static MoveInfo moveInfo(KataAnalysisResult r, String move) {
+        MoveInfo mi = r.getMoveInfo(move);
+        if (mi == null) {
+            if (r.moveInfos == null || r.moveInfos.isEmpty()) {
+                throw new RuntimeException("no move infos for " + move);
+            }
+            mi = r.moveInfos.get(0);
+        }
+        return mi;
+    }
+
+    private static void addCandidate(Map<String, Candidate> cands, String move, String source) {
+        if (move == null || move.equalsIgnoreCase("pass")) return;
+        Candidate c = cands.get(move);
+        if (c == null) {
+            c = new Candidate();
+            c.move = move;
+            c.p = Intersection.gtp2point(move);
+            cands.put(move, c);
+        }
+        if (!c.sources.contains(source)) c.sources += source;
+    }
+
+    private static List<String> topLegal(List<Double> policy, Board board, int num) {
+        List<String> out = new ArrayList<>();
+        if (policy == null) return out;
+        List<Integer> idx = new ArrayList<>();
+        for (int i = 0; i < 361; i++) idx.add(i);
+        idx.sort((a, b) -> Double.compare(policy.get(b), policy.get(a)));
+        for (int i : idx) {
+            if (out.size() >= num) break;
+            int x = i % 19, y = i / 19;
+            if (policy.get(i) <= 0 || !board.board[x][y].isEmpty()) continue;
+            out.add(Intersection.toGTPloc(x, y));
+        }
+        return out;
+    }
+
+    private static double policyAt(List<Double> policy, Point p) {
+        if (policy == null) return 0;
+        return Math.max(0, policy.get(p.x + p.y * 19));
+    }
+
+    // good moves near an already counted good move are the same idea, e.g. two extension lengths
+    private int countIdeas(List<Candidate> good) {
+        List<Point> reps = new ArrayList<>();
+        for (Candidate c : good) {
+            boolean near = false;
+            for (Point r : reps) {
+                if (r.distance(c.p) <= ideaDist + 1e-9) near = true;
+            }
+            if (!near) reps.add(c.p);
+        }
+        return reps.size();
+    }
+
+    private String emptyCorners(Board b) {
+        String[] names = {"upper left", "upper right", "lower left", "lower right"};
+        int k = cornerSize;
+        int[][] ranges = {{0, k, 0, k}, {19 - k, 19, 0, k}, {0, k, 19 - k, 19}, {19 - k, 19, 19 - k, 19}};
+        List<String> empty = new ArrayList<>();
+        for (int c = 0; c < 4; c++) {
+            boolean found = false;
+            for (int x = ranges[c][0]; x < ranges[c][1]; x++) {
+                for (int y = ranges[c][2]; y < ranges[c][3]; y++) {
+                    if (!b.board[x][y].isEmpty()) found = true;
+                }
+            }
+            if (!found) empty.add(names[c]);
+        }
+        return empty.isEmpty() ? null : String.join(" and ", empty);
+    }
+
+    // KGS style ranks like "4k*" or "3d?" -> "4k"; missing or odd ranks use fuseki.default_rank
+    String normalizeRank(String r) {
+        if (r == null) return defaultRank;
+        Matcher m = Pattern.compile("(\\d+)\\s*([kdpKDP])").matcher(r);
+        if (!m.find()) return defaultRank;
+        int n = Integer.parseInt(m.group(1));
+        char c = Character.toLowerCase(m.group(2).charAt(0));
+        if (c == 'p') return "9d";
+        if (c == 'k') return Math.min(Math.max(n, 1), 20) + "k";
+        return Math.min(Math.max(n, 1), 9) + "d";
+    }
+
+    String moveList(List<Candidate> l, double ref) {
+        List<String> parts = new ArrayList<>();
+        for (Candidate c : l) {
+            parts.add(c.move + " " + signed(c.score - ref));
+        }
+        return String.join(", ", parts);
+    }
+
+    private String describe(Position pos) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("  move ").append(pos.moveNumber).append(" ").append(pos.color == Intersection.BLACK ? "B" : "W")
+                .append(" game ").append(pos.gameMove).append(" screen loss ").append(fmt(pos.screenLoss));
+        if (pos.best != null) {
+            sb.append(", best ").append(pos.best.move).append(", good ideas ").append(pos.goodIdeas);
+        }
+        if (pos.answer != null) {
+            sb.append(", answer ").append(pos.answer.move).append(" gap ").append(fmt(pos.gap()));
+        }
+        sb.append(" -> ").append(pos.reasons.isEmpty() ? "to strong net" : pos.reasonText());
+        sb.append(" (").append(pos.millis / 1000).append("s)");
+        return sb.toString();
+    }
+
+    String lead(Position pos, double moverLead) {
+        double black = pos.color == Intersection.BLACK ? moverLead : -moverLead;
+        return (black >= 0 ? "B+" : "W+") + fmt(Math.abs(black));
+    }
+
+    String settingsSummary() {
+        return "moves " + minMove + "-" + maxMove + ", komi " + (fixedKomi != null ? fmt(fixedKomi) : "from game")
+                + ", corners within " + cornerSize + " lines, |score| <= " + fmt(maxAbsScore)
+                + "\n- screen: fast net " + screenVisits + " visits per turn, game move loss >= " + fmt(screenMinLoss)
+                + "\n- calm check: fast net " + rootVisits + " root visits + " + evalVisits + " per candidate (top "
+                + candidatesPerSource + " per source); good = within " + fmt(goodMargin) + " of best; ideas >= " + minGoodIdeas
+                + " (moves within " + fmt(ideaDist) + " are one idea); no atari/capture in the first " + pvCheckMoves
+                + " moves of the best, answer, and game-move lines; gap >= " + fmt(screenMinGap)
+                + "\n- answer: the good move with the highest " + profilePrefix + naturalRank + " human policy"
+                + "\n- strong net: " + verifyVisits + " visits each for answer and game move, gap >= " + fmt(minGap)
+                + ", answer within " + fmt(verifyAnswerMargin) + " of the strong net's best (" + verifyRootVisits + " root visits)";
+    }
+
+    double komiFor(Game game) {
+        return fixedKomi != null ? fixedKomi : (Double.isNaN(game.gameKomi) ? 7.5 : game.gameKomi);
+    }
+
+    String propsValue(String name, String def) {
+        return props.getProperty(name, def).trim();
+    }
+
+    String screenModelName() {
+        return new File(screenModel).getName();
+    }
+
+    String strongModelName() {
+        return new File(strongModel).getName();
+    }
+
+    List<String> curveRanks() {
+        return curveRanks;
+    }
+
+    double minGap() {
+        return minGap;
+    }
+
+    double screenMinLoss() {
+        return screenMinLoss;
+    }
+
+    static String fmt(double d) {
+        return String.format("%.1f", d);
+    }
+
+    static String signed(double d) {
+        return (d >= 0 ? "+" : "") + String.format("%.1f", d);
+    }
+
+    private static String seconds(long start) {
+        return ((System.currentTimeMillis() - start) / 1000) + "s";
+    }
+
+    private static String minutes(long start) {
+        return String.format("%.1f min", (System.currentTimeMillis() - start) / 60000.0);
+    }
+
+    private int intProp(String name, int def) {
+        return Integer.parseInt(props.getProperty(name, String.valueOf(def)).trim());
+    }
+
+    private double doubleProp(String name, double def) {
+        return Double.parseDouble(props.getProperty(name, String.valueOf(def)).trim());
+    }
+}

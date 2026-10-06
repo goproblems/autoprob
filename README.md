@@ -113,3 +113,19 @@ How it works:
 The `redo.*` settings in config.properties control visits, threat thresholds, and ending behavior.
 
 Tip: wrap long batch runs in `caffeinate -i` so the machine cannot idle-sleep mid-run (a sleeping Mac freezes katago while wall clock timeouts keep counting, which looks exactly like an engine stall). `tools/kata_latency_bench.py` measures raw engine latency for your setup if runs seem slow.
+
+# Fuseki problem scan (prototype)
+
+The `fuseki` command scans games for whole board opening problems: positions where the move actually played lost points in a calm opening. Each problem is one move deep with two labeled choices, the game move (the mistake) and the most human-natural of the moves that keep the balance (the answer).
+
+```
+caffeinate -i java -cp autoprob.jar autoprob.GoTool config.properties cmd=fuseki path=sample_games
+```
+
+Stages:
+
+1. Screen (fast net, `fuseki.screen_model`): every turn in moves `fuseki.min_move`-`fuseki.max_move` of each even 19x19 game is analyzed; positions need all four corners taken, a score within `fuseki.max_abs_score`, and a game move that lost at least `fuseki.screen_min_loss`.
+2. Calm check (fast net): candidate moves from katago's search, katago's policy, the human policy, plus the game move are each evaluated with equal visits. The position needs at least `fuseki.min_good_ideas` different good moves (within `fuseki.good_margin` of the best), and no atari or capture in the opening moves of the best, answer and game-move lines. The answer is the good move with the highest `fuseki.natural_rank` human policy.
+3. Verify (strong net, `kata.model`): the answer must beat the game move by `fuseki.min_gap` and sit within `fuseki.verify_answer_margin` of the strong net's best move.
+
+Each run writes `fuseki_out/<timestamp>/`: `report.md` (funnel, per game counts, every accepted problem with a board diagram, every rejection with its reason), `positions.csv` (one row per scanned position, for tuning thresholds), and problem SGFs in `accepted/` and `rejected/`. A and B are assigned in board order, so the correct answer can be either label; the root comment of each SGF holds the analysis, and rejected SGFs start with the reason.

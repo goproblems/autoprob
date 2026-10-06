@@ -128,4 +128,12 @@ Stages:
 2. Calm check (fast net): candidate moves from katago's search, katago's policy, the human policy, plus the game move are each evaluated with equal visits. The position needs at least `fuseki.min_good_ideas` different good moves (within `fuseki.good_margin` of the best), and no atari or capture in the opening moves of the best, answer and game-move lines. The answer is the good move with the highest `fuseki.natural_rank` human policy.
 3. Verify (strong net, `kata.model`): the answer must beat the game move by `fuseki.min_gap` and sit within `fuseki.verify_answer_margin` of the strong net's best move.
 
+For big collections (e.g. the NNGS archive, whose games have no `.sgf` extension, which is fine), filter and time-box the run:
+
+```
+caffeinate -i java -cp autoprob.jar autoprob.GoTool config.properties cmd=fuseki path=~/data/go/nngs/NNGS fuseki.ranks=15k-5k fuseki.shuffle_seed=1 fuseki.max_minutes=45
+```
+
+`fuseki.ranks` keeps games where both players are in the range, `fuseki.exclude_players` drops known bots (GnuGo, ManyFaces, ...), `fuseki.shuffle_seed` samples the whole collection in random order, and `fuseki.max_minutes` stops starting new games after that many minutes (strong net verification runs after).
+
 Each run writes `fuseki_out/<timestamp>/`: `report.md` (funnel, per game counts, every accepted problem with a board diagram, every rejection with its reason), `positions.csv` (one row per scanned position, for tuning thresholds), and problem SGFs in `accepted/` and `rejected/`. A and B are assigned in board order, so the correct answer can be either label; the root comment of each SGF holds the analysis, and rejected SGFs start with the reason.

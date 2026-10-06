@@ -155,6 +155,8 @@ public class FusekiReport {
         md.append("# Fuseki problem scan\n\n");
         md.append("Started ").append(scan.startedAt).append(" on `").append(props("path", "")).append("`. Status: ")
                 .append(fin ? "final" : "**interim, strong net check still running**").append(".\n\n");
+        md.append("Examined ").append(scan.filesExamined).append(" of ").append(scan.filesTotal).append(" files")
+                .append(scan.budgetHit ? " before the time budget ran out" : "").append(".\n\n");
         md.append("Fast net (screen and calm check): `").append(scan.screenModelName()).append("`. Strong net (verify): `")
                 .append(scan.strongModelName()).append("`.\n\n");
         md.append("Settings:\n- ").append(scan.settingsSummary()).append("\n\n");
@@ -259,11 +261,33 @@ public class FusekiReport {
         return String.join(", ", parts);
     }
 
+    // scanned games get a row; skipped ones (most of a filtered collection) only a count per reason
     private void appendGames(StringBuilder md) {
         md.append("## Games\n\n");
+        Map<String, Integer> skips = new LinkedHashMap<>();
+        for (Game g : scan.games) {
+            if (g.skipped != null && !"error".equals(g.skipCode)) {
+                skips.merge(g.skipCode == null ? "other" : g.skipCode, 1, Integer::sum);
+            }
+        }
+        if (!skips.isEmpty()) {
+            Map<String, String> names = new HashMap<>();
+            names.put("size", "not 19x19");
+            names.put("handicap", "handicap");
+            names.put("player", "excluded player (bots)");
+            names.put("ranks", "ranks outside the range or missing");
+            names.put("short", "too short");
+            names.put("parse", "unreadable");
+            List<String> parts = new ArrayList<>();
+            for (Map.Entry<String, Integer> e : skips.entrySet()) {
+                parts.add(names.getOrDefault(e.getKey(), e.getKey()) + " " + e.getValue());
+            }
+            md.append("Skipped games: ").append(String.join(", ", parts)).append(".\n\n");
+        }
         md.append("| Game | Black | White | Moves | Scanned | Lost >= ").append(fmt(scan.screenMinLoss()))
                 .append(" | Calm | Accepted | Note |\n|---|---|---|---|---|---|---|---|---|\n");
         for (Game g : scan.games) {
+            if (g.skipped != null && !"error".equals(g.skipCode)) continue;
             int scanned = 0, lost = 0, calm = 0, acc = 0;
             for (Position pos : scan.positions) {
                 if (pos.game != g) continue;
@@ -332,7 +356,7 @@ public class FusekiReport {
             w.println("game,move,to_play,game_move,status,reasons,score_lead,screen_loss,best,good_moves,good_ideas,"
                     + "answer,answer_label,answer_score,answer_natural_policy,mistake_label,mistake_score,gap_fast,"
                     + "stdev_mean,stdev_max,lines,mover_rank,mistake_human_policy,mistake_human_order,curve,crossover,"
-                    + "strong_best,strong_best_score,strong_answer,strong_mistake,strong_gap,sgf");
+                    + "strong_best,strong_best_score,strong_answer,strong_mistake,strong_gap,sgf,black_rank,white_rank");
             for (Position pos : scan.positions) {
                 List<String> f = new ArrayList<>();
                 f.add(pos.game.name);
@@ -369,6 +393,8 @@ public class FusekiReport {
                 f.add(pos.verified ? num(pos.strongMistake) : "");
                 f.add(pos.verified ? num(pos.strongGap()) : "");
                 f.add(pos.sgfPath == null ? "" : pos.sgfPath);
+                f.add(pos.game.br == null ? "" : pos.game.br);
+                f.add(pos.game.wr == null ? "" : pos.game.wr);
                 List<String> quoted = new ArrayList<>();
                 for (String s : f) quoted.add(csv(s));
                 w.println(String.join(",", quoted));
@@ -388,6 +414,8 @@ public class FusekiReport {
                     + fmt(pos.strongGap()) + " strong / " + fmt(pos.gap()) + " fast, " + ideas(pos.goodIdeas) + ", crosses 50% at "
                     + pos.crossover);
         }
+        System.out.println("files examined: " + scan.filesExamined + " of " + scan.filesTotal
+                + (scan.budgetHit ? " (time budget reached)" : ""));
         System.out.println("positions scanned: " + scan.positions.size() + ", accepted: " + accepted);
         System.out.println("report: " + new File(outDir, "report.md").getPath());
     }

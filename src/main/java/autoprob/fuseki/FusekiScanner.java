@@ -47,6 +47,7 @@ public class FusekiScanner {
         public double gameKomi = Double.NaN;
         public int moveCount;
         public String skipped; // why the game was not scanned, null if scanned
+        public String skipCode; // short reason kind for the report's skip counts
         List<List<String>> moves = new ArrayList<>(); // katago move list
         List<Node> moveNodes = new ArrayList<>();
     }
@@ -178,7 +179,16 @@ public class FusekiScanner {
     private final double minGap, screenMinGap, verifyAnswerMargin;
     private final String profilePrefix, naturalRank, defaultRank;
     private final List<String> curveRanks;
+    // big collections: game filters, sampling order, and a time budget for the fast net stages
+    private final String rankRange;
+    private Integer rankLow, rankHigh; // both players must be inside, null = any rank
+    private final List<String> excludePlayers;
+    private final Long shuffleSeed;
+    private final double maxMinutes;
+    private final String kataConfig;
     private int queryCount = 0;
+    int filesTotal, filesExamined;
+    boolean budgetHit;
 
     final List<Game> games = new ArrayList<>();
     final List<Position> positions = new ArrayList<>();
@@ -213,6 +223,25 @@ public class FusekiScanner {
         defaultRank = props.getProperty("fuseki.default_rank", "1d").trim();
         curveRanks = Arrays.asList(props.getProperty("fuseki.curve_ranks", "20k,15k,10k,5k,1k,3d,6d,9d").trim().split("\\s*,\\s*"));
         strongModel = props.getProperty("kata.model").trim();
+        rankRange = props.getProperty("fuseki.ranks", "").trim();
+        if (!rankRange.isEmpty()) {
+            String[] ends = rankRange.split("\\s*-\\s*");
+            Integer a = ends.length == 2 ? rankValue(ends[0]) : null;
+            Integer b = ends.length == 2 ? rankValue(ends[1]) : null;
+            if (a == null || b == null) {
+                throw new RuntimeException("fuseki.ranks must look like 15k-5k, got: " + rankRange);
+            }
+            rankLow = Math.min(a, b);
+            rankHigh = Math.max(a, b);
+        }
+        excludePlayers = new ArrayList<>();
+        for (String s : props.getProperty("fuseki.exclude_players", "").split(",")) {
+            if (!s.trim().isEmpty()) excludePlayers.add(s.trim().toLowerCase());
+        }
+        String seed = props.getProperty("fuseki.shuffle_seed", "").trim();
+        shuffleSeed = seed.isEmpty() ? null : Long.parseLong(seed);
+        maxMinutes = doubleProp("fuseki.max_minutes", 0);
+        kataConfig = props.getProperty("fuseki.kata.config", "").trim();
     }
 
     public void run() throws Exception {
@@ -227,22 +256,37 @@ public class FusekiScanner {
         List<File> files = new ArrayList<>();
         collectSgfs(f, files);
         files.sort((a, b) -> a.getPath().compareTo(b.getPath()));
+        if (shuffleSeed != null) {
+            // a time-boxed run then samples the whole collection instead of its first directory
+            java.util.Collections.shuffle(files, new java.util.Random(shuffleSeed));
+        }
+        filesTotal = files.size();
         startedAt = new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date());
         File outDir = new File(props.getProperty("fuseki.output.dir", "fuseki_out"),
                 new SimpleDateFormat("yyyyMMdd-HHmm").format(new Date()));
         FusekiReport report = new FusekiReport(this, outDir);
         long start = System.currentTimeMillis();
+        System.out.println(filesTotal + " candidate files under " + path);
 
         // stages 1 and 2 on the fast net
-        KataBrain brain = new KataBrain(props, screenModel);
+        KataBrain brain = newBrain(screenModel);
         int restarts = 0;
+        int scanned = 0;
         try {
             for (File file : files) {
+                if (maxMinutes > 0 && (System.currentTimeMillis() - start) / 60000.0 >= maxMinutes) {
+                    budgetHit = true;
+                    System.out.println("time budget of " + fmt(maxMinutes) + " min reached, no new games");
+                    break;
+                }
+                filesExamined++;
                 Game game = loadGame(file);
                 games.add(game);
-                System.out.println();
-                System.out.println("==== " + game.file + (game.skipped != null ? " skipped: " + game.skipped : ""));
                 if (game.skipped != null) continue;
+                scanned++;
+                System.out.println();
+                System.out.println("==== game " + scanned + ": " + game.file + " (" + game.pb + " " + game.br + " vs "
+                        + game.pw + " " + game.wr + "), " + minutes(start) + " in, " + filesExamined + " files examined");
                 List<Position> found = null;
                 try {
                     found = scanGame(brain, game);
@@ -253,7 +297,7 @@ public class FusekiScanner {
                     restarts++;
                     System.out.println("katago died, restarting engine (restart " + restarts + ") and rescanning " + game.name);
                     brain.stopKataBrain();
-                    brain = new KataBrain(props, screenModel);
+                    brain = newBrain(screenModel);
                     try {
                         found = scanGame(brain, game);
                     } catch (Exception e) {
@@ -262,9 +306,10 @@ public class FusekiScanner {
                 }
                 if (found == null) {
                     game.skipped = "analysis failed";
+                    game.skipCode = "error";
                     if (!brain.isAlive()) {
                         brain.stopKataBrain();
-                        brain = new KataBrain(props, screenModel);
+                        brain = newBrain(screenModel);
                     }
                     continue;
                 }
@@ -273,7 +318,8 @@ public class FusekiScanner {
         } finally {
             brain.stopKataBrain();
         }
-        System.out.println("fast net stages done in " + minutes(start));
+        System.out.println("fast net stages done in " + minutes(start) + ": " + scanned + " games scanned, "
+                + filesExamined + " of " + filesTotal + " files examined");
         report.write(false);
 
         // stage 3 on the strong net
@@ -282,7 +328,7 @@ public class FusekiScanner {
             if (pos.awaitingVerify()) toVerify.add(pos);
         }
         if (!toVerify.isEmpty()) {
-            KataBrain strong = new KataBrain(props);
+            KataBrain strong = newBrain(null);
             try {
                 int i = 0;
                 for (Position pos : toVerify) {
@@ -296,7 +342,7 @@ public class FusekiScanner {
                             restarts++;
                             System.out.println("katago died, restarting strong engine and retrying " + pos.id());
                             strong.stopKataBrain();
-                            strong = new KataBrain(props);
+                            strong = newBrain(null);
                             try {
                                 verify(strong, pos);
                             } catch (Exception e2) {
@@ -317,9 +363,11 @@ public class FusekiScanner {
         report.printSummary();
     }
 
+    // .sgf files, plus extensionless ones: archives like NNGS store games without an extension
     private void collectSgfs(File f, List<File> out) {
         if (f.isFile()) {
-            if (f.getName().endsWith(".sgf")) out.add(f);
+            String n = f.getName();
+            if (n.endsWith(".sgf") || (!n.contains(".") && !n.equals("zpos"))) out.add(f);
             return;
         }
         File[] listing = f.listFiles();
@@ -329,27 +377,70 @@ public class FusekiScanner {
         }
     }
 
+    private KataBrain newBrain(String modelOverride) throws Exception {
+        Properties p = props;
+        if (!kataConfig.isEmpty()) {
+            p = new Properties();
+            p.putAll(props);
+            p.setProperty("kata.config", kataConfig);
+        }
+        return modelOverride == null ? new KataBrain(p) : new KataBrain(p, modelOverride);
+    }
+
+    private static Game skip(Game game, String code, String text) {
+        game.skipCode = code;
+        game.skipped = text;
+        return game;
+    }
+
+    private static String sgfProp(String sgf, String name) {
+        Matcher m = Pattern.compile("(?<![A-Z])" + name + "\\[([^\\]]*)\\]").matcher(sgf);
+        return m.find() ? m.group(1).trim() : null;
+    }
+
     private Game loadGame(File file) throws Exception {
         Game game = new Game();
         game.file = file.getPath();
         game.name = file.getName().replaceAll("\\.sgf$", "");
-        String sgf = Files.readString(file.toPath());
-        Matcher sz = Pattern.compile("SZ\\[(\\d+)").matcher(sgf);
-        if (sz.find() && !sz.group(1).equals("19")) {
-            game.skipped = "board size " + sz.group(1);
-            return game;
+        // invalid utf-8 (old latin-1 archives) only garbles names, never the moves
+        String sgf = new String(Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        // cheap header checks before the full parse, which matters when filters skip most of a big collection
+        String head = sgf.length() > 3000 ? sgf.substring(0, 3000) : sgf;
+        String sz = sgfProp(head, "SZ");
+        if (sz != null && !sz.equals("19")) {
+            return skip(game, "size", "board size " + sz);
+        }
+        String ha = sgfProp(head, "HA");
+        if (ha != null && !ha.isEmpty() && !ha.equals("0")) {
+            return skip(game, "handicap", "handicap " + ha);
+        }
+        game.pb = sgfProp(head, "PB");
+        game.pw = sgfProp(head, "PW");
+        game.br = sgfProp(head, "BR");
+        game.wr = sgfProp(head, "WR");
+        for (String who : new String[] {game.pb, game.pw}) {
+            if (who == null) continue;
+            for (String ex : excludePlayers) {
+                if (who.toLowerCase().contains(ex)) {
+                    return skip(game, "player", "excluded player " + who);
+                }
+            }
+        }
+        if (rankLow != null) {
+            Integer b = rankValue(game.br), w = rankValue(game.wr);
+            if (b == null || w == null) {
+                return skip(game, "ranks", "missing rank");
+            }
+            if (b < rankLow || b > rankHigh || w < rankLow || w > rankHigh) {
+                return skip(game, "ranks", "ranks " + game.br + "/" + game.wr + " outside " + rankRange);
+            }
         }
         Node root;
         try {
             root = new Parser().parse(sgf);
         } catch (Exception e) {
-            game.skipped = "parse error: " + e.getMessage();
-            return game;
+            return skip(game, "parse", "parse error: " + e.getMessage());
         }
-        game.pb = root.getXtra("PB");
-        game.pw = root.getXtra("PW");
-        game.br = root.getXtra("BR");
-        game.wr = root.getXtra("WR");
         game.dt = root.getXtra("DT");
         game.pc = root.getXtra("PC");
         String km = root.getXtra("KM");
@@ -360,16 +451,10 @@ public class FusekiScanner {
                 // leave unknown
             }
         }
-        String ha = root.getXtra("HA");
-        if (ha != null && !ha.trim().isEmpty() && !ha.trim().equals("0")) {
-            game.skipped = "handicap " + ha.trim();
-            return game;
-        }
         for (int x = 0; x < 19; x++) {
             for (int y = 0; y < 19; y++) {
                 if (!root.board.board[x][y].isEmpty()) {
-                    game.skipped = "setup stones";
-                    return game;
+                    return skip(game, "handicap", "setup stones");
                 }
             }
         }
@@ -387,9 +472,21 @@ public class FusekiScanner {
         }
         game.moveCount = game.moves.size();
         if (game.moveCount < minMove) {
-            game.skipped = "only " + game.moveCount + " moves";
+            return skip(game, "short", "only " + game.moveCount + " moves");
         }
         return game;
+    }
+
+    // rank on one scale: 1k = 0, 10k = -9, 1d = 1, pros above 9d; null when missing ("NR", "?")
+    static Integer rankValue(String r) {
+        if (r == null) return null;
+        Matcher m = Pattern.compile("^\\s*(\\d+)\\s*([kdpKDP])").matcher(r);
+        if (!m.find()) return null;
+        int n = Integer.parseInt(m.group(1));
+        char c = Character.toLowerCase(m.group(2).charAt(0));
+        if (c == 'k') return 1 - n;
+        if (c == 'd') return n;
+        return 10;
     }
 
     // stage 1: batch screen of every turn in the window, then stage 2 for survivors
@@ -514,24 +611,18 @@ public class FusekiScanner {
         }
         addCandidate(cands, pos.gameMove, "g");
 
-        List<KataQuery> evalQs = new ArrayList<>();
-        for (Candidate c : cands.values()) {
-            KataQuery eq = evalQuery(pos, c.move, evalVisits);
-            brain.doQuery(eq);
-            evalQs.add(eq);
+        // the game move's line first: if refuting it starts a fight the position fails
+        // whatever the other candidates show, so skip their evaluations
+        Candidate played = cands.get(pos.gameMove);
+        evaluate(brain, pos, root, Arrays.asList(played));
+        if (played.tactics.isTactical()) {
+            pos.mistake = played;
+            pos.reasons.add(new Reason("tactics", "fight in the line after " + played.move + ": " + played.tactics.firstEvent));
+            return;
         }
-        int qi = 0;
-        for (Candidate c : cands.values()) {
-            KataAnalysisResult er = fetch(brain, evalQs.get(qi++));
-            if (er.isError()) {
-                throw new RuntimeException("eval of " + c.move + ": " + er.error);
-            }
-            MoveInfo mi = moveInfo(er, c.move);
-            c.score = sign * mi.scoreLead;
-            c.pv = mi.pv == null ? new ArrayList<>() : mi.pv;
-            c.naturalPolicy = policyAt(root.humanPolicy, c.p);
-            c.tactics = PvTactics.replay(pos.board, pos.color, c.pv, pvCheckMoves);
-        }
+        List<Candidate> others = new ArrayList<>(cands.values());
+        others.remove(played);
+        evaluate(brain, pos, root, others);
         pos.candidates = new ArrayList<>(cands.values());
         pos.candidates.sort((x, y) -> Double.compare(y.score, x.score));
         pos.best = pos.candidates.get(0);
@@ -618,6 +709,29 @@ public class FusekiScanner {
         }
         if (pos.reasons.isEmpty()) {
             pos.stage = STAGE_VERIFY;
+        }
+    }
+
+    // equal-visit evaluation of each candidate: score, principal variation, and its tactics
+    private void evaluate(KataBrain brain, Position pos, KataAnalysisResult root, List<Candidate> cands) throws Exception {
+        int sign = pos.color == Intersection.BLACK ? 1 : -1;
+        List<KataQuery> evalQs = new ArrayList<>();
+        for (Candidate c : cands) {
+            KataQuery eq = evalQuery(pos, c.move, evalVisits);
+            brain.doQuery(eq);
+            evalQs.add(eq);
+        }
+        int qi = 0;
+        for (Candidate c : cands) {
+            KataAnalysisResult er = fetch(brain, evalQs.get(qi++));
+            if (er.isError()) {
+                throw new RuntimeException("eval of " + c.move + ": " + er.error);
+            }
+            MoveInfo mi = moveInfo(er, c.move);
+            c.score = sign * mi.scoreLead;
+            c.pv = mi.pv == null ? new ArrayList<>() : mi.pv;
+            c.naturalPolicy = policyAt(root.humanPolicy, c.p);
+            c.tactics = PvTactics.replay(pos.board, pos.color, c.pv, pvCheckMoves);
         }
     }
 
@@ -825,7 +939,16 @@ public class FusekiScanner {
                 + " moves of the best, answer, and game-move lines; gap >= " + fmt(screenMinGap)
                 + "\n- answer: the good move with the highest " + profilePrefix + naturalRank + " human policy"
                 + "\n- strong net: " + verifyVisits + " visits each for answer and game move, gap >= " + fmt(minGap)
-                + ", answer within " + fmt(verifyAnswerMargin) + " of the strong net's best (" + verifyRootVisits + " root visits)";
+                + ", answer within " + fmt(verifyAnswerMargin) + " of the strong net's best (" + verifyRootVisits + " root visits)"
+                + "\n- games: even 19x19" + (rankRange.isEmpty() ? "" : ", both players " + rankRange)
+                + (excludePlayers.isEmpty() ? "" : ", excluding players matching " + String.join("/", excludePlayers))
+                + (shuffleSeed != null ? ", shuffled (seed " + shuffleSeed + ")" : "")
+                + (maxMinutes > 0 ? ", no new games after " + fmt(maxMinutes) + " min" : "")
+                + (kataConfig.isEmpty() ? "" : ", engine config " + kataConfig);
+    }
+
+    String rankRange() {
+        return rankRange;
     }
 
     double komiFor(Game game) {

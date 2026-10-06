@@ -34,31 +34,81 @@ public class FusekiReport {
         this.outDir = outDir;
     }
 
-    public void write(boolean fin) throws Exception {
+    // status is shown at the top of the report; sgfs (and the shared folders) only once candidates are verified
+    public void write(boolean withSgfs, String status) throws Exception {
         if (!outDir.exists() && !outDir.mkdirs()) {
             throw new RuntimeException("cannot create output directory: " + outDir);
         }
-        if (fin) {
+        if (withSgfs) {
             writeSgfs();
         }
         writeCsv();
-        writeMarkdown(fin);
-        System.out.println("wrote " + new File(outDir, "report.md").getPath() + (fin ? "" : " (interim, strong net pending)"));
+        writeMarkdown(withSgfs, status);
+        System.out.println("wrote " + new File(outDir, "report.md").getPath() + " (" + status + ")");
     }
 
     private void writeSgfs() throws Exception {
         for (Position pos : scan.positions) {
             if (pos.answer == null || pos.stage < FusekiScanner.STAGE_CALM) continue;
-            File dir = new File(outDir, pos.accepted() ? "accepted" : "rejected");
+            File dir = new File(outDir, pos.accepted() ? "accepted" : scan.nearMiss(pos) ? "near_misses" : "rejected");
             if (!dir.exists() && !dir.mkdirs()) {
                 throw new RuntimeException("cannot create output directory: " + dir);
             }
             File f = new File(dir, pos.id() + ".sgf");
+            String sgf = problemSgf(pos);
             try (PrintWriter w = new PrintWriter(f)) {
-                w.println(problemSgf(pos));
+                w.println(sgf);
             }
             pos.sgfPath = dir.getName() + "/" + f.getName();
+            if (pos.accepted()) {
+                track(scan.problemsDir(), PROBLEMS_HEADER, pos, f.getName(), sgf);
+            } else if (scan.nearMiss(pos)) {
+                track(scan.nearDir(), NEAR_HEADER, pos, f.getName(), sgf);
+            }
         }
+    }
+
+    static final String INDEX_COLUMNS = "| SGF | Position | To play | Correct | Game move (mistake) | Gap strong / fast | Ranks B/W | Run |\n"
+            + "|---|---|---|---|---|---|---|---|\n";
+    static final String PROBLEMS_HEADER = "# Fuseki problems\n\n"
+            + "Accepted problems from every scan run: calm openings where the game move lost at least 2.5 points"
+            + " (strong net) to a natural good move. Each SGF is a one-move-deep A/B problem; the root comment has the"
+            + " analysis. Rows are added as runs find them.\n\n" + INDEX_COLUMNS;
+    static final String NEAR_HEADER = "# Fuseki near misses\n\n"
+            + "Positions that passed every check except the last: the strong net gap between the correct move and the game move"
+            + " came out between 2.0 and 2.5 points, just under the bar. Each SGF is a one-move-deep A/B problem; the root"
+            + " comment has the analysis. Rows are added as runs find them.\n\n" + INDEX_COLUMNS;
+
+    // problems and near misses from every run also collect in shared folders with an index, for review across runs
+    private void track(String dirName, String header, Position pos, String fileName, String sgf) throws Exception {
+        File dir = new File(dirName);
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new RuntimeException("cannot create output directory: " + dir);
+        }
+        File f = new File(dir, fileName);
+        boolean isNew = !f.exists();
+        try (PrintWriter w = new PrintWriter(f)) {
+            w.println(sgf);
+        }
+        if (!isNew) return; // a later round or rerun wrote the same position; keep one index row
+        File index = new File(dir, "index.md");
+        boolean fresh = !index.exists();
+        try (PrintWriter w = new PrintWriter(new java.io.FileWriter(index, true))) {
+            if (fresh) {
+                w.print(header);
+            }
+            w.println(indexRow(pos, fileName));
+        }
+    }
+
+    private String indexRow(Position pos, String fileName) {
+        return "| [" + fileName + "](" + fileName + ") | " + pos.game.name + " move " + pos.moveNumber
+                + " | " + pos.colorName()
+                + " | " + pos.label(pos.answer) + " = " + pos.answer.move
+                + " | " + pos.label(pos.mistake) + " = " + pos.mistake.move
+                + " | " + String.format("%.2f", pos.strongGap()) + " / " + String.format("%.2f", pos.gap())
+                + " | " + (pos.game.br == null ? "?" : pos.game.br) + " / " + (pos.game.wr == null ? "?" : pos.game.wr)
+                + " | " + outDir.getName() + " |";
     }
 
     // the problem: full board setup, A and B labels, one move deep
@@ -110,7 +160,10 @@ public class FusekiReport {
 
     private String rootComment(Position pos) {
         StringBuilder c = new StringBuilder();
-        if (!pos.accepted()) {
+        if (scan.nearMiss(pos)) {
+            c.append("NEAR MISS: strong net gap ").append(String.format("%.2f", pos.strongGap())).append(", the bar is ")
+                    .append(fmt(scan.minGap())).append(".\n\n");
+        } else if (!pos.accepted()) {
             c.append("REJECTED (").append(pos.status()).append("): ").append(pos.reasonText()).append("\n\n");
         }
         c.append(pos.colorName()).append(" to play. Which is better, A or B?\n\n");
@@ -140,23 +193,33 @@ public class FusekiReport {
         return c.toString();
     }
 
-    private void writeMarkdown(boolean fin) throws Exception {
+    private void writeMarkdown(boolean fin, String status) throws Exception {
         List<Position> accepted = new ArrayList<>();
+        List<Position> near = new ArrayList<>();
         List<Position> rejected = new ArrayList<>();
         List<Position> pending = new ArrayList<>();
         for (Position pos : scan.positions) {
             if (pos.accepted()) accepted.add(pos);
+            else if (scan.nearMiss(pos)) near.add(pos);
             else if (pos.awaitingVerify()) pending.add(pos);
             else if (pos.stage >= FusekiScanner.STAGE_CALM) rejected.add(pos);
         }
         accepted.sort((a, b) -> Double.compare(b.strongGap(), a.strongGap()));
+        near.sort((a, b) -> Double.compare(b.strongGap(), a.strongGap()));
 
         StringBuilder md = new StringBuilder();
         md.append("# Fuseki problem scan\n\n");
-        md.append("Started ").append(scan.startedAt).append(" on `").append(props("path", "")).append("`. Status: ")
-                .append(fin ? "final" : "**interim, strong net check still running**").append(".\n\n");
-        md.append("Examined ").append(scan.filesExamined).append(" of ").append(scan.filesTotal).append(" files")
-                .append(scan.budgetHit ? " before the time budget ran out" : "").append(".\n\n");
+        md.append("Started ").append(scan.startedAt).append(" on `").append(props("path", "")).append("`. Status: **")
+                .append(status).append("** (updated ").append(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(new java.util.Date()))
+                .append(").\n\n");
+        double hours = (System.currentTimeMillis() - scan.runStart) / 3600000.0;
+        md.append(String.format("Progress: %.1f hours, %d games scanned (%d of %d files examined", hours, scan.gamesScanned,
+                        scan.filesExamined, scan.filesTotal))
+                .append(scan.budgetHit ? ", time budget reached" : "").append(scan.stopped ? ", stopped by the stop file" : "")
+                .append("), ").append(accepted.size()).append(" problems, ").append(near.size()).append(" near misses.")
+                .append(" Problems and near misses from every run also collect in `").append(scan.problemsDir()).append("/` and `")
+                .append(scan.nearDir()).append("/`. To end a running scan after its current round, create `")
+                .append(scan.stopFile()).append("`.\n\n");
         md.append("Fast net (screen and calm check): `").append(scan.screenModelName()).append("`. Strong net (verify): `")
                 .append(scan.strongModelName()).append("`.\n\n");
         md.append("Settings:\n- ").append(scan.settingsSummary()).append("\n\n");
@@ -172,6 +235,17 @@ public class FusekiReport {
         int i = 0;
         for (Position pos : accepted) {
             appendProblem(md, ++i, pos);
+        }
+
+        if (!near.isEmpty()) {
+            md.append("## Near misses: strong net gap ").append(fmt(scan.nearGapMin())).append(" to ").append(fmt(scan.minGap()))
+                    .append(" (").append(near.size()).append(")\n\n");
+            md.append("Passed every check except the final gap. SGFs are in `near_misses/` and also collect across runs in `")
+                    .append(scan.nearDir()).append("/`.\n\n");
+            i = 0;
+            for (Position pos : near) {
+                appendProblem(md, ++i, pos);
+            }
         }
 
         if (!pending.isEmpty()) {
@@ -314,7 +388,7 @@ public class FusekiReport {
                 .append("; strong net has it ").append(fmt(pos.strongAnswerLoss())).append(" behind its best move ")
                 .append(pos.strongBestMove).append(".\n");
         md.append("- **Mistake: ").append(pos.label(pos.mistake)).append(" = ").append(pos.mistake.move).append("**, the game move. Loses ")
-                .append(fmt(pos.strongGap())).append(" (strong net) / ").append(fmt(pos.gap())).append(" (fast net). ")
+                .append(String.format("%.2f", pos.strongGap())).append(" (strong net) / ").append(fmt(pos.gap())).append(" (fast net). ")
                 .append(prefix).append(pos.moverRank).append(" policy ").append(pct(pos.mistakeHumanPolicy))
                 .append(", choice #").append(pos.mistakeHumanOrder).append(" at the player's rank.\n");
         md.append("- Good moves (fast net, within ").append(props("fuseki.good_margin", "0.5")).append("): ")
@@ -363,7 +437,7 @@ public class FusekiReport {
                 f.add(String.valueOf(pos.moveNumber));
                 f.add(pos.color == Intersection.BLACK ? "B" : "W");
                 f.add(pos.gameMove);
-                f.add(pos.status());
+                f.add(scan.nearMiss(pos) ? "near miss" : pos.status());
                 f.add(pos.reasonText());
                 f.add(num(pos.scoreLead));
                 f.add(num(pos.screenLoss));
@@ -402,6 +476,16 @@ public class FusekiReport {
         }
     }
 
+    public void printRound() {
+        int accepted = 0, near = 0;
+        for (Position pos : scan.positions) {
+            if (pos.accepted()) accepted++;
+            else if (scan.nearMiss(pos)) near++;
+        }
+        System.out.println("ROUND " + scan.round + " DONE at " + String.format("%.1f", (System.currentTimeMillis() - scan.runStart) / 3600000.0)
+                + " h: " + scan.gamesScanned + " games scanned, " + accepted + " problems, " + near + " near misses");
+    }
+
     public void printSummary() {
         System.out.println();
         System.out.println("==== FUSEKI SCAN SUMMARY ====");
@@ -413,6 +497,12 @@ public class FusekiReport {
                     + ", mistake " + pos.label(pos.mistake) + "=" + pos.mistake.move + " (game move), gap "
                     + fmt(pos.strongGap()) + " strong / " + fmt(pos.gap()) + " fast, " + ideas(pos.goodIdeas) + ", crosses 50% at "
                     + pos.crossover);
+        }
+        for (Position pos : scan.positions) {
+            if (scan.nearMiss(pos)) {
+                System.out.println("near miss " + pos.id() + ": strong gap " + String.format("%.2f", pos.strongGap())
+                        + " -> " + scan.nearDir() + "/" + pos.id() + ".sgf");
+            }
         }
         System.out.println("files examined: " + scan.filesExamined + " of " + scan.filesTotal
                 + (scan.budgetHit ? " (time budget reached)" : ""));

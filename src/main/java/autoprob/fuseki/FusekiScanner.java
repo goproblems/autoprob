@@ -177,6 +177,9 @@ public class FusekiScanner {
     private final int minGoodIdeas, pvCheckMoves;
     private final int verifyRootVisits, verifyVisits;
     private final double minGap, screenMinGap, verifyAnswerMargin;
+    // near misses: calm positions whose strong net gap landed in [nearGapMin, minGap), kept for review
+    private final double nearGapMin;
+    private final String nearDir;
     private final String profilePrefix, naturalRank, defaultRank;
     private final List<String> curveRanks;
     // big collections: game filters, sampling order, and a time budget for the fast net stages
@@ -186,9 +189,15 @@ public class FusekiScanner {
     private final Long shuffleSeed;
     private final double maxMinutes;
     private final String kataConfig;
+    // long runs: rounds of fast scanning then strong verification, ended by a stop file or the budget
+    private final double roundMinutes;
+    private final String stopFile;
+    private final String problemsDir;
     private int queryCount = 0;
-    int filesTotal, filesExamined;
-    boolean budgetHit;
+    private int restarts = 0;
+    int filesTotal, filesExamined, gamesScanned, round;
+    long runStart;
+    boolean budgetHit, stopped;
 
     final List<Game> games = new ArrayList<>();
     final List<Position> positions = new ArrayList<>();
@@ -218,6 +227,8 @@ public class FusekiScanner {
         minGap = doubleProp("fuseki.min_gap", 2.5);
         screenMinGap = doubleProp("fuseki.screen_min_gap", 2.0);
         verifyAnswerMargin = doubleProp("fuseki.verify_answer_margin", 1.0);
+        nearGapMin = doubleProp("fuseki.near_gap_min", 2.0);
+        nearDir = props.getProperty("fuseki.near.dir", "fuseki_out/near_misses").trim();
         profilePrefix = props.getProperty("fuseki.profile_prefix", "rank_").trim();
         naturalRank = props.getProperty("fuseki.natural_rank", "3d").trim();
         defaultRank = props.getProperty("fuseki.default_rank", "1d").trim();
@@ -242,6 +253,9 @@ public class FusekiScanner {
         shuffleSeed = seed.isEmpty() ? null : Long.parseLong(seed);
         maxMinutes = doubleProp("fuseki.max_minutes", 0);
         kataConfig = props.getProperty("fuseki.kata.config", "").trim();
+        roundMinutes = doubleProp("fuseki.round_minutes", 30);
+        stopFile = props.getProperty("fuseki.stop_file", "fuseki_out/STOP").trim();
+        problemsDir = props.getProperty("fuseki.problems.dir", "fuseki_out/problems").trim();
     }
 
     public void run() throws Exception {
@@ -265,35 +279,65 @@ public class FusekiScanner {
         File outDir = new File(props.getProperty("fuseki.output.dir", "fuseki_out"),
                 new SimpleDateFormat("yyyyMMdd-HHmm").format(new Date()));
         FusekiReport report = new FusekiReport(this, outDir);
-        long start = System.currentTimeMillis();
+        runStart = System.currentTimeMillis();
         System.out.println(filesTotal + " candidate files under " + path);
+        File stop = new File(stopFile);
+        if (stop.exists() && stop.delete()) {
+            System.out.println("removed a stale stop file: " + stopFile);
+        }
 
-        // stages 1 and 2 on the fast net
+        // rounds: fast net scanning, then strong net verification, then every output rewritten, so a
+        // long run always has complete results on disk and can end at any round boundary
+        java.util.Iterator<File> next = files.iterator();
+        boolean more = true;
+        while (more) {
+            round++;
+            more = scanRound(next);
+            System.out.println("round " + round + " fast net stages done, " + minutes(runStart) + " in: " + gamesScanned
+                    + " games scanned, " + filesExamined + " of " + filesTotal + " files examined");
+            report.write(false, "round " + round + ": strong net check running");
+            verifyPending();
+            report.write(true, more ? "running, round " + round + " done, next round started" : "final");
+            report.printRound();
+        }
+        report.printSummary();
+    }
+
+    // fast net stages for one round; false once the files, the time budget, or the stop file end the run
+    private boolean scanRound(java.util.Iterator<File> next) throws Exception {
+        long roundStart = System.currentTimeMillis();
         KataBrain brain = newBrain(screenModel);
-        int restarts = 0;
-        int scanned = 0;
         try {
-            for (File file : files) {
-                if (maxMinutes > 0 && (System.currentTimeMillis() - start) / 60000.0 >= maxMinutes) {
+            while (next.hasNext()) {
+                if (new File(stopFile).exists()) {
+                    stopped = true;
+                    System.out.println("stop file found, finishing this round");
+                    return false;
+                }
+                if (maxMinutes > 0 && (System.currentTimeMillis() - runStart) / 60000.0 >= maxMinutes) {
                     budgetHit = true;
                     System.out.println("time budget of " + fmt(maxMinutes) + " min reached, no new games");
-                    break;
+                    return false;
                 }
+                if (roundMinutes > 0 && (System.currentTimeMillis() - roundStart) / 60000.0 >= roundMinutes) {
+                    return true;
+                }
+                File file = next.next();
                 filesExamined++;
                 Game game = loadGame(file);
                 games.add(game);
                 if (game.skipped != null) continue;
-                scanned++;
+                gamesScanned++;
                 System.out.println();
-                System.out.println("==== game " + scanned + ": " + game.file + " (" + game.pb + " " + game.br + " vs "
-                        + game.pw + " " + game.wr + "), " + minutes(start) + " in, " + filesExamined + " files examined");
+                System.out.println("==== game " + gamesScanned + ": " + game.file + " (" + game.pb + " " + game.br + " vs "
+                        + game.pw + " " + game.wr + "), " + minutes(runStart) + " in, " + filesExamined + " files examined");
                 List<Position> found = null;
                 try {
                     found = scanGame(brain, game);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-                if (found == null && !brain.isAlive() && restarts < 3) {
+                if (found == null && !brain.isAlive() && restarts < 10) {
                     restarts++;
                     System.out.println("katago died, restarting engine (restart " + restarts + ") and rescanning " + game.name);
                     brain.stopKataBrain();
@@ -304,6 +348,7 @@ public class FusekiScanner {
                         e.printStackTrace();
                     }
                 }
+                game.moveNodes = null; // the parsed tree is only needed while scanning; long runs hold many games
                 if (found == null) {
                     game.skipped = "analysis failed";
                     game.skipCode = "error";
@@ -313,54 +358,53 @@ public class FusekiScanner {
                     }
                     continue;
                 }
+                for (Position pos : found) {
+                    if (pos.answer == null) pos.board = null; // boards are only kept for problem sgfs
+                }
                 positions.addAll(found);
             }
+            return false;
         } finally {
             brain.stopKataBrain();
         }
-        System.out.println("fast net stages done in " + minutes(start) + ": " + scanned + " games scanned, "
-                + filesExamined + " of " + filesTotal + " files examined");
-        report.write(false);
+    }
 
-        // stage 3 on the strong net
+    // stage 3 on the strong net, for every candidate the fast net passed since the last round
+    private void verifyPending() throws Exception {
         List<Position> toVerify = new ArrayList<>();
         for (Position pos : positions) {
             if (pos.awaitingVerify()) toVerify.add(pos);
         }
-        if (!toVerify.isEmpty()) {
-            KataBrain strong = newBrain(null);
-            try {
-                int i = 0;
-                for (Position pos : toVerify) {
-                    i++;
-                    System.out.println("verify " + i + "/" + toVerify.size() + ": " + pos.id());
-                    try {
-                        verify(strong, pos);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        if (!strong.isAlive() && restarts < 6) {
-                            restarts++;
-                            System.out.println("katago died, restarting strong engine and retrying " + pos.id());
-                            strong.stopKataBrain();
-                            strong = newBrain(null);
-                            try {
-                                verify(strong, pos);
-                            } catch (Exception e2) {
-                                e2.printStackTrace();
-                            }
+        if (toVerify.isEmpty()) return;
+        KataBrain strong = newBrain(null);
+        try {
+            int i = 0;
+            for (Position pos : toVerify) {
+                i++;
+                System.out.println("verify " + i + "/" + toVerify.size() + ": " + pos.id());
+                try {
+                    verify(strong, pos);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    if (!strong.isAlive() && restarts < 10) {
+                        restarts++;
+                        System.out.println("katago died, restarting strong engine and retrying " + pos.id());
+                        strong.stopKataBrain();
+                        strong = newBrain(null);
+                        try {
+                            verify(strong, pos);
+                        } catch (Exception e2) {
+                            e2.printStackTrace();
                         }
                     }
-                    if (!pos.verified && pos.reasons.isEmpty()) {
-                        pos.reasons.add(new Reason("error", "strong net analysis failed"));
-                    }
                 }
-            } finally {
-                strong.stopKataBrain();
+                if (!pos.verified && pos.reasons.isEmpty()) {
+                    pos.reasons.add(new Reason("error", "strong net analysis failed"));
+                }
             }
+        } finally {
+            strong.stopKataBrain();
         }
-        System.out.println("all stages done in " + minutes(start));
-        report.write(true);
-        report.printSummary();
     }
 
     // .sgf files, plus extensionless ones: archives like NNGS store games without an extension
@@ -969,6 +1013,27 @@ public class FusekiScanner {
 
     List<String> curveRanks() {
         return curveRanks;
+    }
+
+    // passed every check except the strong net gap, which fell just short
+    boolean nearMiss(Position pos) {
+        return pos.verified && !pos.accepted() && pos.strongGap() >= nearGapMin && pos.strongGap() < minGap;
+    }
+
+    double nearGapMin() {
+        return nearGapMin;
+    }
+
+    String nearDir() {
+        return nearDir;
+    }
+
+    String problemsDir() {
+        return problemsDir;
+    }
+
+    String stopFile() {
+        return stopFile;
     }
 
     double minGap() {

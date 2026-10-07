@@ -341,7 +341,8 @@ public class JosekiNodeRecalculator {
         int processedNodesBefore = processedNodeIds.size();
 
         JosekiHumanPolicyTaskProgress progress = fetchHumanPolicyTaskProgress();
-        int totalTasksEstimate = Math.max(0, progress.pendingNodes);
+        int totalTasksEstimate = remainingHumanPolicyTasks(progress);
+        long startedAt = System.currentTimeMillis();
         System.out.println("Human Policy tasks this run: 0/" + totalTasksEstimate
             + " missing at start"
             + " (completed=" + progress.completedNodes
@@ -357,6 +358,14 @@ public class JosekiNodeRecalculator {
                 break;
             }
 
+            int processedThisRun = processedNodeIds.size() - processedNodesBefore;
+            // Older Josekipedia servers can report pending=0 while still
+            // returning a page of runnable tasks. Keep the progress display
+            // useful until the server-side progress fix is deployed.
+            totalTasksEstimate = Math.max(
+                totalTasksEstimate,
+                processedThisRun + entries.size()
+            );
             sortEntriesByBreadth(entries);
             int before = processedNodeIds.size();
             for (JosekiNodeEntry entry : entries) {
@@ -366,8 +375,12 @@ public class JosekiNodeRecalculator {
 
                 String path = entry.path == null ? "" : entry.path;
                 try {
-                    printHumanPolicyProgress(
-                        processedNodeIds.size() - processedNodesBefore, entry
+                    printProgressBar(
+                        "Human Policy",
+                        processedNodeIds.size() - processedNodesBefore,
+                        totalTasksEstimate,
+                        entry,
+                        startedAt
                     );
                     if (entry.missingHumanPolicyProfiles == null) {
                         throw new IllegalStateException(
@@ -396,10 +409,10 @@ public class JosekiNodeRecalculator {
             }
 
             progress = fetchHumanPolicyTaskProgress();
-            int processedThisRun = processedNodeIds.size() - processedNodesBefore;
+            processedThisRun = processedNodeIds.size() - processedNodesBefore;
             totalTasksEstimate = Math.max(
                 processedThisRun,
-                processedThisRun + Math.max(0, progress.pendingNodes)
+                processedThisRun + remainingHumanPolicyTasks(progress)
             );
             System.out.println("Missing human policy pass: processed " + processedNodeIds.size()
                 + " nodes, submitted " + submittedHumanPolicies + " human policies, failed " + failedNodes
@@ -423,6 +436,10 @@ public class JosekiNodeRecalculator {
             submittedHumanPolicies,
             failedNodes
         );
+    }
+
+    private int remainingHumanPolicyTasks(JosekiHumanPolicyTaskProgress progress) {
+        return Math.max(0, Math.max(progress.pendingNodes, progress.readyNodes));
     }
 
     private ProcessNodesResult processNodes(List<JosekiNodeEntry> entries, KataBrain brain,
@@ -1548,13 +1565,17 @@ public class JosekiNodeRecalculator {
         return separator < 0 ? "" : path.substring(0, separator);
     }
 
-    private void printHumanPolicyProgress(int processed, JosekiNodeEntry node) {
-        System.out.println(CYAN + "Human Policy processed " + processed + RESET
-            + " node=" + node.id + " depth=" + pathDepth(node.path)
-            + " path=" + formatPath(node.path));
+    private void printProgressBar(String stage, int current, int total, JosekiNodeEntry node) {
+        printProgressBar(stage, current, total, node, null);
     }
 
-    private void printProgressBar(String stage, int current, int total, JosekiNodeEntry node) {
+    private void printProgressBar(
+        String stage,
+        int current,
+        int total,
+        JosekiNodeEntry node,
+        Long startedAt
+    ) {
         int safeTotal = Math.max(total, current);
         int percent = safeTotal == 0 ? 100 : (current * 100) / safeTotal;
         int barLength = 30;
@@ -1570,11 +1591,36 @@ public class JosekiNodeRecalculator {
         bar.append("] ");
         bar.append(YELLOW).append(percent).append("%");
         bar.append(RESET);
+        if (startedAt != null) {
+            long elapsedMs = Math.max(1L, System.currentTimeMillis() - startedAt);
+            bar.append(" elapsed=").append(formatDuration(elapsedMs));
+            if (current > 0 && safeTotal > current) {
+                long remainingMs = Math.max(
+                    0L,
+                    Math.round(elapsedMs * (safeTotal - current) / (double) current)
+                );
+                bar.append(" ETA~").append(formatDuration(remainingMs));
+            }
+        }
         if (node != null) {
             bar.append(" node=").append(node.id)
                 .append(" depth=").append(pathDepth(node.path))
                 .append(" path=").append(formatPath(node.path));
         }
         System.out.println(bar);
+    }
+
+    private String formatDuration(long durationMs) {
+        long totalSeconds = Math.max(0L, durationMs / 1000L);
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+        if (hours > 0L) {
+            return hours + "h" + minutes + "m";
+        }
+        if (minutes > 0L) {
+            return minutes + "m" + seconds + "s";
+        }
+        return seconds + "s";
     }
 }

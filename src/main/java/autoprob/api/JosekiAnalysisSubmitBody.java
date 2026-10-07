@@ -10,4 +10,5 @@ public class JosekiAnalysisSubmitBody {
     public double lowPolicyThreshold;
     public List<JosekiAnalysisResultData> results;
     public List<JosekiHumanPolicyDistributionData> humanPolicyDistributions;
+    public List<JosekiPassAnalysisUpdateData> passAnalysisUpdates;
 }

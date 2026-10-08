@@ -100,11 +100,17 @@ public class JosekiNodeRecalculator {
 
     public void run() throws Exception {
         boolean humanPolicyOnly = humanPolicyOnly();
+        boolean passOnly = passOnly();
+        if (humanPolicyOnly && passOnly) {
+            throw new IllegalArgumentException(
+                "humanPolicyOnly=true and passOnly=true cannot be used together"
+            );
+        }
         boolean force = forceRecalculate();
         boolean backfillMissingPass = Boolean.parseBoolean(
             props.getProperty("joseki.backfill_missing_pass_analysis", "true")
         );
-        List<AnalysisScope> scopes = humanPolicyOnly ? List.of() : analysisScopes();
+        List<AnalysisScope> scopes = humanPolicyOnly || passOnly ? List.of() : analysisScopes();
         if (humanPolicyOnly) {
             if (!humanModelConfigured()) {
                 throw new IllegalArgumentException(
@@ -113,6 +119,10 @@ public class JosekiNodeRecalculator {
             }
             System.out.println("Filling only missing human policies in breadth-first order"
                 + " (limit=" + NODE_PAGE_LIMIT + ")");
+        } else if (passOnly) {
+            System.out.println("Backfilling only missing full-board Pass analysis"
+                + " (policy threshold=" + passPolicyThreshold()
+                + ", limit=" + NODE_PAGE_LIMIT + ")");
         } else {
             System.out.println(force
                 ? "Filling missing human policies, then force recalculating joseki nodes, ignoring existing analysis client version for scopes "
@@ -136,6 +146,19 @@ public class JosekiNodeRecalculator {
                 processedNodes += humanPolicyResult.processedNodes();
                 submittedHumanPolicies += humanPolicyResult.submittedHumanPolicies();
                 failedNodes += humanPolicyResult.failedNodes();
+            } else if (passOnly) {
+                List<AnalysisScope> passScopes = List.of(AnalysisScope.GLOBAL);
+                RecalculationResult missingPass = processScope(
+                    brain,
+                    AnalysisScope.GLOBAL,
+                    passScopes,
+                    false,
+                    true,
+                    new HashSet<>()
+                );
+                processedNodes += missingPass.processedNodes();
+                submittedResults += missingPass.submittedResults();
+                failedNodes += missingPass.failedNodes();
             } else {
                 RecalculationResult humanPolicyResult = processMissingHumanPolicies(brain, new HashSet<>());
                 processedNodes += humanPolicyResult.processedNodes();
@@ -1326,6 +1349,10 @@ public class JosekiNodeRecalculator {
 
     private boolean humanPolicyOnly() {
         return Boolean.parseBoolean(props.getProperty("humanPolicyOnly", "false"));
+    }
+
+    private boolean passOnly() {
+        return Boolean.parseBoolean(props.getProperty("passOnly", "false"));
     }
 
     private double lowPolicyThreshold() {

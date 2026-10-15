@@ -20,6 +20,7 @@ public class KataBrain {
 	private BufferedReader reader;
 	private Map<String, KataAnalysisResult> results = new Hashtable<>();
 	private Map<String, String> errors = new Hashtable<>();
+	private volatile String lastProcessOutput;
 	private static final DecimalFormat df = new DecimalFormat("0.00");
 	public String modelPath;
 	private Thread thread;
@@ -119,6 +120,10 @@ public class KataBrain {
 		int total = 0;
 		boolean started = false;
 		while ((line = reader.readLine()) != null) {
+			if (!line.isBlank()) {
+				lastProcessOutput = line.length() > 500
+					? line.substring(line.length() - 500) : line;
+			}
 			if (line.contains("{\"error")) {
 				String errorId = extractJsonStringValue(line, "id");
 				if (errorId != null) {
@@ -205,6 +210,14 @@ public class KataBrain {
 //					System.out.println("brain found: " + id + " : " + targetTurn);
 					return results.remove(nm);
 				}
+			}
+			if (!process.isAlive()) {
+				KataAnalysisResult errorResult = new KataAnalysisResult();
+				errorResult.id = id;
+				errorResult.turnNumber = targetTurn;
+				errorResult.error = "KataGo process exited with code " + process.exitValue()
+					+ (lastProcessOutput == null ? "" : ": " + lastProcessOutput);
+				return errorResult;
 			}
 			if (timeoutMs > 0 && System.currentTimeMillis() - startTime > timeoutMs) {
 				System.err.println("KataGo query timed out after " + (timeoutMs / 1000) +

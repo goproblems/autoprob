@@ -40,6 +40,11 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class JosekiNodeRecalculator {
     public static final int CLIENT_VERSION = 4;
@@ -67,6 +72,14 @@ public class JosekiNodeRecalculator {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private final Map<Integer, Set<String>> childMovesByParentId = new HashMap<>();
     private int queryCounter = 0;
+    private Integer requestVisits;
+    private String requestModelPath;
+    private static final Set<String> REQUEST_MODELS = Set.of(
+        "kata1-b15c192-s1672170752-d466197061.txt.gz",
+        "kata1-b18c384nbt-s9996604416-d4316597426.bin.gz",
+        "kata1-b28c512nbt-s7332806912-d4357057652.bin.gz",
+        "kata1-tf3-b11c768-s11003M-d5973M-7gres.bin.gz"
+    );
 
     private enum AnalysisScope {
         LOCAL("local", true, false),
@@ -96,6 +109,10 @@ public class JosekiNodeRecalculator {
 
     public JosekiNodeRecalculator(Properties props) {
         this.props = props;
+        this.props.putIfAbsent(
+            "api.joseki.analysis_request_heartbeat",
+            "api/joseki-analysis-requests/{id}/handles/{handleId}/heartbeat"
+        );
     }
 
     public void run() throws Exception {
@@ -201,7 +218,7 @@ public class JosekiNodeRecalculator {
             + " (scopes=" + formatScopes(scopes)
             + ", poll interval=" + pollIntervalMs + "ms)");
 
-        KataBrain brain = new KataBrain(props);
+        KataBrain brain = null;
         try {
             while (!Thread.currentThread().isInterrupted()) {
                 JosekiAnalysisRequestData request;
@@ -223,14 +240,42 @@ public class JosekiNodeRecalculator {
 
                 long startedAt = System.currentTimeMillis();
                 String path = request.path == null ? "" : request.path;
+                AtomicBoolean leaseLost = new AtomicBoolean(false);
+                AtomicLong lastHeartbeat = new AtomicLong(startedAt);
+                ScheduledExecutorService heartbeatExecutor = startAnalysisHeartbeat(
+                    request, leaseLost, lastHeartbeat
+                );
                 try {
+                    if (request.visits != null && (request.visits < 100 || request.visits > 20000)) {
+                        throw new IllegalArgumentException("Requested visits must be between 100 and 20000");
+                    }
+                    requestVisits = request.visits;
+                    requestModelPath = resolveRequestModelPath(request.model);
+                    String selectedModelPath = requestModelPath == null
+                        ? props.getProperty("kata.model") : requestModelPath;
+                    if (brain == null || !Path.of(selectedModelPath).toAbsolutePath().normalize()
+                        .equals(Path.of(brain.modelPath).toAbsolutePath().normalize())) {
+                        if (brain != null) {
+                            brain.stopKataBrain();
+                            brain = null;
+                        }
+                        brain = new KataBrain(props, selectedModelPath);
+                    }
                     System.out.println("Processing joseki analysis request " + request.id
                         + " source=" + request.source
-                        + " path=" + formatPath(path));
+                        + " path=" + formatPath(path)
+                        + " visits=" + (requestVisits == null ? props.getProperty("joseki.visits", "1000") : requestVisits)
+                        + " model=" + katagoWeightsFile());
                     JosekiNodeEntry entry = resolveNodeForAnalysis(path);
                     List<JosekiAnalysisResultData> results = analyzeNode(entry, brain, scopes);
                     List<JosekiHumanPolicyDistributionData> humanPolicyDistributions =
-                        analyzeHumanPolicies(entry, brain, humanSLProfiles());
+                        request.visits != null || request.model != null
+                            ? List.of()
+                            : analyzeHumanPolicies(entry, brain, humanSLProfiles());
+                    if (leaseLost.get() || (heartbeatExecutor != null
+                        && System.currentTimeMillis() - lastHeartbeat.get() >= 15000L)) {
+                        throw new IllegalStateException("Analysis request handle is no longer current");
+                    }
                     long durationMs = Math.max(1L, System.currentTimeMillis() - startedAt);
                     submitResults(
                         results,
@@ -249,11 +294,22 @@ public class JosekiNodeRecalculator {
                     if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
                         ex.printStackTrace(System.out);
                     }
-                    reportAnalysisRequestError(request.id, message);
+                    if (!leaseLost.get() && (heartbeatExecutor == null
+                        || System.currentTimeMillis() - lastHeartbeat.get() < 15000L)) {
+                        reportAnalysisRequestError(request.id, message);
+                    }
+                } finally {
+                    if (heartbeatExecutor != null) {
+                        heartbeatExecutor.shutdownNow();
+                    }
+                    requestVisits = null;
+                    requestModelPath = null;
                 }
             }
         } finally {
-            brain.stopKataBrain();
+            if (brain != null) {
+                brain.stopKataBrain();
+            }
         }
     }
 
@@ -661,7 +717,7 @@ public class JosekiNodeRecalculator {
         result.scope = scope.value;
         result.score = score;
         result.loss = moverScoreDelta == null ? 0.0 : -moverScoreDelta;
-        result.katagoPlayouts = Integer.parseInt(props.getProperty("joseki.visits", "1000"));
+        result.katagoPlayouts = configuredVisits();
         result.katagoWeightsFile = katagoWeightsFile();
         result.prior = moveInfo == null ? null : moveInfo.prior;
         result.policyMass = currentQueryResult.policyMass();
@@ -692,7 +748,7 @@ public class JosekiNodeRecalculator {
         query.includePolicy = true;
         query.analyzeTurns.clear();
         query.analyzeTurns.add(0);
-        query.maxVisits = Integer.parseInt(props.getProperty("joseki.visits", "1000"));
+        query.maxVisits = configuredVisits();
 
         Set<String> allowedMoves = null;
         int maxMoveDistance = Integer.parseInt(props.getProperty("joseki.max_move_distance", "4"));
@@ -1077,6 +1133,7 @@ public class JosekiNodeRecalculator {
     private JosekiAnalysisRequestData fetchNextAnalysisRequest() throws Exception {
         List<String> params = new ArrayList<>();
         addQueryParam(params, "clientVersion", String.valueOf(CLIENT_VERSION));
+        addQueryParam(params, "requestOptionsVersion", "1");
         String clientId = props.getProperty("clientId", "").trim();
         if (!clientId.isEmpty()) {
             addQueryParam(params, "clientId", clientId);
@@ -1108,6 +1165,53 @@ public class JosekiNodeRecalculator {
                 + response.getStatusCode() + " - " + response.getErrorMessage());
         }
         return response.getData();
+    }
+
+    private ScheduledExecutorService startAnalysisHeartbeat(
+        JosekiAnalysisRequestData request,
+        AtomicBoolean leaseLost,
+        AtomicLong lastHeartbeat
+    ) {
+        if (request.handleId == null) {
+            return null;
+        }
+
+        ApiClient heartbeatClient = new ApiClient();
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(task -> {
+            Thread thread = new Thread(task, "joseki-analysis-heartbeat");
+            thread.setDaemon(true);
+            return thread;
+        });
+        executor.scheduleAtFixedRate(() -> {
+            try {
+                Map<String, String> pathParams = Map.of(
+                    "id", String.valueOf(request.id),
+                    "handleId", String.valueOf(request.handleId)
+                );
+                ApiClient.ApiResponse<Object> response = heartbeatClient.makePostRequest(
+                    "api.joseki.analysis_request_heartbeat",
+                    pathParams,
+                    "{}",
+                    Object.class,
+                    props
+                );
+                if (response.isSuccess()) {
+                    lastHeartbeat.set(System.currentTimeMillis());
+                } else if (response.getStatusCode() == 403 || response.getStatusCode() == 404
+                    || response.getStatusCode() == 409) {
+                    leaseLost.set(true);
+                    System.out.println(RED + "Joseki analysis request " + request.id
+                        + " lost its handle: HTTP " + response.getStatusCode() + RESET);
+                } else {
+                    System.out.println(RED + "Joseki analysis request " + request.id
+                        + " heartbeat failed: HTTP " + response.getStatusCode() + RESET);
+                }
+            } catch (Exception ex) {
+                System.out.println(RED + "Joseki analysis request " + request.id
+                    + " heartbeat failed: " + describeException(ex) + RESET);
+            }
+        }, 5L, 5L, TimeUnit.SECONDS);
+        return executor;
     }
 
     private JosekiNodeEntry resolveNodeForAnalysis(String path) throws Exception {
@@ -1560,9 +1664,32 @@ public class JosekiNodeRecalculator {
     }
 
     private String katagoWeightsFile() {
-        String model = props.getProperty("kata.model", "unknown");
+        String model = requestModelPath == null
+            ? props.getProperty("kata.model", "unknown")
+            : requestModelPath;
         int slash = Math.max(model.lastIndexOf('/'), model.lastIndexOf('\\'));
         return slash >= 0 ? model.substring(slash + 1) : model;
+    }
+
+    private int configuredVisits() {
+        return requestVisits == null
+            ? Integer.parseInt(props.getProperty("joseki.visits", "1000"))
+            : requestVisits;
+    }
+
+    private String resolveRequestModelPath(String requestedModel) {
+        if (requestedModel == null) {
+            return null;
+        }
+        if (!REQUEST_MODELS.contains(requestedModel)) {
+            throw new IllegalArgumentException("Unsupported KataGo model: " + requestedModel);
+        }
+        Path configuredModel = Path.of(props.getProperty("kata.model")).toAbsolutePath();
+        Path selectedModel = configuredModel.resolveSibling(requestedModel).normalize();
+        if (!Files.isRegularFile(selectedModel)) {
+            throw new IllegalArgumentException("KataGo model is unavailable on this worker: " + requestedModel);
+        }
+        return selectedModel.toString();
     }
 
     private String formatPath(String path) {

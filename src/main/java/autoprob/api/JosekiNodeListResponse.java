@@ -7,4 +7,7 @@ public class JosekiNodeListResponse {
     public int totalRecords;
     public int limit;
     public int offset;
+    public Integer snapshotMaxNodeId;
+    public String targetModel;
+    public Integer targetMinVisits;
 }

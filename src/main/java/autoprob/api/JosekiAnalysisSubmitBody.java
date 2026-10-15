@@ -7,7 +7,6 @@ public class JosekiAnalysisSubmitBody {
     public Long durationMs;
     public String source;
     public int clientVersion;
-    public double lowPolicyThreshold;
     public List<JosekiAnalysisResultData> results;
     public List<JosekiHumanPolicyDistributionData> humanPolicyDistributions;
     public List<JosekiPassAnalysisUpdateData> passAnalysisUpdates;

@@ -30,7 +30,6 @@ public class JosekiNodeCompleter {
 
     public record CompletionSummary(
         int scannedNodes,
-        int prunedNodes,
         int skippedNodes,
         int discoveredCandidates,
         int createdRequests,
@@ -79,9 +78,6 @@ public class JosekiNodeCompleter {
             500
         );
         boolean dryRun = Boolean.parseBoolean(props.getProperty("joseki.completion.dry_run", "false"));
-        boolean pruneLowPolicyPaths = Boolean.parseBoolean(
-            props.getProperty("joseki.completion.prune_low_policy_paths", "true")
-        );
         boolean printCandidates = Boolean.parseBoolean(
             props.getProperty("joseki.completion.print_candidates", "false")
         );
@@ -92,14 +88,12 @@ public class JosekiNodeCompleter {
             + ", max move distance=" + maxMoveDistance
             + ", max path depth=" + maxPathDepth
             + ", page limit=" + pageLimit
-            + ", prune low-policy paths=" + pruneLowPolicyPaths
             + (dryRun ? ", dry run" : "") + ")");
 
         long startedAt = System.currentTimeMillis();
         int afterNodeId = 0;
         Integer snapshotMaxNodeId = null;
         int scannedNodes = 0;
-        int prunedNodes = 0;
         int skippedNodes = 0;
         int discoveredCandidates = 0;
         int createdRequests = 0;
@@ -114,8 +108,7 @@ public class JosekiNodeCompleter {
                 aiPolicyThreshold,
                 humanPolicyThreshold,
                 maxMoveDistance,
-                maxPathDepth,
-                pruneLowPolicyPaths
+                maxPathDepth
             );
             if (snapshotMaxNodeId == null) {
                 snapshotMaxNodeId = page.snapshotMaxNodeId;
@@ -125,7 +118,6 @@ public class JosekiNodeCompleter {
             }
 
             scannedNodes += page.scannedNodes;
-            prunedNodes += page.prunedNodes;
             skippedNodes += page.skippedNodes;
             List<JosekiNodeCompletionCandidateData> entries = page.entries == null
                 ? List.of()
@@ -168,7 +160,6 @@ public class JosekiNodeCompleter {
                 page.afterNodeId,
                 snapshotMaxNodeId,
                 scannedNodes,
-                prunedNodes,
                 skippedNodes,
                 discoveredCandidates,
                 createdRequests,
@@ -188,7 +179,6 @@ public class JosekiNodeCompleter {
 
         CompletionSummary summary = new CompletionSummary(
             scannedNodes,
-            prunedNodes,
             skippedNodes,
             discoveredCandidates,
             createdRequests,
@@ -198,7 +188,7 @@ public class JosekiNodeCompleter {
         );
         System.out.println("Joseki node completion " + (dryRun ? "estimate" : "complete")
             + ": scanned " + scannedNodes
-            + " nodes, pruned " + prunedNodes
+            + " nodes"
             + ", skipped " + skippedNodes
             + ", found " + discoveredCandidates + " missing high-policy nodes"
             + (dryRun ? "." : ", created " + createdRequests
@@ -213,8 +203,7 @@ public class JosekiNodeCompleter {
         double aiPolicyThreshold,
         double humanPolicyThreshold,
         int maxMoveDistance,
-        int maxPathDepth,
-        boolean pruneLowPolicyPaths
+        int maxPathDepth
     ) throws Exception {
         List<String> params = new ArrayList<>();
         addQueryParam(params, "afterNodeId", String.valueOf(afterNodeId));
@@ -226,7 +215,6 @@ public class JosekiNodeCompleter {
         addQueryParam(params, "humanPolicyThreshold", String.valueOf(humanPolicyThreshold));
         addQueryParam(params, "maxMoveDistance", String.valueOf(maxMoveDistance));
         addQueryParam(params, "maxPathDepth", String.valueOf(maxPathDepth));
-        addQueryParam(params, "pruneLowPolicyPaths", String.valueOf(pruneLowPolicyPaths));
 
         ApiClient.ApiResponse<JosekiNodeCompletionCandidatePage> response = apiClient.makeGetRequest(
             "api.joseki.node_completion_candidates",
@@ -272,7 +260,6 @@ public class JosekiNodeCompleter {
         int cursorNodeId,
         int snapshotMaxNodeId,
         int scannedNodes,
-        int prunedNodes,
         int skippedNodes,
         int discoveredCandidates,
         int createdRequests,
@@ -296,8 +283,6 @@ public class JosekiNodeCompleter {
             .append(POLICY_FORMAT.format(progress * 100.0))
             .append("%), scanned=")
             .append(scannedNodes)
-            .append(", pruned=")
-            .append(prunedNodes)
             .append(", skipped=")
             .append(skippedNodes)
             .append(", candidates=")

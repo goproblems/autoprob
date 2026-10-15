@@ -23,14 +23,21 @@ import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 
 import java.awt.Point;
+import java.io.File;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -71,6 +78,7 @@ public class JosekiNodeRecalculator {
     private final ApiClient apiClient = new ApiClient();
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private final Map<Integer, Set<String>> childMovesByParentId = new HashMap<>();
+    private final Map<Path, String> analysisFileHashes = new HashMap<>();
     private int queryCounter = 0;
     private Integer requestVisits;
     private String requestModelPath;
@@ -81,7 +89,7 @@ public class JosekiNodeRecalculator {
         "kata1-tf3-b11c768-s11003M-d5973M-7gres.bin.gz"
     );
 
-    private enum AnalysisScope {
+    enum AnalysisScope {
         LOCAL("local", true, false),
         LOCAL_WITH_MOVES("local_with_moves", true, true),
         GLOBAL("global", false, false);
@@ -124,9 +132,6 @@ public class JosekiNodeRecalculator {
             );
         }
         boolean force = forceRecalculate();
-        boolean backfillMissingPass = Boolean.parseBoolean(
-            props.getProperty("joseki.backfill_missing_pass_analysis", "true")
-        );
         List<AnalysisScope> scopes = humanPolicyOnly || passOnly ? List.of() : analysisScopes();
         if (humanPolicyOnly) {
             if (!humanModelConfigured()) {
@@ -138,24 +143,19 @@ public class JosekiNodeRecalculator {
                 + " (limit=" + NODE_PAGE_LIMIT + ")");
         } else if (passOnly) {
             System.out.println("Backfilling only missing full-board Pass analysis"
-                + " (policy threshold=" + passPolicyThreshold()
-                + ", limit=" + NODE_PAGE_LIMIT + ")");
+                + " (limit=" + NODE_PAGE_LIMIT + ")");
         } else {
             System.out.println(force
-                ? "Filling missing human policies, then force recalculating joseki nodes, ignoring existing analysis client version for scopes "
+                ? "Processing joseki nodes breadth-first, filling missing Human Policy and recalculating scopes "
                     + formatScopes(scopes) + " (limit=" + NODE_PAGE_LIMIT + ")"
-                : "Filling missing human policies, then recalculating joseki nodes below client version " + CLIENT_VERSION + " for scopes "
-                    + formatScopes(scopes)
-                    + (backfillMissingPass ? ", then backfilling missing pass analysis" : "")
-                    + " (limit=" + NODE_PAGE_LIMIT + ")");
+                : "Processing joseki nodes breadth-first, filling missing Human Policy, scopes "
+                    + formatScopes(scopes) + ", and Pass analysis (limit=" + NODE_PAGE_LIMIT + ")");
         }
 
         int processedNodes = 0;
         int submittedResults = 0;
         int submittedHumanPolicies = 0;
         int failedNodes = 0;
-        Set<Integer> processedNodeIds = new HashSet<>();
-
         KataBrain brain = new KataBrain(props);
         try {
             if (humanPolicyOnly) {
@@ -164,6 +164,17 @@ public class JosekiNodeRecalculator {
                 submittedHumanPolicies += humanPolicyResult.submittedHumanPolicies();
                 failedNodes += humanPolicyResult.failedNodes();
             } else if (passOnly) {
+                JosekiNodeListResponse targetPage = fetchAnalysisWork(
+                    1,
+                    0,
+                    List.of(AnalysisScope.GLOBAL),
+                    null,
+                    null
+                );
+                AnalysisTarget target = analysisTarget(targetPage);
+                validateConfiguredAnalysisTarget(brain, target);
+                System.out.println("Joseki analysis target: model=" + target.model()
+                    + " minVisits=" + target.minVisits());
                 List<AnalysisScope> passScopes = List.of(AnalysisScope.GLOBAL);
                 RecalculationResult missingPass = processScope(
                     brain,
@@ -177,36 +188,129 @@ public class JosekiNodeRecalculator {
                 submittedResults += missingPass.submittedResults();
                 failedNodes += missingPass.failedNodes();
             } else {
-                RecalculationResult humanPolicyResult = processMissingHumanPolicies(brain, new HashSet<>());
-                processedNodes += humanPolicyResult.processedNodes();
-                submittedHumanPolicies += humanPolicyResult.submittedHumanPolicies();
-                failedNodes += humanPolicyResult.failedNodes();
-
-                List<AnalysisScope> candidateScopes = force ? List.of(scopes.get(0)) : scopes;
-                for (AnalysisScope candidateScope : candidateScopes) {
-                    RecalculationResult result = processScope(brain, candidateScope, scopes, force, false, processedNodeIds);
-                    processedNodes += result.processedNodes();
-                    submittedResults += result.submittedResults();
-                    submittedHumanPolicies += result.submittedHumanPolicies();
-                    failedNodes += result.failedNodes();
-                }
-                if (!force && backfillMissingPass) {
-                    RecalculationResult missingPass = processScope(
-                        brain, scopes.get(0), scopes, false, true, new HashSet<>()
-                    );
-                    processedNodes += missingPass.processedNodes();
-                    submittedResults += missingPass.submittedResults();
-                    submittedHumanPolicies += missingPass.submittedHumanPolicies();
-                    failedNodes += missingPass.failedNodes();
-                }
+                RecalculationResult result = processAnalysisWork(brain, scopes, force);
+                processedNodes = result.processedNodes();
+                submittedResults = result.submittedResults();
+                submittedHumanPolicies = result.submittedHumanPolicies();
+                failedNodes = result.failedNodes();
             }
         } finally {
             brain.stopKataBrain();
         }
 
-        System.out.println("Joseki recalculation complete. Processed " + processedNodes
+        System.out.println("Joseki recalculation complete. Completed " + processedNodes
             + " nodes, submitted " + submittedResults + " analysis results or pass updates + " + submittedHumanPolicies
             + " human policies, failed " + failedNodes + " nodes.");
+    }
+
+    private RecalculationResult processAnalysisWork(
+        KataBrain brain, List<AnalysisScope> scopes, boolean force
+    ) throws Exception {
+        int completedNodes = 0;
+        int submittedResults = 0;
+        int submittedHumanPolicies = 0;
+        int failedNodes = 0;
+        int offset = 0;
+        Integer snapshotMaxNodeId = null;
+        AnalysisTarget analysisTarget = null;
+        long startedAt = System.currentTimeMillis();
+
+        while (true) {
+            JosekiNodeListResponse page = fetchAnalysisWork(NODE_PAGE_LIMIT, offset, scopes, null, snapshotMaxNodeId);
+            AnalysisTarget pageTarget = analysisTarget(page);
+            if (analysisTarget == null) {
+                analysisTarget = pageTarget;
+                validateConfiguredAnalysisTarget(brain, analysisTarget);
+                System.out.println("Joseki analysis target: model=" + analysisTarget.model()
+                    + " minVisits=" + analysisTarget.minVisits());
+            } else if (!analysisTarget.equals(pageTarget)) {
+                throw new IllegalStateException("Joseki analysis target changed while scanning");
+            }
+            if (page.snapshotMaxNodeId == null) {
+                throw new IllegalStateException("Analysis work API did not return snapshotMaxNodeId");
+            }
+            if (snapshotMaxNodeId == null) {
+                snapshotMaxNodeId = page.snapshotMaxNodeId;
+                System.out.println("Analysis snapshot: " + page.totalRecords + " nodes (max id="
+                    + snapshotMaxNodeId + ")");
+            } else if (!snapshotMaxNodeId.equals(page.snapshotMaxNodeId)) {
+                throw new IllegalStateException("Analysis work snapshot changed while scanning");
+            }
+            List<JosekiNodeEntry> entries = page.entries == null ? List.of() : page.entries;
+            if (entries.isEmpty()) {
+                break;
+            }
+            for (JosekiNodeEntry entry : entries) {
+                String path = entry.path == null ? "" : entry.path;
+                try {
+                    if (entry.missingHumanPolicyProfiles == null || entry.missingAnalysisScopes == null) {
+                        throw new IllegalStateException("Analysis work API did not return component status");
+                    }
+                    List<AnalysisScope> neededScopes = force
+                        ? scopes
+                        : entry.missingAnalysisScopes.stream().map(AnalysisScope::fromConfig).toList();
+                    boolean neededPass = force || entry.passAnalysisMissing;
+                    boolean alreadyComplete = entry.missingHumanPolicyProfiles.isEmpty()
+                        && entry.missingAnalysisScopes.isEmpty() && !entry.passAnalysisMissing;
+                    if (!entry.missingHumanPolicyProfiles.isEmpty() && !humanModelConfigured()) {
+                        throw new IllegalStateException("Missing Human Policy requires kata.human_model");
+                    }
+                    boolean humanPolicyAlreadyComplete = entry.missingHumanPolicyProfiles.isEmpty();
+                    List<JosekiHumanPolicyDistributionData> humanPolicies = humanPolicyAlreadyComplete
+                        ? List.of()
+                        : analyzeHumanPolicies(entry, brain, entry.missingHumanPolicyProfiles);
+                    String humanPolicyStatus = humanPolicyAlreadyComplete
+                        ? "skipped: all requested profiles are already complete"
+                        : (humanPolicies.isEmpty()
+                            ? "not submitted: no distribution was produced; see earlier warnings"
+                            : null);
+                    List<JosekiAnalysisResultData> results = neededScopes.isEmpty()
+                        ? List.of()
+                        : analyzeNode(entry, brain, neededScopes, neededPass);
+                    if (!results.isEmpty() || !humanPolicies.isEmpty()) {
+                        submitResults(results, humanPolicies, humanPolicyStatus);
+                        submittedResults += results.size();
+                        submittedHumanPolicies += humanPolicies.size();
+                    }
+                    if (neededPass && neededScopes.isEmpty()) {
+                        submitPassAnalysisUpdate(analyzePassNode(entry, brain, null));
+                        submittedResults++;
+                    }
+                    if ((!alreadyComplete || force) && !isAnalysisWorkComplete(entry, scopes, analysisTarget)) {
+                        throw new IllegalStateException("Node still has missing Human Policy, scope, or Pass analysis after submission");
+                    }
+                    completedNodes++;
+                    printProgressBar("Analysis", completedNodes, page.totalRecords, entry, startedAt);
+                } catch (Exception ex) {
+                    failedNodes++;
+                    System.out.println(RED + "Failed to complete joseki node " + entry.id
+                        + " path=" + formatPath(path) + ": " + describeException(ex) + RESET);
+                    if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
+                        ex.printStackTrace(System.out);
+                    }
+                }
+            }
+            offset += entries.size();
+        }
+        return new RecalculationResult(completedNodes, submittedResults, submittedHumanPolicies, failedNodes);
+    }
+
+    private boolean isAnalysisWorkComplete(
+        JosekiNodeEntry entry,
+        List<AnalysisScope> scopes,
+        AnalysisTarget expectedTarget
+    ) throws Exception {
+        JosekiNodeListResponse page = fetchAnalysisWork(1, 0, scopes, entry.path == null ? "" : entry.path, null);
+        if (!expectedTarget.equals(analysisTarget(page))) {
+            throw new IllegalStateException("Joseki analysis target changed while verifying a node");
+        }
+        if (page.entries == null || page.entries.size() != 1) {
+            return false;
+        }
+        JosekiNodeEntry current = page.entries.get(0);
+        return current.missingHumanPolicyProfiles != null && current.missingHumanPolicyProfiles.isEmpty()
+            && current.missingAnalysisScopes != null && current.missingAnalysisScopes.isEmpty()
+            && !current.passAnalysisMissing;
     }
 
     public void runAnalysisRequests() throws Exception {
@@ -268,10 +372,15 @@ public class JosekiNodeRecalculator {
                         + " model=" + katagoWeightsFile());
                     JosekiNodeEntry entry = resolveNodeForAnalysis(path);
                     List<JosekiAnalysisResultData> results = analyzeNode(entry, brain, scopes);
-                    List<JosekiHumanPolicyDistributionData> humanPolicyDistributions =
-                        request.visits != null || request.model != null
-                            ? List.of()
-                            : analyzeHumanPolicies(entry, brain, humanSLProfiles());
+                    boolean customAnalysisRequest = request.visits != null || request.model != null;
+                    List<JosekiHumanPolicyDistributionData> humanPolicyDistributions = customAnalysisRequest
+                        ? List.of()
+                        : analyzeHumanPolicies(entry, brain, humanSLProfiles());
+                    String humanPolicyStatus = customAnalysisRequest
+                        ? customAnalysisHumanPolicyStatus(request)
+                        : (humanPolicyDistributions.isEmpty()
+                            ? "not submitted: no distribution was produced; see earlier warnings"
+                            : null);
                     if (leaseLost.get() || (heartbeatExecutor != null
                         && System.currentTimeMillis() - lastHeartbeat.get() >= 15000L)) {
                         throw new IllegalStateException("Analysis request handle is no longer current");
@@ -282,7 +391,8 @@ public class JosekiNodeRecalculator {
                         humanPolicyDistributions,
                         request.id,
                         request.source == null ? "recalculate" : request.source,
-                        durationMs
+                        durationMs,
+                        humanPolicyStatus
                     );
                     System.out.println("Completed joseki analysis request " + request.id
                         + " with " + humanPolicyDistributions.size()
@@ -313,9 +423,21 @@ public class JosekiNodeRecalculator {
         }
     }
 
+    private String customAnalysisHumanPolicyStatus(JosekiAnalysisRequestData request) {
+        if (request.visits != null && request.model != null) {
+            return "skipped: request overrides visits and model";
+        }
+        if (request.visits != null) {
+            return "skipped: request overrides visits";
+        }
+        return "skipped: request overrides model";
+    }
+
     private record ProcessNodesResult(int submittedResults, int submittedHumanPolicies, int failedNodes) {}
 
-    private record ScopedQueryResult(KataAnalysisResult analysis, double policyMass) {}
+    private record ScopedQueryResult(KataAnalysisResult analysis, double policyMass, String configHash) {}
+
+    private record AnalysisTarget(String model, int minVisits) {}
 
     private record RecalculationResult(
         int processedNodes,
@@ -425,7 +547,6 @@ public class JosekiNodeRecalculator {
         System.out.println("Human Policy tasks this run: 0/" + totalTasksEstimate
             + " missing at start"
             + " (completed=" + progress.completedNodes
-            + ", pruned=" + progress.prunedNodes
             + ", ready=" + progress.readyNodes
             + ", blocked=" + progress.blockedNodes + ").");
 
@@ -497,7 +618,6 @@ public class JosekiNodeRecalculator {
                 + " nodes, submitted " + submittedHumanPolicies + " human policies, failed " + failedNodes
                 + " nodes. Refreshed progress=" + processedThisRun + "/" + totalTasksEstimate
                 + " (completed=" + progress.completedNodes
-                + ", pruned=" + progress.prunedNodes
                 + ", pending=" + progress.pendingNodes
                 + ", ready=" + progress.readyNodes
                 + ", blocked=" + progress.blockedNodes + ").");
@@ -554,7 +674,11 @@ public class JosekiNodeRecalculator {
                 } else {
                     List<JosekiAnalysisResultData> results = analyzeNode(entry, brain, analysisScopes);
                     if (!results.isEmpty()) {
-                        submitResults(results, List.of());
+                        submitResults(
+                            results,
+                            List.of(),
+                            "skipped: this is an analysis-only recalculation"
+                        );
                     }
                     submittedResults += results.size();
                 }
@@ -611,11 +735,20 @@ public class JosekiNodeRecalculator {
         KataBrain brain,
         List<AnalysisScope> scopes
     ) throws Exception {
+        return analyzeNode(entry, brain, scopes, true);
+    }
+
+    private List<JosekiAnalysisResultData> analyzeNode(
+        JosekiNodeEntry entry,
+        KataBrain brain,
+        List<AnalysisScope> scopes,
+        boolean includePass
+    ) throws Exception {
         List<JosekiAnalysisResultData> results = new ArrayList<>();
         for (AnalysisScope scope : scopes) {
             results.add(analyzeNode(entry, brain, scope));
         }
-        if (!results.isEmpty()) {
+        if (includePass && !results.isEmpty()) {
             JosekiAnalysisResultData carrier = results.stream()
                 .filter(result -> AnalysisScope.GLOBAL.value.equals(result.scope))
                 .findFirst()
@@ -628,6 +761,7 @@ public class JosekiNodeRecalculator {
             carrier.passLoss = pass.passLoss;
             carrier.passVisits = pass.passVisits;
             carrier.passAnalysis = pass.passAnalysis;
+            carrier.passAnalysisConfigHash = pass.analysisConfigHash;
         }
         return results;
     }
@@ -642,13 +776,13 @@ public class JosekiNodeRecalculator {
                 .analysis().blackScore()
             : currentGlobalScore;
         Node passNode = node.addBasicMove(19, 19);
-        KataAnalysisResult passResult;
+        ScopedQueryResult passQueryResult;
         try {
-            passResult = queryNode(brain, passNode, "pass", AnalysisScope.GLOBAL, Set.of())
-                .analysis();
+            passQueryResult = queryNode(brain, passNode, "pass", AnalysisScope.GLOBAL, Set.of());
         } finally {
             node.removeChildNode(passNode);
         }
+        KataAnalysisResult passResult = passQueryResult.analysis();
 
         JosekiPassAnalysisUpdateData update = new JosekiPassAnalysisUpdateData();
         update.path = path;
@@ -659,6 +793,9 @@ public class JosekiNodeRecalculator {
         }
         update.passVisits = passResult.rootInfo.visits;
         update.passAnalysis = gson.toJson(passResult);
+        update.katagoPlayouts = configuredVisits();
+        update.katagoWeightsFile = katagoWeightsFile();
+        update.analysisConfigHash = passQueryResult.configHash();
         return update;
     }
 
@@ -725,6 +862,7 @@ public class JosekiNodeRecalculator {
         result.moveOrder = moveInfo == null ? null : moveInfo.order;
         result.extraInfo = buildExtraInfo(scope, parentScore, score, moverScoreDelta);
         result.analysis = gson.toJson(currentResult);
+        result.analysisConfigHash = currentQueryResult.configHash();
         System.out.println("Joseki node " + formatPath(path)
             + " scope=" + scope.value
             + " score=" + DF.format(result.score)
@@ -742,20 +880,13 @@ public class JosekiNodeRecalculator {
         AnalysisScope scope,
         Set<String> childMoves
     ) throws Exception {
-        QueryBuilder queryBuilder = new QueryBuilder();
-        KataQuery query = queryBuilder.buildQuery(node);
+        KataQuery query = buildScopedQuery(node, scope, childMoves);
         query.id = "joseki:" + (++queryCounter) + ":" + role + ":" + scope.value;
-        query.includePolicy = true;
-        query.analyzeTurns.clear();
-        query.analyzeTurns.add(0);
-        query.maxVisits = configuredVisits();
 
-        Set<String> allowedMoves = null;
-        int maxMoveDistance = Integer.parseInt(props.getProperty("joseki.max_move_distance", "4"));
-        if (scope.restrictToNearbyMoves && maxMoveDistance >= 0) {
-            allowedMoves = nearbyMoves(node, maxMoveDistance, childMoves);
-            restrictToMoves(node, query, allowedMoves);
-        }
+        Set<String> allowedMoves = query.allowMoves == null
+            ? null : new LinkedHashSet<>(query.allowMoves.get(0).moves);
+
+        String configHash = analysisConfigHash(brain.modelPath, query, role, scope.value);
 
         brain.doQuery(query);
         KataAnalysisResult result = brain.getResult(query.id, 0);
@@ -771,7 +902,109 @@ public class JosekiNodeRecalculator {
         double policyMass = scope == AnalysisScope.GLOBAL
             ? 1.0
             : calculatePolicyMass(result.policy, allowedMoves);
-        return new ScopedQueryResult(result, policyMass);
+        return new ScopedQueryResult(result, policyMass, configHash);
+    }
+
+    KataQuery buildScopedQuery(Node node, AnalysisScope scope, Set<String> childMoves) {
+        KataQuery query = new QueryBuilder().buildQuery(node);
+        query.includePolicy = true;
+        query.analyzeTurns.clear();
+        query.analyzeTurns.add(0);
+        query.maxVisits = configuredVisits();
+        Set<String> scopedChildMoves = scope.includeExistingMoves ? childMoves : Set.of();
+
+        int maxMoveDistance = Integer.parseInt(props.getProperty("joseki.max_move_distance", "4"));
+        if (scope.restrictToNearbyMoves && maxMoveDistance >= 0) {
+            restrictToMoves(node, query, nearbyMoves(node, maxMoveDistance, scopedChildMoves));
+        }
+        if (scope.restrictToNearbyMoves) {
+            Set<String> focusMoves = new LinkedHashSet<>();
+            focusMoves.add("pass");
+            addChildMoves(focusMoves, node, scopedChildMoves);
+            query.focusMoves = new ArrayList<>(focusMoves);
+            Collections.sort(query.focusMoves);
+        }
+        return query;
+    }
+
+    String analysisConfigHash(String modelPath, KataQuery query, String role, String scope)
+        throws Exception {
+        JsonObject queryConfig = gson.toJsonTree(query).getAsJsonObject();
+        queryConfig.remove("id");
+        JsonElement allowMoves = queryConfig.get("allowMoves");
+        if (allowMoves != null && allowMoves.isJsonArray()) {
+            for (JsonElement allowMove : allowMoves.getAsJsonArray()) {
+                JsonObject restriction = allowMove.getAsJsonObject();
+                JsonElement moves = restriction.get("moves");
+                if (moves == null || !moves.isJsonArray()) {
+                    continue;
+                }
+                List<String> sortedMoves = new ArrayList<>();
+                for (JsonElement move : moves.getAsJsonArray()) {
+                    sortedMoves.add(move.getAsString());
+                }
+                Collections.sort(sortedMoves);
+                JsonArray normalizedMoves = new JsonArray();
+                for (String move : sortedMoves) {
+                    normalizedMoves.add(move);
+                }
+                restriction.add("moves", normalizedMoves);
+            }
+        }
+
+        String config = "joseki-katago-query-v1\n"
+            + role + "\n"
+            + scope + "\n"
+            + hashAnalysisFile(resolveKatagoExecutable()) + "\n"
+            + hashAnalysisFile(Path.of(modelPath)) + "\n"
+            + hashAnalysisFile(Path.of(props.getProperty("kata.config"))) + "\n"
+            + gson.toJson(queryConfig);
+        return sha256Hex(config.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private Path resolveKatagoExecutable() {
+        String executable = props.getProperty("katago").trim();
+        Path configured = Path.of(executable);
+        if (Files.isRegularFile(configured)) {
+            return configured;
+        }
+        String systemPath = System.getenv("PATH");
+        if (systemPath != null) {
+            for (String directory : systemPath.split(File.pathSeparator)) {
+                Path candidate = Path.of(directory, executable);
+                if (Files.isRegularFile(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+        throw new IllegalStateException("Cannot fingerprint KataGo executable: " + executable);
+    }
+
+    private String hashAnalysisFile(Path path) throws Exception {
+        Path normalizedPath = path.toAbsolutePath().normalize();
+        String cached = analysisFileHashes.get(normalizedPath);
+        if (cached != null) {
+            return cached;
+        }
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (var stream = Files.newInputStream(normalizedPath)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = stream.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        String hash = java.util.HexFormat.of().formatHex(digest.digest());
+        analysisFileHashes.put(normalizedPath, hash);
+        return hash;
+    }
+
+    private String sha256Hex(byte[] content) {
+        try {
+            return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 
     private List<JosekiHumanPolicyDistributionData> analyzeHumanPolicies(
@@ -941,6 +1174,7 @@ public class JosekiNodeRecalculator {
             addUpperRightRootMoves(moves, node);
         }
         addChildMoves(moves, node, childMoves);
+        moves.add("pass");
 
         return moves;
     }
@@ -1128,6 +1362,61 @@ public class JosekiNodeRecalculator {
                 }
                 return page;
             });
+    }
+
+    private JosekiNodeListResponse fetchAnalysisWork(
+        int limit, int offset, List<AnalysisScope> scopes, String path, Integer snapshotMaxNodeId
+    ) throws Exception {
+        List<String> params = new ArrayList<>();
+        addQueryParam(params, "limit", String.valueOf(limit));
+        addQueryParam(params, "offset", String.valueOf(offset));
+        addQueryParam(params, "scopes", scopes.stream().map(scope -> scope.value).collect(java.util.stream.Collectors.joining(",")));
+        addQueryParam(params, "humanPolicyProfiles", String.join(",", humanSLProfiles()));
+        if (snapshotMaxNodeId != null) {
+            addQueryParam(params, "maxNodeId", String.valueOf(snapshotMaxNodeId));
+        }
+        if (path != null) {
+            addQueryParam(params, "path", path);
+        } else if (props.containsKey("path")) {
+            addQueryParam(params, "path", props.getProperty("path", ""));
+        } else {
+            addOptionalQueryParam(params, "pathPrefix");
+        }
+        addOptionalQueryParam(params, "includeDeleted");
+        String queryString = "?" + String.join("&", params);
+        return withApiRetries("fetch joseki analysis work offset=" + offset, () -> {
+            ApiClient.ApiResponse<JosekiNodeListResponse> response = apiClient.makeGetRequest(
+                "api.joseki.analysis_work", null, queryString, JosekiNodeListResponse.class, props);
+            if (!response.isSuccess() || response.getData() == null) {
+                throw new RuntimeException("Failed to fetch joseki analysis work: HTTP "
+                    + response.getStatusCode() + " - " + response.getErrorMessage());
+            }
+            return response.getData();
+        });
+    }
+
+    private AnalysisTarget analysisTarget(JosekiNodeListResponse page) {
+        if (page.targetModel == null || page.targetModel.isBlank()
+            || page.targetMinVisits == null || page.targetMinVisits < 1) {
+            throw new IllegalStateException("Analysis work API did not return a valid Joseki analysis target");
+        }
+        return new AnalysisTarget(
+            page.targetModel,
+            page.targetMinVisits
+        );
+    }
+
+    private void validateConfiguredAnalysisTarget(KataBrain brain, AnalysisTarget target) {
+        String configuredModel = Path.of(brain.modelPath).getFileName().toString();
+        if (!target.model().equals(configuredModel)) {
+            throw new IllegalStateException("Configured KataGo model " + configuredModel
+                + " does not match server target " + target.model());
+        }
+        int configuredVisits = configuredVisits();
+        if (configuredVisits < target.minVisits()) {
+            throw new IllegalStateException("Configured joseki visits " + configuredVisits
+                + " is below server target minimum " + target.minVisits());
+        }
     }
 
     private JosekiAnalysisRequestData fetchNextAnalysisRequest() throws Exception {
@@ -1354,8 +1643,6 @@ public class JosekiNodeRecalculator {
 
     private void addHumanPolicyTaskFilters(List<String> params) {
         addQueryParam(params, "humanPolicyProfiles", String.join(",", humanSLProfiles()));
-        addQueryParam(params, "policyThreshold", String.valueOf(lowPolicyThreshold()));
-        addQueryParam(params, "localPolicyThreshold", String.valueOf(localPolicyThreshold()));
 
         if (props.containsKey("path")) {
             addQueryParam(params, "path", props.getProperty("path", ""));
@@ -1428,11 +1715,8 @@ public class JosekiNodeRecalculator {
         if (passAnalysisMissing) {
             addQueryParam(params, "passAnalysisMissing", "true");
         } else if (!forceRecalculate()) {
-            addQueryParam(params, "clientVersionLessThan", String.valueOf(CLIENT_VERSION));
+            addQueryParam(params, "analysisMissing", "true");
         }
-        addQueryParam(params, "policyThreshold", String.valueOf(
-            passAnalysisMissing ? passPolicyThreshold() : lowPolicyThreshold()
-        ));
         addQueryParam(params, "limit", String.valueOf(limit));
         addQueryParam(params, "offset", String.valueOf(offset));
 
@@ -1457,36 +1741,6 @@ public class JosekiNodeRecalculator {
 
     private boolean passOnly() {
         return Boolean.parseBoolean(props.getProperty("passOnly", "false"));
-    }
-
-    private double lowPolicyThreshold() {
-        double threshold = Double.parseDouble(props.getProperty("joseki.low_policy_threshold", "0.01"));
-        if (!Double.isFinite(threshold) || threshold < 0.0 || threshold > 1.0) {
-            throw new IllegalArgumentException(
-                "joseki.low_policy_threshold must be between 0 and 1"
-            );
-        }
-        return threshold;
-    }
-
-    private double passPolicyThreshold() {
-        double threshold = Double.parseDouble(props.getProperty("joseki.pass_policy_threshold", "0.001"));
-        if (!Double.isFinite(threshold) || threshold < 0.0 || threshold > 1.0) {
-            throw new IllegalArgumentException(
-                "joseki.pass_policy_threshold must be between 0 and 1"
-            );
-        }
-        return threshold;
-    }
-
-    private double localPolicyThreshold() {
-        double threshold = Double.parseDouble(props.getProperty("joseki.local_policy_threshold", "0.05"));
-        if (!Double.isFinite(threshold) || threshold < 0.0 || threshold > 1.0) {
-            throw new IllegalArgumentException(
-                "joseki.local_policy_threshold must be between 0 and 1"
-            );
-        }
-        return threshold;
     }
 
     private <T> T withApiRetries(String operation, ThrowingSupplier<T> supplier) throws Exception {
@@ -1577,7 +1831,22 @@ public class JosekiNodeRecalculator {
         List<JosekiAnalysisResultData> results,
         List<JosekiHumanPolicyDistributionData> humanPolicyDistributions
     ) throws Exception {
-        submitResults(results, humanPolicyDistributions, null, "recalculate", null);
+        submitResults(results, humanPolicyDistributions, null, "recalculate", null, null);
+    }
+
+    private void submitResults(
+        List<JosekiAnalysisResultData> results,
+        List<JosekiHumanPolicyDistributionData> humanPolicyDistributions,
+        String humanPolicyStatus
+    ) throws Exception {
+        submitResults(
+            results,
+            humanPolicyDistributions,
+            null,
+            "recalculate",
+            null,
+            humanPolicyStatus
+        );
     }
 
     private void submitResults(
@@ -1585,14 +1854,14 @@ public class JosekiNodeRecalculator {
         List<JosekiHumanPolicyDistributionData> humanPolicyDistributions,
         Integer requestId,
         String source,
-        Long durationMs
+        Long durationMs,
+        String humanPolicyStatus
     ) throws Exception {
         JosekiAnalysisSubmitBody body = new JosekiAnalysisSubmitBody();
         body.requestId = requestId;
         body.durationMs = durationMs;
         body.source = source;
         body.clientVersion = CLIENT_VERSION;
-        body.lowPolicyThreshold = lowPolicyThreshold();
         body.results = results;
         body.humanPolicyDistributions = humanPolicyDistributions;
 
@@ -1603,13 +1872,19 @@ public class JosekiNodeRecalculator {
         String requestBody = gson.toJson(body);
         if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
             System.out.println("Submitting joseki recalculation JSON: " + requestBody);
-        } else if (results.isEmpty()) {
+        }
+        String humanPolicyStatusLabel = humanPolicyStatus == null || humanPolicyStatus.isBlank()
+            ? ""
+            : " (" + humanPolicyStatus + ")";
+        if (results.isEmpty()) {
             System.out.println("Submitting " + humanPolicyDistributions.size()
-                + " Human Policy distributions for path=" + pathLabel);
+                + " Human Policy distributions" + humanPolicyStatusLabel
+                + " for path=" + pathLabel);
         } else {
             System.out.println("Submitting " + results.size()
                 + " joseki recalculated results + " + humanPolicyDistributions.size()
-                + " Human Policy distributions for path=" + pathLabel);
+                + " Human Policy distributions" + humanPolicyStatusLabel
+                + " for path=" + pathLabel);
         }
 
         withApiRetries("submit joseki analysis results path=" + pathLabel, () -> {
@@ -1632,7 +1907,6 @@ public class JosekiNodeRecalculator {
         JosekiAnalysisSubmitBody body = new JosekiAnalysisSubmitBody();
         body.source = "recalculate";
         body.clientVersion = CLIENT_VERSION;
-        body.lowPolicyThreshold = lowPolicyThreshold();
         body.results = List.of();
         body.humanPolicyDistributions = List.of();
         body.passAnalysisUpdates = List.of(update);

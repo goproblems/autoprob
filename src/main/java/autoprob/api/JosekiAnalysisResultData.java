@@ -13,8 +13,10 @@ public class JosekiAnalysisResultData {
     public Integer moveOrder;
     public String extraInfo;
     public String analysis;
+    public String analysisConfigHash;
     public Double passScore;
     public Double passLoss;
     public Integer passVisits;
     public String passAnalysis;
+    public String passAnalysisConfigHash;
 }

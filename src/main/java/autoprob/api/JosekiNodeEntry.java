@@ -18,4 +18,6 @@ public class JosekiNodeEntry {
     public String createdAt;
     public String updatedAt;
     public List<String> missingHumanPolicyProfiles;
+    public List<String> missingAnalysisScopes;
+    public boolean passAnalysisMissing;
 }

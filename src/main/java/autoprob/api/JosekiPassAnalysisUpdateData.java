@@ -6,4 +6,7 @@ public class JosekiPassAnalysisUpdateData {
     public double passLoss;
     public int passVisits;
     public String passAnalysis;
+    public int katagoPlayouts;
+    public String katagoWeightsFile;
+    public String analysisConfigHash;
 }

@@ -71,13 +71,13 @@ public class FusekiReport {
     static final String INDEX_COLUMNS = "| SGF | Position | To play | Correct | Game move (mistake) | Gap strong / fast | Ranks B/W | Run |\n"
             + "|---|---|---|---|---|---|---|---|\n";
     static final String PROBLEMS_HEADER = "# Fuseki problems\n\n"
-            + "Accepted problems from every scan run: calm openings where the game move lost at least 2.5 points"
-            + " (strong net) to a natural good move. Each SGF is a one-move-deep A/B problem; the root comment has the"
-            + " analysis. Rows are added as runs find them.\n\n" + INDEX_COLUMNS;
+            + "Accepted problems from every scan run: calm openings where the game move lost to a natural good move by"
+            + " at least that run's bar (fuseki.min_gap, strong net). Each SGF is a one-move-deep A/B problem; the root"
+            + " comment has the analysis. Rows are added as runs find them; the gap column shows each problem's margin.\n\n" + INDEX_COLUMNS;
     static final String NEAR_HEADER = "# Fuseki near misses\n\n"
-            + "Positions that passed every check except the last: the strong net gap between the correct move and the game move"
-            + " came out between 2.0 and 2.5 points, just under the bar. Each SGF is a one-move-deep A/B problem; the root"
-            + " comment has the analysis. Rows are added as runs find them.\n\n" + INDEX_COLUMNS;
+            + "Positions that passed every check except the last: the strong net gap between the correct move and the"
+            + " game move came out just under that run's bar (between fuseki.near_gap_min and fuseki.min_gap). Each SGF"
+            + " is a one-move-deep A/B problem; the root comment has the analysis. Rows are added as runs find them.\n\n" + INDEX_COLUMNS;
 
     // problems and near misses from every run also collect in shared folders with an index, for review across runs
     private void track(String dirName, String header, Position pos, String fileName, String sgf) throws Exception {
@@ -325,6 +325,8 @@ public class FusekiReport {
         names.put("tactics", "fight in a line");
         names.put("gap", "gap too small");
         names.put("fine", "game move fine on closer look");
+        names.put("distance", "no good move far enough from the game move");
+        names.put("game_dup", "game already had a problem");
         names.put("strong_gap", "strong net gap too small");
         names.put("strong_best", "strong net prefers another move");
         names.put("error", "analysis error");

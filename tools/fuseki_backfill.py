@@ -16,6 +16,7 @@ import sys
 
 PROBLEMS_DIR = "fuseki_out/problems"
 NEAR_DIR = "fuseki_out/near_misses"
+# the bar those runs used (2.5, near misses from 2.0); the scanner's default bar is 1.8 since 2026-10-16
 NEAR_MIN, MIN_GAP = 2.0, 2.5
 
 COLUMNS = (
@@ -24,15 +25,11 @@ COLUMNS = (
 )
 PROBLEMS_HEADER = (
     "# Fuseki problems\n\n"
-    "Accepted problems from every scan run: calm openings where the game move lost at least 2.5 points"
-    " (strong net) to a natural good move. Each SGF is a one-move-deep A/B problem; the root comment has the"
-    " analysis. Rows are added as runs find them.\n\n" + COLUMNS
+    "Accepted problems from every scan run: calm openings where the game move lost to a natural good move by at least that run's bar (fuseki.min_gap, strong net). Each SGF is a one-move-deep A/B problem; the root comment has the analysis. Rows are added as runs find them; the gap column shows each problem's margin.\n\n" + COLUMNS
 )
 NEAR_HEADER = (
     "# Fuseki near misses\n\n"
-    "Positions that passed every check except the last: the strong net gap between the correct move and the game move"
-    " came out between 2.0 and 2.5 points, just under the bar. Each SGF is a one-move-deep A/B problem; the root"
-    " comment has the analysis. Rows are added as runs find them.\n\n" + COLUMNS
+    "Positions that passed every check except the last: the strong net gap between the correct move and the game move came out just under that run's bar (between fuseki.near_gap_min and fuseki.min_gap). Each SGF is a one-move-deep A/B problem; the root comment has the analysis. Rows are added as runs find them.\n\n" + COLUMNS
 )
 
 

@@ -206,34 +206,48 @@ public class JosekiNodeRecalculator {
     private RecalculationResult processAnalysisWork(
         KataBrain brain, List<AnalysisScope> scopes, boolean force
     ) throws Exception {
+        long scanStartedAt = System.currentTimeMillis();
+        JosekiNodeListResponse firstPage = fetchAnalysisWork(NODE_PAGE_LIMIT, 0, scopes, null, null);
+        AnalysisTarget analysisTarget = analysisTarget(firstPage);
+        validateConfiguredAnalysisTarget(brain, analysisTarget);
+        if (firstPage.snapshotMaxNodeId == null) {
+            throw new IllegalStateException("Analysis work API did not return snapshotMaxNodeId");
+        }
+        int snapshotMaxNodeId = firstPage.snapshotMaxNodeId;
+        int totalNodes = firstPage.totalRecords;
+        System.out.println("Joseki analysis target: model=" + analysisTarget.model()
+            + " minVisits=" + analysisTarget.minVisits());
+        System.out.println("Analysis snapshot: " + totalNodes + " nodes (max id="
+            + snapshotMaxNodeId + ")");
+
+        int pendingWorkNodes = force
+            ? totalNodes
+            : countPendingAnalysisWork(firstPage, scopes, snapshotMaxNodeId, analysisTarget);
+        long scanDurationMs = force ? 0L : System.currentTimeMillis() - scanStartedAt;
+        System.out.println("Nodes requiring analysis: " + pendingWorkNodes + "/" + totalNodes);
+        if (pendingWorkNodes == 0) {
+            return new RecalculationResult(totalNodes, 0, 0, 0);
+        }
+
         int completedNodes = 0;
+        int visitedNodes = 0;
+        int attemptedWorkNodes = 0;
+        int skippedNodes = 0;
+        long workDurationMs = 0L;
+        long skipDurationMs = 0L;
         int submittedResults = 0;
         int submittedHumanPolicies = 0;
         int failedNodes = 0;
         int offset = 0;
-        Integer snapshotMaxNodeId = null;
-        AnalysisTarget analysisTarget = null;
         long startedAt = System.currentTimeMillis();
 
         while (true) {
             JosekiNodeListResponse page = fetchAnalysisWork(NODE_PAGE_LIMIT, offset, scopes, null, snapshotMaxNodeId);
-            AnalysisTarget pageTarget = analysisTarget(page);
-            if (analysisTarget == null) {
-                analysisTarget = pageTarget;
-                validateConfiguredAnalysisTarget(brain, analysisTarget);
-                System.out.println("Joseki analysis target: model=" + analysisTarget.model()
-                    + " minVisits=" + analysisTarget.minVisits());
-            } else if (!analysisTarget.equals(pageTarget)) {
+            if (!analysisTarget.equals(analysisTarget(page))) {
                 throw new IllegalStateException("Joseki analysis target changed while scanning");
             }
-            if (page.snapshotMaxNodeId == null) {
-                throw new IllegalStateException("Analysis work API did not return snapshotMaxNodeId");
-            }
-            if (snapshotMaxNodeId == null) {
-                snapshotMaxNodeId = page.snapshotMaxNodeId;
-                System.out.println("Analysis snapshot: " + page.totalRecords + " nodes (max id="
-                    + snapshotMaxNodeId + ")");
-            } else if (!snapshotMaxNodeId.equals(page.snapshotMaxNodeId)) {
+            if (!Integer.valueOf(snapshotMaxNodeId).equals(page.snapshotMaxNodeId)
+                || page.totalRecords != totalNodes) {
                 throw new IllegalStateException("Analysis work snapshot changed while scanning");
             }
             List<JosekiNodeEntry> entries = page.entries == null ? List.of() : page.entries;
@@ -242,6 +256,8 @@ public class JosekiNodeRecalculator {
             }
             for (JosekiNodeEntry entry : entries) {
                 String path = entry.path == null ? "" : entry.path;
+                boolean requiresWork = force || hasMissingAnalysisWork(entry);
+                long nodeStartedAt = System.currentTimeMillis();
                 try {
                     if (entry.missingHumanPolicyProfiles == null || entry.missingAnalysisScopes == null) {
                         throw new IllegalStateException("Analysis work API did not return component status");
@@ -250,8 +266,7 @@ public class JosekiNodeRecalculator {
                         ? scopes
                         : entry.missingAnalysisScopes.stream().map(AnalysisScope::fromConfig).toList();
                     boolean neededPass = force || entry.passAnalysisMissing;
-                    boolean alreadyComplete = entry.missingHumanPolicyProfiles.isEmpty()
-                        && entry.missingAnalysisScopes.isEmpty() && !entry.passAnalysisMissing;
+                    boolean alreadyComplete = !hasMissingAnalysisWork(entry);
                     if (!entry.missingHumanPolicyProfiles.isEmpty() && !humanModelConfigured()) {
                         throw new IllegalStateException("Missing Human Policy requires kata.human_model");
                     }
@@ -280,7 +295,6 @@ public class JosekiNodeRecalculator {
                         throw new IllegalStateException("Node still has missing Human Policy, scope, or Pass analysis after submission");
                     }
                     completedNodes++;
-                    printProgressBar("Analysis", completedNodes, page.totalRecords, entry, startedAt);
                 } catch (Exception ex) {
                     failedNodes++;
                     System.out.println(RED + "Failed to complete joseki node " + entry.id
@@ -288,11 +302,95 @@ public class JosekiNodeRecalculator {
                     if (Boolean.parseBoolean(props.getProperty("debug", "false"))) {
                         ex.printStackTrace(System.out);
                     }
+                } finally {
+                    long nodeDurationMs = Math.max(0L, System.currentTimeMillis() - nodeStartedAt);
+                    visitedNodes++;
+                    if (requiresWork) {
+                        attemptedWorkNodes++;
+                        workDurationMs += nodeDurationMs;
+                    } else {
+                        skippedNodes++;
+                        skipDurationMs += nodeDurationMs;
+                    }
+                    Long remainingMs = attemptedWorkNodes < 3 ? null : estimateAnalysisRemainingMs(
+                        totalNodes, pendingWorkNodes, visitedNodes, attemptedWorkNodes,
+                        skippedNodes, workDurationMs, skipDurationMs, scanDurationMs
+                    );
+                    printProgressBar("Analysis", visitedNodes, totalNodes, entry, startedAt, remainingMs);
                 }
             }
             offset += entries.size();
         }
         return new RecalculationResult(completedNodes, submittedResults, submittedHumanPolicies, failedNodes);
+    }
+
+    private int countPendingAnalysisWork(
+        JosekiNodeListResponse firstPage,
+        List<AnalysisScope> scopes,
+        int snapshotMaxNodeId,
+        AnalysisTarget target
+    ) throws Exception {
+        int totalNodes = firstPage.totalRecords;
+        int scannedNodes = 0;
+        int pendingNodes = 0;
+        JosekiNodeListResponse page = firstPage;
+        while (true) {
+            if (!target.equals(analysisTarget(page))
+                || !Integer.valueOf(snapshotMaxNodeId).equals(page.snapshotMaxNodeId)
+                || page.totalRecords != totalNodes) {
+                throw new IllegalStateException("Analysis work snapshot changed while counting pending nodes");
+            }
+            List<JosekiNodeEntry> entries = page.entries == null ? List.of() : page.entries;
+            if (entries.isEmpty()) {
+                if (scannedNodes != totalNodes) {
+                    throw new IllegalStateException("Analysis work API ended before all nodes were counted");
+                }
+                return pendingNodes;
+            }
+            for (JosekiNodeEntry entry : entries) {
+                if (hasMissingAnalysisWork(entry)) {
+                    pendingNodes++;
+                }
+            }
+            scannedNodes += entries.size();
+            if (scannedNodes > totalNodes) {
+                throw new IllegalStateException("Analysis work API returned more nodes than its totalRecords");
+            }
+            if (scannedNodes >= totalNodes) {
+                return pendingNodes;
+            }
+            if (scannedNodes % (NODE_PAGE_LIMIT * 10) == 0) {
+                System.out.println("Counting analysis work: " + scannedNodes + "/" + totalNodes
+                    + " nodes scanned, " + pendingNodes + " need analysis");
+            }
+            page = fetchAnalysisWork(NODE_PAGE_LIMIT, scannedNodes, scopes, null, snapshotMaxNodeId);
+        }
+    }
+
+    private boolean hasMissingAnalysisWork(JosekiNodeEntry entry) {
+        if (entry.missingHumanPolicyProfiles == null || entry.missingAnalysisScopes == null) {
+            throw new IllegalStateException("Analysis work API did not return component status");
+        }
+        return !entry.missingHumanPolicyProfiles.isEmpty()
+            || !entry.missingAnalysisScopes.isEmpty() || entry.passAnalysisMissing;
+    }
+
+    static long estimateAnalysisRemainingMs(
+        int totalNodes, int pendingWorkNodes, int visitedNodes, int attemptedWorkNodes,
+        int skippedNodes, long workDurationMs, long skipDurationMs, long scanDurationMs
+    ) {
+        int remainingWork = Math.max(0, pendingWorkNodes - attemptedWorkNodes);
+        int remainingSkipped = Math.max(0, totalNodes - pendingWorkNodes - skippedNodes);
+        int remainingNodes = Math.max(0, totalNodes - visitedNodes);
+        double estimate = attemptedWorkNodes == 0 ? 0.0
+            : remainingWork * (workDurationMs / (double) attemptedWorkNodes);
+        if (skippedNodes > 0) {
+            estimate += remainingSkipped * (skipDurationMs / (double) skippedNodes);
+        }
+        if (totalNodes > 0) {
+            estimate += remainingNodes * (scanDurationMs / (double) totalNodes);
+        }
+        return Math.round(Math.min(Long.MAX_VALUE, estimate));
     }
 
     private boolean isAnalysisWorkComplete(
@@ -2004,6 +2102,25 @@ public class JosekiNodeRecalculator {
         JosekiNodeEntry node,
         Long startedAt
     ) {
+        Long remainingMs = null;
+        if (startedAt != null && current > 0 && total > current) {
+            long elapsedMs = Math.max(1L, System.currentTimeMillis() - startedAt);
+            remainingMs = Math.max(
+                0L,
+                Math.round(elapsedMs * (total - current) / (double) current)
+            );
+        }
+        printProgressBar(stage, current, total, node, startedAt, remainingMs);
+    }
+
+    private void printProgressBar(
+        String stage,
+        int current,
+        int total,
+        JosekiNodeEntry node,
+        Long startedAt,
+        Long remainingMs
+    ) {
         int safeTotal = Math.max(total, current);
         int percent = safeTotal == 0 ? 100 : (current * 100) / safeTotal;
         int barLength = 30;
@@ -2022,13 +2139,9 @@ public class JosekiNodeRecalculator {
         if (startedAt != null) {
             long elapsedMs = Math.max(1L, System.currentTimeMillis() - startedAt);
             bar.append(" elapsed=").append(formatDuration(elapsedMs));
-            if (current > 0 && safeTotal > current) {
-                long remainingMs = Math.max(
-                    0L,
-                    Math.round(elapsedMs * (safeTotal - current) / (double) current)
-                );
-                bar.append(" ETA~").append(formatDuration(remainingMs));
-            }
+        }
+        if (remainingMs != null && safeTotal > current) {
+            bar.append(" ETA~").append(formatDuration(remainingMs));
         }
         if (node != null) {
             bar.append(" node=").append(node.id)

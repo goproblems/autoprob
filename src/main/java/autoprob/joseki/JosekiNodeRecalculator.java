@@ -145,6 +145,7 @@ public class JosekiNodeRecalculator {
             );
         }
         boolean force = forceRecalculate();
+        String analysisSort = humanPolicyOnly || passOnly ? "breadth" : analysisSort();
         List<AnalysisScope> scopes = humanPolicyOnly || passOnly ? List.of() : analysisScopes();
         if (humanPolicyOnly) {
             if (!humanModelConfigured()) {
@@ -159,9 +160,9 @@ public class JosekiNodeRecalculator {
                 + " (limit=" + NODE_PAGE_LIMIT + ")");
         } else {
             System.out.println(force
-                ? "Processing joseki nodes breadth-first, filling missing Human Policy and recalculating scopes "
+                ? "Processing joseki nodes " + analysisSort + "-first, filling missing Human Policy and recalculating scopes "
                     + formatScopes(scopes) + " (limit=" + NODE_PAGE_LIMIT + ")"
-                : "Processing joseki nodes breadth-first, filling missing Human Policy, scopes "
+                : "Processing joseki nodes " + analysisSort + "-first, filling missing Human Policy, scopes "
                     + formatScopes(scopes) + ", and Pass analysis (limit=" + NODE_PAGE_LIMIT + ")");
         }
 
@@ -201,7 +202,7 @@ public class JosekiNodeRecalculator {
                 submittedResults += missingPass.submittedResults();
                 failedNodes += missingPass.failedNodes();
             } else {
-                RecalculationResult result = processAnalysisWork(brain, scopes, force);
+                RecalculationResult result = processAnalysisWork(brain, scopes, force, analysisSort);
                 processedNodes = result.processedNodes();
                 submittedResults = result.submittedResults();
                 submittedHumanPolicies = result.submittedHumanPolicies();
@@ -217,7 +218,7 @@ public class JosekiNodeRecalculator {
     }
 
     private RecalculationResult processAnalysisWork(
-        KataBrain brain, List<AnalysisScope> scopes, boolean force
+        KataBrain brain, List<AnalysisScope> scopes, boolean force, String sort
     ) throws Exception {
         JosekiNodeListResponse page = null;
         long pageFetchDurationMs = 0L;
@@ -227,7 +228,7 @@ public class JosekiNodeRecalculator {
         int pendingWorkNodes;
         AnalysisTarget analysisTarget;
         if (force) {
-            page = fetchAnalysisWork(NODE_PAGE_LIMIT, 0, scopes, null, null);
+            page = fetchAnalysisWork(1, 0, scopes, null, null);
             analysisTarget = analysisTarget(page);
             if (page.snapshotMaxNodeId == null) {
                 throw new IllegalStateException("Analysis work API did not return snapshotMaxNodeId");
@@ -258,9 +259,9 @@ public class JosekiNodeRecalculator {
         if (pendingWorkNodes == 0) {
             return new RecalculationResult(totalNodes, 0, 0, 0);
         }
-        if (!force) {
-            page = fetchPendingAnalysisWork(NODE_PAGE_LIMIT, scopes, snapshotMaxNodeId, null, null);
-        }
+        page = fetchPendingAnalysisWork(
+            NODE_PAGE_LIMIT, scopes, snapshotMaxNodeId, sort, force, null, null
+        );
 
         Long analysisStartedAt = null;
         int completedNodes = 0;
@@ -274,14 +275,11 @@ public class JosekiNodeRecalculator {
         int submittedResults = 0;
         int submittedHumanPolicies = 0;
         int failedNodes = 0;
-        int offset = 0;
-
         while (true) {
             if (!analysisTarget.equals(analysisTarget(page))) {
                 throw new IllegalStateException("Joseki analysis target changed while scanning");
             }
-            if (!Integer.valueOf(snapshotMaxNodeId).equals(page.snapshotMaxNodeId)
-                || (force && page.totalRecords != totalNodes)) {
+            if (!Integer.valueOf(snapshotMaxNodeId).equals(page.snapshotMaxNodeId)) {
                 throw new IllegalStateException("Analysis work snapshot changed while scanning");
             }
             List<JosekiNodeEntry> entries = page.entries == null ? List.of() : page.entries;
@@ -382,18 +380,12 @@ public class JosekiNodeRecalculator {
                 break;
             }
             long fetchStartedAt = System.currentTimeMillis();
-            if (force) {
-                offset += entries.size();
-                if (offset >= totalNodes) {
-                    break;
-                }
-                page = fetchAnalysisWork(NODE_PAGE_LIMIT, offset, scopes, null, snapshotMaxNodeId);
-            } else {
-                JosekiNodeEntry last = entries.get(entries.size() - 1);
-                page = fetchPendingAnalysisWork(
-                    NODE_PAGE_LIMIT, scopes, snapshotMaxNodeId, last.pathDepth, last.id
-                );
-            }
+            JosekiNodeEntry last = entries.get(entries.size() - 1);
+            page = fetchPendingAnalysisWork(
+                NODE_PAGE_LIMIT, scopes, snapshotMaxNodeId, sort, force,
+                "depth".equals(sort) ? null : last.pathDepth,
+                last.id
+            );
             pageFetchDurationMs += System.currentTimeMillis() - fetchStartedAt;
             pagesFetched++;
         }
@@ -1534,6 +1526,7 @@ public class JosekiNodeRecalculator {
 
     private JosekiNodeListResponse fetchPendingAnalysisWork(
         int limit, List<AnalysisScope> scopes, int snapshotMaxNodeId,
+        String sort, boolean includeComplete,
         Integer afterDepth, Integer afterNodeId
     ) throws Exception {
         List<String> params = new ArrayList<>();
@@ -1542,8 +1535,14 @@ public class JosekiNodeRecalculator {
             .collect(java.util.stream.Collectors.joining(",")));
         addQueryParam(params, "humanPolicyProfiles", String.join(",", humanSLProfiles()));
         addQueryParam(params, "maxNodeId", String.valueOf(snapshotMaxNodeId));
+        addQueryParam(params, "sort", sort);
+        if (includeComplete) {
+            addQueryParam(params, "includeComplete", "true");
+        }
         if (afterDepth != null && afterNodeId != null) {
             addQueryParam(params, "afterDepth", String.valueOf(afterDepth));
+            addQueryParam(params, "afterNodeId", String.valueOf(afterNodeId));
+        } else if (afterNodeId != null) {
             addQueryParam(params, "afterNodeId", String.valueOf(afterNodeId));
         }
         if (props.containsKey("path")) {
@@ -1553,7 +1552,8 @@ public class JosekiNodeRecalculator {
         }
         addOptionalQueryParam(params, "includeDeleted");
         String queryString = "?" + String.join("&", params);
-        return withApiRetries("fetch pending joseki analysis work after=" + afterDepth + ":" + afterNodeId,
+        return withApiRetries("fetch joseki analysis work sort=" + sort + " after="
+            + afterDepth + ":" + afterNodeId,
             () -> {
                 ApiClient.ApiResponse<JosekiNodeListResponse> response = apiClient.makeGetRequest(
                     "api.joseki.analysis_work_pending", null, queryString,
@@ -1936,6 +1936,14 @@ public class JosekiNodeRecalculator {
 
     private boolean forceRecalculate() {
         return Boolean.parseBoolean(props.getProperty("force", "false"));
+    }
+
+    private String analysisSort() {
+        String sort = props.getProperty("sort", "breadth").trim().toLowerCase(Locale.ROOT);
+        if (!"breadth".equals(sort) && !"depth".equals(sort)) {
+            throw new IllegalArgumentException("Unknown joseki analysis sort: " + sort);
+        }
+        return sort;
     }
 
     private boolean humanPolicyOnly() {

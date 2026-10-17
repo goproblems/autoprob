@@ -5,6 +5,7 @@ import java.util.List;
 public class JosekiNodeEntry {
     public int id;
     public String path;
+    public int pathDepth;
     public Integer parentId;
     public Double score;
     public Double loss;

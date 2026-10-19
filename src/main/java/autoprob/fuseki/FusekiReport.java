@@ -262,6 +262,7 @@ public class FusekiReport {
         counts.put("corner", 0);
         counts.put("score", 0);
         counts.put("loss", 0);
+        counts.put("game_done", 0);
         int screened = 0;
         for (Position pos : scan.positions) {
             if (pos.stage != FusekiScanner.STAGE_SCREEN) continue;
@@ -272,6 +273,7 @@ public class FusekiReport {
                 .append(counts.get("corner")).append(" with an empty corner, ")
                 .append(counts.get("score")).append(" with the score out of range, ")
                 .append(counts.get("loss")).append(" where the game move lost less than ").append(fmt(scan.screenMinLoss()))
+                .append(", ").append(counts.get("game_done")).append(" not checked because their game already had a candidate")
                 .append(". Every position is in `positions.csv`.\n");
 
         try (PrintWriter w = new PrintWriter(new File(outDir, "report.md"))) {
@@ -326,7 +328,7 @@ public class FusekiReport {
         names.put("gap", "gap too small");
         names.put("fine", "game move fine on closer look");
         names.put("distance", "no good move far enough from the game move");
-        names.put("game_dup", "game already had a problem");
+
         names.put("strong_gap", "strong net gap too small");
         names.put("strong_best", "strong net prefers another move");
         names.put("error", "analysis error");

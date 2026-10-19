@@ -144,9 +144,9 @@ public class FusekiScanner {
         public String status() {
             if (accepted()) return "accepted";
             if (awaitingVerify()) return "awaiting strong net";
+            if (hasReason("game_done")) return "not checked, game already has a candidate";
             if (stage == STAGE_SCREEN) return "screened out";
             if (stage == STAGE_CALM) return "rejected at calm check";
-            if (hasReason("game_dup")) return "skipped, game already has a problem";
             return "rejected by strong net";
         }
 
@@ -180,9 +180,9 @@ public class FusekiScanner {
     private final double minGap, screenMinGap, verifyAnswerMargin;
     // near misses: calm positions whose strong net gap landed in [nearGapMin, minGap), kept for review
     private final double nearGapMin;
-    // problem variety: at most this many problems per game (0 = no cap), and the two choices at least
-    // this far apart in city-block distance (0 = any)
-    private final int maxProblemsPerGame;
+    // problem variety: stop checking a game after this many candidates (0 = check every position), and
+    // keep the two choices at least this far apart in city-block distance (0 = any)
+    private final int maxCandidatesPerGame;
     private final int minChoiceDistance;
     private final String nearDir;
     private final String profilePrefix, naturalRank, defaultRank;
@@ -233,7 +233,7 @@ public class FusekiScanner {
         screenMinGap = doubleProp("fuseki.screen_min_gap", 1.3);
         verifyAnswerMargin = doubleProp("fuseki.verify_answer_margin", 1.0);
         nearGapMin = doubleProp("fuseki.near_gap_min", 1.5);
-        maxProblemsPerGame = intProp("fuseki.max_problems_per_game", 1);
+        maxCandidatesPerGame = intProp("fuseki.max_candidates_per_game", 1);
         minChoiceDistance = intProp("fuseki.min_choice_distance", 6);
         nearDir = props.getProperty("fuseki.near.dir", "fuseki_out/near_misses").trim();
         profilePrefix = props.getProperty("fuseki.profile_prefix", "rank_").trim();
@@ -376,18 +376,11 @@ public class FusekiScanner {
         }
     }
 
-    // stage 3 on the strong net, for every candidate the fast net passed since the last round.
-    // a game is scanned within one round, so its candidates are all here: they go strongest fast
-    // gap first, and once the game has fuseki.max_problems_per_game problems the rest are skipped
+    // stage 3 on the strong net, for every candidate the fast net passed since the last round
     private void verifyPending() throws Exception {
-        LinkedHashMap<Game, List<Position>> byGame = new LinkedHashMap<>();
-        for (Position pos : positions) {
-            if (pos.awaitingVerify()) byGame.computeIfAbsent(pos.game, g -> new ArrayList<>()).add(pos);
-        }
         List<Position> toVerify = new ArrayList<>();
-        for (List<Position> l : byGame.values()) {
-            l.sort((a, b) -> Double.compare(b.gap(), a.gap()));
-            toVerify.addAll(l);
+        for (Position pos : positions) {
+            if (pos.awaitingVerify()) toVerify.add(pos);
         }
         if (toVerify.isEmpty()) return;
         KataBrain strong = newBrain(null);
@@ -395,12 +388,6 @@ public class FusekiScanner {
             int i = 0;
             for (Position pos : toVerify) {
                 i++;
-                Position kept = maxProblemsPerGame > 0 ? problemsInGame(pos.game, maxProblemsPerGame) : null;
-                if (kept != null) {
-                    pos.reasons.add(new Reason("game_dup", "game already has a problem (move " + kept.moveNumber + ")"));
-                    System.out.println("skip " + i + "/" + toVerify.size() + ": " + pos.id() + ", game already has a problem");
-                    continue;
-                }
                 System.out.println("verify " + i + "/" + toVerify.size() + ": " + pos.id());
                 try {
                     verify(strong, pos);
@@ -541,19 +528,6 @@ public class FusekiScanner {
         return game;
     }
 
-    // the game's last accepted problem once it has reached the cap, else null
-    private Position problemsInGame(Game game, int cap) {
-        int n = 0;
-        Position last = null;
-        for (Position p : positions) {
-            if (p.game == game && p.accepted()) {
-                n++;
-                last = p;
-            }
-        }
-        return n >= cap ? last : null;
-    }
-
     static int cityDistance(Point a, Point b) {
         return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
     }
@@ -592,6 +566,9 @@ public class FusekiScanner {
         System.out.println("screened moves " + minMove + "-" + lastMove + " in " + seconds(start));
 
         List<Position> out = new ArrayList<>();
+        // once the game has given its candidates, later positions are not calm-checked: games are
+        // plentiful, and one game's problems tend to repeat one lesson
+        List<Position> candidates = new ArrayList<>();
         for (int n = minMove; n <= lastMove; n++) {
             long posStart = System.currentTimeMillis();
             Position pos = newPosition(game, n - 1);
@@ -613,6 +590,10 @@ public class FusekiScanner {
             if (pos.screenLoss < screenMinLoss) {
                 pos.reasons.add(new Reason("loss", "game move lost only " + fmt(pos.screenLoss)));
             }
+            if (pos.reasons.isEmpty() && maxCandidatesPerGame > 0 && candidates.size() >= maxCandidatesPerGame) {
+                pos.reasons.add(new Reason("game_done", "not checked: the game already has a candidate (move "
+                        + candidates.get(candidates.size() - 1).moveNumber + ")"));
+            }
             if (pos.reasons.isEmpty()) {
                 try {
                     calmCheck(brain, pos);
@@ -620,6 +601,9 @@ public class FusekiScanner {
                     e.printStackTrace();
                     pos.reasons.add(new Reason("error", "analysis failed: " + e.getMessage()));
                     if (!brain.isAlive()) throw e;
+                }
+                if (pos.awaitingVerify()) {
+                    candidates.add(pos);
                 }
             }
             pos.millis = System.currentTimeMillis() - posStart;
@@ -1029,8 +1013,8 @@ public class FusekiScanner {
                 + " moves of the best, answer, and game-move lines; gap >= " + fmt(screenMinGap)
                 + "\n- answer: the good move with the highest " + profilePrefix + naturalRank + " human policy"
                 + (minChoiceDistance > 0 ? " among those at least " + minChoiceDistance + " (city-block) from the game move" : "")
-                + (maxProblemsPerGame > 0 ? "; at most " + maxProblemsPerGame + " problem" + (maxProblemsPerGame == 1 ? "" : "s")
-                        + " per game (a game's candidates are verified largest fast gap first)" : "")
+                + (maxCandidatesPerGame > 0 ? "; a game stops being checked after " + maxCandidatesPerGame + " candidate"
+                        + (maxCandidatesPerGame == 1 ? "" : "s") : "")
                 + "\n- strong net: " + verifyVisits + " visits each for answer and game move, gap >= " + fmt(minGap)
                 + ", answer within " + fmt(verifyAnswerMargin) + " of the strong net's best (" + verifyRootVisits + " root visits)"
                 + "\n- games: even 19x19" + (rankRange.isEmpty() ? "" : ", both players " + rankRange)

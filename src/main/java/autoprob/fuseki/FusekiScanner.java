@@ -50,6 +50,7 @@ public class FusekiScanner {
         public String skipCode; // short reason kind for the report's skip counts
         List<List<String>> moves = new ArrayList<>(); // katago move list
         List<Node> moveNodes = new ArrayList<>();
+        String sgfText; // the source game, cleaned, for the candidate json
     }
 
     public static class Candidate {
@@ -198,6 +199,11 @@ public class FusekiScanner {
     private final double roundMinutes;
     private final String stopFile;
     private final String problemsDir;
+    // a deterministic sample of rejected candidates goes to the review queue too, so feedback can
+    // show when a filter throws away good problems
+    private final double reviewSampleRate;
+    private final String reviewSampleDir;
+    final String generatorCommit = gitCommit();
     private int queryCount = 0;
     private int restarts = 0;
     int filesTotal, filesExamined, gamesScanned, round;
@@ -263,6 +269,8 @@ public class FusekiScanner {
         roundMinutes = doubleProp("fuseki.round_minutes", 30);
         stopFile = props.getProperty("fuseki.stop_file", "fuseki_out/STOP").trim();
         problemsDir = props.getProperty("fuseki.problems.dir", "fuseki_out/problems").trim();
+        reviewSampleRate = doubleProp("fuseki.review_sample_rate", 0.1);
+        reviewSampleDir = props.getProperty("fuseki.review_sample.dir", "fuseki_out/review_sample").trim();
     }
 
     public void run() throws Exception {
@@ -492,6 +500,7 @@ public class FusekiScanner {
         } catch (Exception e) {
             return skip(game, "parse", "parse error: " + e.getMessage());
         }
+        game.sgfText = cleanSgf(sgf);
         game.dt = root.getXtra("DT");
         game.pc = root.getXtra("PC");
         String km = root.getXtra("KM");
@@ -526,6 +535,43 @@ public class FusekiScanner {
             return skip(game, "short", "only " + game.moveCount + " moves");
         }
         return game;
+    }
+
+    // printable ascii and newlines only: old archives carry CRLF line ends, latin-1 names and stray
+    // control bytes, none of which the problems need
+    static String cleanSgf(String s) {
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\n' || (c >= 0x20 && c <= 0x7e)) sb.append(c);
+            else if (c == '\t') sb.append(' ');
+        }
+        return sb.toString();
+    }
+
+    // a source path that means the same thing on another machine: relative to the archive it is in
+    static String portablePath(String file) {
+        String f = file.replace('\\', '/');
+        int i = f.indexOf("/NNGS/");
+        if (i >= 0) return f.substring(i + 1);
+        String home = System.getProperty("user.home");
+        if (home != null && f.startsWith(home)) return "~" + f.substring(home.length());
+        return f;
+    }
+
+    // the scanner commit, so feedback can be tied to the rules that produced a candidate
+    private static String gitCommit() {
+        try {
+            Process p = new ProcessBuilder("git", "rev-parse", "--short", "HEAD").redirectErrorStream(true).start();
+            String head = new String(p.getInputStream().readAllBytes()).trim();
+            if (p.waitFor() != 0) return "unknown";
+            Process d = new ProcessBuilder("git", "status", "--porcelain", "--", "src").redirectErrorStream(true).start();
+            String dirty = new String(d.getInputStream().readAllBytes()).trim();
+            d.waitFor();
+            return head + (dirty.isEmpty() ? "" : "-dirty");
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 
     static int cityDistance(Point a, Point b) {
@@ -1059,6 +1105,29 @@ public class FusekiScanner {
 
     String nearDir() {
         return nearDir;
+    }
+
+    String reviewSampleDir() {
+        return reviewSampleDir;
+    }
+
+    // same rule as tools/fuseki_backfill.py: the crc32 of the id decides, so reruns pick the same sample
+    // (String.hashCode barely changes with the move number, which would sample runs of one game's moves)
+    boolean inReviewSample(Position pos) {
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(pos.id().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return crc.getValue() % 1000 < reviewSampleRate * 1000;
+    }
+
+    // every fuseki.* setting plus the nets, as run
+    Map<String, String> settings() {
+        Map<String, String> m = new java.util.TreeMap<>();
+        for (String k : props.stringPropertyNames()) {
+            if (k.startsWith("fuseki.")) m.put(k, props.getProperty(k).trim());
+        }
+        m.put("kata.model", strongModelName());
+        m.put("fuseki.screen_model", screenModelName());
+        return m;
     }
 
     String problemsDir() {

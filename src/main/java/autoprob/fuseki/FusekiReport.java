@@ -55,17 +55,108 @@ public class FusekiReport {
                 throw new RuntimeException("cannot create output directory: " + dir);
             }
             File f = new File(dir, pos.id() + ".sgf");
-            String sgf = problemSgf(pos);
-            try (PrintWriter w = new PrintWriter(f)) {
-                w.println(sgf);
-            }
+            String sgf = FusekiScanner.cleanSgf(problemSgf(pos));
+            String kind = pos.accepted() ? "problem" : scan.nearMiss(pos) ? "near_miss" : "rejected";
+            String json = candidateJson(pos, kind, sgf);
+            writeFile(f, sgf);
+            writeFile(new File(dir, pos.id() + ".json"), json);
             pos.sgfPath = dir.getName() + "/" + f.getName();
             if (pos.accepted()) {
-                track(scan.problemsDir(), PROBLEMS_HEADER, pos, f.getName(), sgf);
+                track(scan.problemsDir(), PROBLEMS_HEADER, pos, f.getName(), sgf, json);
             } else if (scan.nearMiss(pos)) {
-                track(scan.nearDir(), NEAR_HEADER, pos, f.getName(), sgf);
+                track(scan.nearDir(), NEAR_HEADER, pos, f.getName(), sgf, json);
+            } else if (scan.inReviewSample(pos)) {
+                track(scan.reviewSampleDir(), null, pos, f.getName(), sgf, json);
             }
         }
+    }
+
+    private static void writeFile(File f, String text) throws Exception {
+        try (PrintWriter w = new PrintWriter(f)) {
+            w.println(text);
+        }
+    }
+
+    // the candidate as data: what the review tool shows and the feedback library keeps (schema in
+    // feedback/fuseki/README.md). later rules add fields here; readers ignore what they don't know
+    String candidateJson(Position pos, String kind, String problemSgf) {
+        com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+        o.addProperty("schema", 1);
+        o.addProperty("id", pos.id());
+        o.addProperty("kind", kind);
+        o.addProperty("created", new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(new java.util.Date()));
+
+        com.google.gson.JsonObject src = new com.google.gson.JsonObject();
+        src.addProperty("path", FusekiScanner.portablePath(pos.game.file));
+        src.addProperty("game", pos.game.name);
+        src.addProperty("move", pos.moveNumber);
+        src.addProperty("to_play", pos.color == Intersection.BLACK ? "B" : "W");
+        src.addProperty("game_move", pos.gameMove);
+        addText(src, "black", pos.game.pb);
+        addText(src, "black_rank", pos.game.br);
+        addText(src, "white", pos.game.pw);
+        addText(src, "white_rank", pos.game.wr);
+        addText(src, "date", pos.game.dt);
+        src.addProperty("sgf", pos.game.sgfText);
+        o.add("source", src);
+
+        com.google.gson.JsonObject prob = new com.google.gson.JsonObject();
+        prob.addProperty("sgf", problemSgf);
+        prob.addProperty("correct", pos.answer.move);
+        prob.addProperty("correct_label", pos.label(pos.answer));
+        prob.addProperty("mistake", pos.mistake.move);
+        prob.addProperty("mistake_label", pos.label(pos.mistake));
+        o.add("problem", prob);
+
+        com.google.gson.JsonObject m = new com.google.gson.JsonObject();
+        m.addProperty("status", scan.nearMiss(pos) ? "near miss" : pos.status());
+        m.addProperty("reasons", pos.reasonText());
+        addNum(m, "score_lead", pos.scoreLead);
+        addNum(m, "screen_loss", pos.screenLoss);
+        addNum(m, "gap_fast", pos.gap());
+        if (pos.verified) {
+            addNum(m, "gap_strong", pos.strongGap());
+            m.addProperty("strong_best", pos.strongBestMove);
+            addNum(m, "strong_answer_loss", pos.strongAnswerLoss());
+        }
+        m.addProperty("best_fast", pos.best.move);
+        m.addProperty("good_moves", scan.moveList(pos.good, pos.best.score));
+        m.addProperty("good_ideas", pos.goodIdeas);
+        m.addProperty("choice_distance", FusekiScanner.cityDistance(pos.answer.p, pos.mistake.p));
+        addNum(m, "stone_stdev_mean", pos.stdevMean);
+        addNum(m, "stone_stdev_max", pos.stdevMax);
+        m.addProperty("lines", linesText(pos));
+        addText(m, "mover_rank", pos.moverRank);
+        addNum(m, "mistake_human_policy", pos.mistakeHumanPolicy);
+        m.addProperty("mistake_human_order", pos.mistakeHumanOrder);
+        addNum(m, "answer_natural_policy", pos.answer.naturalPolicy);
+        com.google.gson.JsonObject curve = new com.google.gson.JsonObject();
+        for (Map.Entry<String, Double> e : pos.curve.entrySet()) {
+            addNum(curve, e.getKey(), e.getValue());
+        }
+        m.add("curve", curve);
+        m.addProperty("crossover", pos.crossover);
+        o.add("metrics", m);
+
+        com.google.gson.JsonObject gen = new com.google.gson.JsonObject();
+        gen.addProperty("commit", scan.generatorCommit);
+        gen.addProperty("run", outDir.getName());
+        com.google.gson.JsonObject settings = new com.google.gson.JsonObject();
+        for (Map.Entry<String, String> e : scan.settings().entrySet()) {
+            settings.addProperty(e.getKey(), e.getValue());
+        }
+        gen.add("settings", settings);
+        o.add("generator", gen);
+        return new com.google.gson.GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(o);
+    }
+
+    private static void addText(com.google.gson.JsonObject o, String key, String val) {
+        if (val != null) o.addProperty(key, FusekiScanner.cleanSgf(val).trim());
+    }
+
+    // json has no NaN: leave unknown numbers out
+    private static void addNum(com.google.gson.JsonObject o, String key, double val) {
+        if (!Double.isNaN(val) && !Double.isInfinite(val)) o.addProperty(key, Math.round(val * 1000) / 1000.0);
     }
 
     static final String INDEX_COLUMNS = "| SGF | Position | To play | Correct | Game move (mistake) | Gap strong / fast | Ranks B/W | Run |\n"
@@ -79,18 +170,18 @@ public class FusekiReport {
             + " game move came out just under that run's bar (between fuseki.near_gap_min and fuseki.min_gap). Each SGF"
             + " is a one-move-deep A/B problem; the root comment has the analysis. Rows are added as runs find them.\n\n" + INDEX_COLUMNS;
 
-    // problems and near misses from every run also collect in shared folders with an index, for review across runs
-    private void track(String dirName, String header, Position pos, String fileName, String sgf) throws Exception {
+    // problems and near misses from every run also collect in shared folders with an index, for review
+    // across runs; the review sample folder gets no index (header null), the review tool lists it
+    private void track(String dirName, String header, Position pos, String fileName, String sgf, String json) throws Exception {
         File dir = new File(dirName);
         if (!dir.exists() && !dir.mkdirs()) {
             throw new RuntimeException("cannot create output directory: " + dir);
         }
         File f = new File(dir, fileName);
         boolean isNew = !f.exists();
-        try (PrintWriter w = new PrintWriter(f)) {
-            w.println(sgf);
-        }
-        if (!isNew) return; // a later round or rerun wrote the same position; keep one index row
+        writeFile(f, sgf);
+        writeFile(new File(dir, fileName.replaceAll("\\.sgf$", ".json")), json);
+        if (!isNew || header == null) return; // a later round or rerun wrote the same position; keep one index row
         File index = new File(dir, "index.md");
         boolean fresh = !index.exists();
         try (PrintWriter w = new PrintWriter(new java.io.FileWriter(index, true))) {
@@ -168,7 +259,7 @@ public class FusekiReport {
         }
         c.append(pos.colorName()).append(" to play. Which is better, A or B?\n\n");
         c.append("-- prototype analysis --\n");
-        c.append("Source: ").append(pos.game.file).append(", move ").append(pos.moveNumber)
+        c.append("Source: ").append(FusekiScanner.portablePath(pos.game.file)).append(", move ").append(pos.moveNumber)
                 .append(" (the game move was ").append(pos.gameMove).append(").\n");
         c.append("Correct: ").append(pos.label(pos.answer)).append(" = ").append(pos.answer.move)
                 .append(". Mistake: ").append(pos.label(pos.mistake)).append(" = ").append(pos.mistake.move).append(", the game move.\n");

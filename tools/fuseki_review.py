@@ -215,53 +215,59 @@ PAGE = r"""<!doctype html>
 :root { --bg:#f6f5f2; --panel:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e2e0da; --accent:#2563eb;
         --good:#15803d; --bad:#b91c1c; --warn:#b45309; }
 * { box-sizing:border-box; }
-body { margin:0; font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
-header { display:flex; align-items:center; gap:14px; padding:10px 18px; border-bottom:1px solid var(--line); background:var(--panel); flex-wrap:wrap; }
-header h1 { font-size:15px; margin:0; }
+body { margin:0; font:13.5px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+header { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid var(--line); background:var(--panel); flex-wrap:wrap; }
+header h1 { font-size:14px; margin:0 6px 0 0; }
 .grow { flex:1; }
-main { display:flex; gap:18px; padding:18px; align-items:flex-start; flex-wrap:wrap; }
-#boardwrap { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px; }
-#board { width:min(640px, calc(100vw - 58px)); height:auto; display:block; }
+main { display:flex; gap:12px; padding:10px 12px; align-items:flex-start; flex-wrap:wrap; }
+#boardwrap { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:4px; }
+/* the whole board stays in view: as wide as the window height allows */
+#board { width:min(640px, calc(100vh - 66px), calc(100vw - 34px)); height:auto; display:block; }
 #board text { font:11px -apple-system, sans-serif; fill:#5a4a32; text-anchor:middle; }
 #board text.lbl { font:bold 15px -apple-system, sans-serif; fill:#fff; }
-#side { flex:1; min-width:300px; max-width:560px; display:flex; flex-direction:column; gap:12px; }
-.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
-.kind { display:inline-block; font-size:12px; padding:1px 8px; border-radius:99px; background:#e0e7ff; color:#3730a3; margin-right:6px; }
+#side { flex:1; min-width:300px; max-width:520px; display:flex; flex-direction:column; gap:8px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:9px 12px; }
+.kind { display:inline-block; font-size:11.5px; padding:0 7px; border-radius:99px; background:#e0e7ff; color:#3730a3; margin-right:6px; }
 .kind.near_miss { background:#fef3c7; color:#92400e; }
 .kind.rejected { background:#fee2e2; color:#991b1b; }
 .muted { color:var(--muted); }
 .small { font-size:12px; }
-button { font:inherit; border:1px solid var(--line); background:#fff; border-radius:8px; padding:6px 12px; cursor:pointer; color:var(--ink); }
+button { font:inherit; border:1px solid var(--line); background:#fff; border-radius:7px; padding:3px 10px; cursor:pointer; color:var(--ink); }
 button:hover { border-color:#b9b6ad; }
-button.pick { font-size:18px; font-weight:600; width:64px; height:44px; margin-right:8px; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+button.primary kbd { color:#dbe4ff; border-color:#7aa2f7; background:transparent; }
+button.pick { font-size:16px; font-weight:600; width:52px; height:34px; }
 .verdicts button.on { color:#fff; }
 .verdicts button[data-v=good].on { background:var(--good); border-color:var(--good); }
 .verdicts button[data-v=fixable].on { background:var(--warn); border-color:var(--warn); }
 .verdicts button[data-v=bad].on { background:var(--bad); border-color:var(--bad); }
 .verdicts button[data-v=unsure].on { background:#555; border-color:#555; }
-.chips { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 10px; }
-.chip { font-size:12.5px; padding:3px 9px; border-radius:99px; border:1px solid var(--line); cursor:pointer; user-select:none; background:#fff; }
+.chips { display:flex; flex-wrap:wrap; gap:4px; margin:7px 0; }
+.chip { font-size:12px; padding:1px 8px; border-radius:99px; border:1px solid var(--line); cursor:pointer; user-select:none; background:#fff; }
 .chip.on { background:var(--ink); color:#fff; border-color:var(--ink); }
 .chip.good.on { background:var(--good); border-color:var(--good); }
-textarea, input[type=text] { width:100%; font:inherit; padding:8px; border:1px solid var(--line); border-radius:8px; }
-textarea { min-height:96px; resize:vertical; }
-table.kv { border-collapse:collapse; width:100%; }
-table.kv td { padding:3px 0; vertical-align:top; }
-table.kv td:first-child { color:var(--muted); width:36%; padding-right:10px; }
-.curve { display:grid; grid-template-columns:34px 1fr 34px; gap:3px 8px; font-size:12px; align-items:center; margin-top:8px; }
-.bar { height:8px; background:#e5e7eb; border-radius:4px; position:relative; }
+textarea, input[type=text] { width:100%; font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:7px; }
+textarea { resize:vertical; display:block; }
+table.kv { border-collapse:collapse; width:100%; font-size:12.5px; }
+table.kv td { padding:1px 0; vertical-align:top; }
+table.kv td:first-child { color:var(--muted); width:32%; padding-right:8px; }
+.curve { display:grid; grid-template-columns:30px 1fr 30px; gap:1px 8px; font-size:11.5px; align-items:center; margin-top:4px; }
+.bar { height:7px; background:#e5e7eb; border-radius:4px; position:relative; }
 .bar > i { position:absolute; left:0; top:0; bottom:0; background:var(--accent); border-radius:4px; }
-.bar::after { content:""; position:absolute; left:50%; top:-3px; bottom:-3px; border-left:1px dashed #9a978f; }
-.row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-h3 { margin:0 0 6px; font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+.bar::after { content:""; position:absolute; left:50%; top:-2px; bottom:-2px; border-left:1px dashed #9a978f; }
+.row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+h3 { margin:6px 0 2px; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
 .ok { color:var(--good); font-weight:600; } .no { color:var(--bad); font-weight:600; }
-kbd { font:11px ui-monospace, monospace; border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 4px; color:var(--muted); background:#fff; }
-#toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:8px 14px; border-radius:8px; opacity:0; transition:opacity .2s; pointer-events:none; max-width:90vw; }
+kbd { font:10.5px ui-monospace, monospace; border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 3px; color:var(--muted); background:#fff; }
+#toast { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:7px 12px; border-radius:8px; opacity:0; transition:opacity .2s; pointer-events:none; max-width:90vw; }
 #toast.show { opacity:.95; }
 </style></head>
 <body>
 <header>
   <h1>Fuseki review</h1><span id="progress" class="muted small"></span><span class="grow"></span>
+  <button id="prev" title="previous candidate, reviewed or not (left arrow)">&larr;</button>
+  <button id="next" title="next unreviewed candidate (right arrow)">&rarr;</button>
+  <button id="opensgf">Open SGF</button>
   <label class="muted small"><input type="checkbox" id="showall"> include reviewed</label>
   <span id="who" class="muted small"></span>
   <button id="commit">Finish &amp; commit</button>
@@ -271,23 +277,20 @@ kbd { font:11px ui-monospace, monospace; border:1px solid var(--line); border-bo
   <div id="side">
     <div class="card" id="meta"></div>
     <div class="card" id="ask"></div>
-    <div class="card" id="analysis" hidden></div>
     <div class="card" id="form" hidden>
-      <h3>Verdict</h3>
       <div class="row verdicts">
         <button data-v="good">Good <kbd>g</kbd></button><button data-v="fixable">Fixable <kbd>f</kbd></button>
         <button data-v="bad">Bad <kbd>x</kbd></button><button data-v="unsure">Unsure <kbd>u</kbd></button>
       </div>
-      <h3 style="margin-top:12px">Tags</h3>
       <div class="chips" id="chips"></div>
-      <input type="text" id="extratags" placeholder="other tags, comma separated">
-      <h3 style="margin-top:12px">Why <span class="muted small" style="text-transform:none;letter-spacing:0"><kbd>w</kbd> to type</span></h3>
-      <textarea id="why" placeholder="What makes this a good or bad problem?"></textarea>
-      <div class="row" style="margin-top:10px"><button id="save" style="background:var(--accent);border-color:var(--accent);color:#fff">Save &amp; next <kbd style="color:#dbe4ff;border-color:#7aa2f7;background:transparent">ctrl/cmd + enter</kbd></button>
-      <span id="others" class="muted small"></span></div>
+      <textarea id="why" rows="3" placeholder="Why is it good or bad? (w to type, esc to leave)"></textarea>
+      <div class="row" style="margin-top:6px">
+        <input type="text" id="extratags" placeholder="other tags, comma separated" style="flex:1;min-width:140px">
+        <button id="save" class="primary">Save &amp; next <kbd>ctrl/cmd + enter</kbd></button>
+      </div>
+      <div id="others" class="muted small"></div>
     </div>
-    <div class="row"><button id="prev">&larr; Prev</button><button id="next">Next &rarr;</button><button id="opensgf">Open SGF</button>
-      <span class="muted small">arrows move between candidates</span></div>
+    <div class="card" id="analysis" hidden></div>
   </div>
 </main>
 <div id="toast"></div>
@@ -345,17 +348,19 @@ function render() {
   const s = cur.source, pr = cur.problem, m = cur.metrics || {};
   const kindName = {problem:'Problem', near_miss:'Near miss', rejected:'Rejected sample'}[cur.kind] || cur.kind;
   $('#meta').innerHTML = `<span class="kind ${esc(cur.kind)}">${esc(kindName)}</span><b>${esc(cur.id)}</b>
-    <div class="muted small">${toPlay()} to play, move ${s.move} &middot; ${esc(s.black || '?')} ${esc(s.black_rank || '')} (B) vs ${esc(s.white || '?')} ${esc(s.white_rank || '')} (W) &middot; ${esc(s.date || '')}</div>
-    <div class="muted small">${esc(s.path)}</div>`;
+    <div class="muted small">${toPlay()} to play, move ${s.move} &middot; ${esc(s.black || '?')} ${esc(s.black_rank || '')} (B) vs ${esc(s.white || '?')} ${esc(s.white_rank || '')} (W) &middot; ${esc(s.date || '')} &middot; ${esc(s.path)}</div>`;
   if (stage === 'ask') {
-    $('#ask').innerHTML = `<b>${toPlay()} to play. Which is better?</b>
-      <div class="row" style="margin-top:10px"><button class="pick" data-p="A">A</button><button class="pick" data-p="B">B</button>
-      <span class="muted small">pick <kbd>a</kbd> / <kbd>b</kbd>, or <a href="#" id="skip">skip</a> <kbd>space</kbd></span></div>`;
+    $('#ask').innerHTML = `<div class="row"><b>${toPlay()} to play. Which is better?</b><span class="grow"></span>
+      <button class="pick" data-p="A">A</button><button class="pick" data-p="B">B</button></div>
+      <div class="muted small" style="margin-top:4px"><kbd>a</kbd> / <kbd>b</kbd> to pick, <a href="#" id="skip">skip</a> <kbd>space</kbd></div>`;
     document.querySelectorAll('button.pick').forEach(b => b.onclick = () => choose(b.dataset.p));
     $('#skip').onclick = e => { e.preventDefault(); reveal(); };
   } else {
-    $('#ask').innerHTML = pick == null ? `<span class="muted">No blind pick.</span>`
-      : `Your pick: <b>${pick}</b> ${pick === pr.correct_label ? '<span class="ok">correct</span>' : '<span class="no">wrong</span>'}`;
+    const gap = m.gap_strong != null ? `${pts(m.gap_strong)} strong / ${pts(m.gap_fast)} fast` : `${pts(m.gap_fast)} fast`;
+    const you = pick == null ? '<span class="muted">no blind pick</span>'
+      : `you picked <b>${pick}</b> ${pick === pr.correct_label ? '<span class="ok">correct</span>' : '<span class="no">wrong</span>'}`;
+    $('#ask').innerHTML = `${you} &middot; correct <b>${esc(pr.correct_label)} = ${esc(pr.correct)}</b> &middot;
+      game move ${esc(pr.mistake_label)} = ${esc(pr.mistake)} &middot; gap ${gap}`;
   }
   $('#analysis').hidden = $('#form').hidden = stage !== 'reveal';
   if (stage === 'reveal') renderAnalysis(pr, m);
@@ -365,22 +370,18 @@ function render() {
 }
 
 function renderAnalysis(pr, m) {
-  const rows = [
-    ['Correct', `<b>${esc(pr.correct_label)} = ${esc(pr.correct)}</b>`],
-    ['Mistake', `${esc(pr.mistake_label)} = ${esc(pr.mistake)} (the game move)`],
-    ['Gap', m.gap_strong != null ? `${pts(m.gap_strong)} strong / ${pts(m.gap_fast)} fast` : `${pts(m.gap_fast)} fast`],
-  ];
-  if (m.strong_best) rows.push(['Strong net best', `${esc(m.strong_best)}, answer ${pts(m.strong_answer_loss)} behind`]);
+  const rows = [];
+  if (m.strong_best) rows.push(['Strong net best', `${esc(m.strong_best)}, correct move ${pts(m.strong_answer_loss)} behind`]);
   rows.push(['Good moves (fast)', esc(m.good_moves) + (m.good_ideas != null ? ` &middot; ${m.good_ideas} idea${m.good_ideas === 1 ? '' : 's'}` : '')]);
   rows.push(['Game move at ' + esc(m.mover_rank || '?'), `${pct(m.mistake_human_policy)} of players${m.mistake_human_order ? `, choice #${m.mistake_human_order}` : ''}`]);
   if (m.choice_distance != null) rows.push(['Choice distance', m.choice_distance]);
   rows.push(['Calm', `score ${pts(m.score_lead)} for the mover &middot; stone stdev ${m.stone_stdev_mean ?? '?'} / ${m.stone_stdev_max ?? '?'} &middot; ${esc(m.lines || '')}`]);
-  if (cur.kind !== 'problem' && m.reasons) rows.push(['Why it was not accepted', esc(m.reasons)]);
+  if (cur.kind !== 'problem' && m.reasons) rows.push(['Not accepted because', esc(m.reasons)]);
   let curve = '';
   for (const [r, v] of Object.entries(m.curve || {}))
     curve += `<span>${esc(r)}</span><div class="bar"><i style="width:${(100 * v).toFixed(0)}%"></i></div><span>${v.toFixed(2)}</span>`;
-  $('#analysis').innerHTML = `<h3>Analysis</h3><table class="kv">${rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>
-    <h3 style="margin-top:10px">Picks the correct move, by rank</h3><div class="muted small">crosses 50%: ${esc(m.crossover || '?')}</div>
+  $('#analysis').innerHTML = `<table class="kv">${rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>
+    <h3>Picks the correct move, by rank <span style="text-transform:none;letter-spacing:0">(crosses 50%: ${esc(m.crossover || '?')})</span></h3>
     <div class="curve">${curve}</div>`;
 }
 

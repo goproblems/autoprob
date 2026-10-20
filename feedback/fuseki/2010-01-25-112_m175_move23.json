@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "id": "2010-01-25-112_m175_move23",
+  "kind": "near_miss",
+  "created": "backfilled",
+  "source": {
+    "path": "sample_games/2010-01-25-112_m175.sgf",
+    "game": "2010-01-25-112_m175",
+    "move": 23,
+    "to_play": "B",
+    "game_move": "E16",
+    "black": "poonfai",
+    "black_rank": "3d",
+    "white": "Mukti",
+    "white_rank": "4d",
+    "date": "2010-01-25",
+    "sgf": "(;GM[1]\nFF[4]\nSZ[19]\nPW[Mukti]\nWR[4d]\nPB[poonfai]\nBR[3d]\nDT[2010-01-25]\nPC[The KGS Go Server at http://www.gokgs.com/]\nKM[0.50]\nRE[B+Resign]\nRU[Japanese]\nCA[UTF-8]\nST[2]\nAP[CGoban:3]\nTM[300]\nOT[3x30 byo-yomi]\n;B[pd];W[dc];B[pp];W[eq];B[de];W[cg];B[cc];W[cb];B[cd];W[gc];B[ef];W[di];B[eb];W[db];B[ec];W[ed];B[fd];W[fc];B[dd];W[ea];B[ee];W[fb];B[ed];W[jc];B[bb];W[ba];B[ac];W[dl];B[da];W[ca];B[cp];W[cn];B[ep];W[fp];B[eo];W[cq];B[co];W[dq];B[bn];W[cm];B[bm];W[bl];B[ck];W[cl];B[gn];W[hp];B[fo];W[go];B[fm];W[nq];B[lq];W[no];B[ho];W[gp];B[lo];W[io];B[hn];W[jp];B[pn];W[jm];B[lm];W[nm];B[ko];W[in];B[pr];W[or];B[oq];W[op];B[pq];W[mm];B[mn];W[nn];B[ll];W[gl];B[fl];W[gj];B[gk];W[hk];B[fk];W[ej];B[fj];W[fi];B[bq];W[br];B[ao];W[aq];B[bp];W[pl];B[jr];W[hr];B[ql];W[qk];B[qm];W[pk];B[lj];W[pm];B[rk];W[qn];B[qo];W[rn];B[rl];W[on];B[po];W[rj];B[ro];W[qf];B[nc];W[kk];B[lk];W[lh];B[kj];W[be];B[he];W[qc];B[qd];W[pc];B[rc];W[rb];B[rd];W[oc];B[od];W[nb];B[mb];W[mc];B[nd];W[na];B[qg];W[rg];B[pg];W[rh];B[pf];W[pi];B[rf];W[lc];B[ic];W[id];B[hd];W[ib];B[hc];W[hb];B[aa];W[ab];B[ob];W[pb];B[aa];W[en];B[fn];W[ab];B[pa];W[oa];B[aa];W[dp];B[do];W[ab];B[qb];W[qa];B[aa];W[kn];B[ln];W[ab];B[qh];W[bc];B[qi];W[ni];B[mh];W[mi];B[li];W[nk];B[qj];W[mr];B[lr];W[lg];B[mg];W[mf];B[oh];W[oi];B[ml];W[nl];B[pj];W[oj];B[mj];W[ji];B[jj];W[ij];B[jk];W[le];B[gi];W[hj];B[fh];W[ei];B[hh];W[il];B[hm];W[hl];B[am];W[ih];B[ig];W[gg];B[gf];W[fg];B[eg];W[gh];B[hg];W[hi];B[ff];W[eh];B[jd];W[je];B[ie];W[if];B[jf];W[jg];B[ke];W[hf];B[km];W[mp];B[mq];W[ls];B[lp];W[ks];B[js];W[jl];B[kl];W[jq];B[kr];W[nj];B[ol];W[ps];B[ms];W[ns];B[nr];W[sk];B[sn];W[mr];B[ls])\n"
+  },
+  "problem": {
+    "sgf": "(;LB[ck:A][ed:B]TR[fb]C[NEAR MISS: strong net gap 2.44, the bar is 2.5.\n\nBlack to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: sample_games/2010-01-25-112_m175.sgf, move 23 (the game move was E16).\nCorrect: A = C9. Mistake: B = E16, the game move.\nGap: 2.4 strong net, 2.1 fast net.\nStrong net best move: C9, the answer is 0.0 behind it.\nGood moves (fast net, within 0.5 of best): C9 +0.0, C5 -0.2, C3 -0.4, H15 -0.4 = 3 ideas.\nCalm: score B+1.1, stone ownership stdev mean 0.07 max 0.23, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.00, 15k 0.00, 10k 0.00, 5k 0.07, 1k 0.46, 3d 0.87, 6d 0.98, 9d 1.00. Crosses 50%: 3d.\nHuman policy for the game move at rank_3d: 4.9% (choice #4).FORCE]AB[cc][cd][dd][de][eb][ec][ee][ef][fd][pd][pp]AW[cb][cg][db][dc][di][ea][eq][fb][fc][gc]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[poonfai]BR[3d]PW[Mukti]WR[4d]DT[2010-01-25]PC[The KGS Go Server at http://www.gokgs.com/]\n(;B[ck]C[Correct. This is about 2 points better than B.RIGHT])\n(;B[ed]C[This loses about 2 points compared with A.]))",
+    "correct": "C9",
+    "correct_label": "A",
+    "mistake": "E16",
+    "mistake_label": "B"
+  },
+  "metrics": {
+    "status": "near miss",
+    "reasons": "strong net gap only 2.4",
+    "score_lead": 1.06,
+    "screen_loss": 2.13,
+    "gap_fast": 2.11,
+    "gap_strong": 2.44,
+    "strong_best": "C9",
+    "strong_answer_loss": 0.0,
+    "best_fast": "C9",
+    "good_moves": "C9 +0.0, C5 -0.2, C3 -0.4, H15 -0.4",
+    "good_ideas": 3,
+    "choice_distance": 9,
+    "stone_stdev_mean": 0.074,
+    "stone_stdev_max": 0.231,
+    "lines": "no atari or capture",
+    "mover_rank": "3d",
+    "mistake_human_policy": 0.049,
+    "mistake_human_order": 4,
+    "answer_natural_policy": 0.323,
+    "curve": {
+      "20k": 0.0,
+      "15k": 0.0,
+      "10k": 0.0,
+      "5k": 0.07,
+      "1k": 0.46,
+      "3d": 0.87,
+      "6d": 0.98,
+      "9d": 1.0
+    },
+    "crossover": "3d"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261005-2357"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:26",
+      "verdict": "good",
+      "tags": [],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": true
+    }
+  ]
+}

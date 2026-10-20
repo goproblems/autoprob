@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "id": "adp-lily-9907240117_move15",
+  "kind": "near_miss",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1999/07/adp-lily-9907240117",
+    "game": "adp-lily-9907240117",
+    "move": 15,
+    "to_play": "B",
+    "game_move": "C4",
+    "black": "lily",
+    "black_rank": "6k*",
+    "white": "adp",
+    "white_rank": "5k*",
+    "date": "1999-07-24",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[adp-lily(B) NNGS]\nEV[None]\nRE[W+Resign]\nPW[adp]WR[5k*]\nPB[lily]BR[6k*]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1999-07-24]\nSZ[19]TM[600]KM[0.5]\n\n;B[pd];W[dp];B[pp]C[\n adp 5k*: hi :)\n]\n;W[dd];B[mc];W[qi];B[qm];W[qf];B[cn];W[fp];B[bp];W[cq];B[hq];W[bq];B[cp]\n;W[do];B[dn];W[nq];B[lq];W[qq];B[pq];W[pr];B[or];W[qr];B[oq];W[qo];B[qp]\n;W[rp]C[\n stan started observation.\n]\n;B[ro];W[sq];B[rn];W[kq];B[lp];W[jp];B[ho];W[jn];B[hm];W[jl];B[lr];W[kr]\n;B[ir]C[\n guestZ started observation.\n]\n;W[mm];B[fr]C[\n sigue started observation.\n]\n;W[eq];B[kp];W[jq];B[jo];W[io];B[ko];W[hp];B[in];W[ip];B[gq]C[\n takechan started observation.\n]\n;W[er];B[gp];W[go];B[hn]C[\n adp 5k*: oops\n]\n;W[kn]C[\n adp 5k*: certainly should have :)\n]\n;B[no];W[dj];B[ck];W[cj];B[ik];W[jk];B[ij];W[dk];B[cl];W[df];B[cc];W[dc]\n;B[db];W[eb];B[cb];W[fc];B[be]C[\n guestZ started observation.\n]\n;W[jc];B[qe];W[pf];B[ne];W[qc];B[qd];W[pc];B[oc];W[ob];B[nc];W[nb];B[mb]\n;W[rc];B[oi];W[pj];B[rh];W[rf];B[rd];W[sd];B[se];W[sc];B[re];W[qh];B[sf]\n;W[sg];B[oe];W[rg];B[rk];W[rj];B[pg];W[qk];B[rl];W[og];B[ph];W[oh];B[pi]\n;W[ni];B[oj];W[ok];B[nj];W[mh];B[of];W[mj];B[nk];W[ol];B[lm];W[ln];B[mk]\n;W[lj];B[lk];W[kj];B[jm];W[km];B[hc];W[je];B[kg];W[mf];B[kd];W[jd];B[ke]\n;W[jf];B[kf];W[il];B[im];W[hl];B[nm];W[nl];B[ml];W[ll];B[gn];W[fo];B[fn]\n;W[en];B[em];W[eo];B[fl];W[gk];B[fk];W[fj];B[gj];W[fi];B[gi];W[ji];B[jg]\n;W[ig];B[ih];W[jh];B[if];W[hg];B[hf];W[gf];B[he];W[hb];B[ib];W[ic];B[hd]\n;W[gb];B[jb];W[kb];B[gg];W[hh];B[gh];W[ii];B[eh];W[ch];B[dg];W[cf];B[cg]\n;W[bg];B[ef];W[dh];B[eg];W[bf];B[fe];W[fd];B[fh];W[ei];B[ff];W[bd];B[bc]\n;W[ad];B[ba];W[ac];B[ab]C[\n kor55 started observation.\n]\n;W[cd];B[na];W[pa];B[hi];W[ih];B[lb];W[kc];B[lc];W[pe];B[od];W[md];B[ng]\n;W[nh];B[mg];W[lg];B[nf];W[lh];B[so];W[rs];B[rr];W[sr];B[aq];W[ar];B[dr]\n;W[ds];B[br];W[ap];B[cs];W[es];B[om];W[kk];B[lf];W[me];B[ld];W[dl]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[ck:A][cp:B]TR[bq]C[NEAR MISS: strong net gap 2.03, the bar is 2.5.\n\nBlack to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1999/07/adp-lily-9907240117, move 15 (the game move was C4).\nCorrect: A = C9. Mistake: B = C4, the game move.\nGap: 2.0 strong net, 2.3 fast net.\nStrong net best move: R15, the answer is 0.0 behind it.\nGood moves (fast net, within 0.5 of best): C9 +0.0, R15 -0.1, D9 -0.3, D10 -0.3, C10 -0.3, G5 -0.4 = 3 ideas.\nCalm: score B+0.3, stone ownership stdev mean 0.10 max 0.28, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.30, 15k 0.32, 10k 0.32, 5k 0.47, 1k 0.89, 3d 1.00, 6d 1.00, 9d 1.00. Crosses 50%: 1k.\nHuman policy for the game move at rank_6k: 27.3% (choice #1).FORCE]AB[bp][cn][hq][mc][pd][pp][qm]AW[bq][cq][dd][dp][fp][qf][qi]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[lily]BR[6k*]PW[adp]WR[5k*]DT[1999-07-24]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;B[ck]C[Correct. This is about 2 points better than B.RIGHT])\n(;B[cp]C[This loses about 2 points compared with A.]))",
+    "correct": "C9",
+    "correct_label": "A",
+    "mistake": "C4",
+    "mistake_label": "B"
+  },
+  "metrics": {
+    "status": "near miss",
+    "reasons": "strong net gap only 2.0",
+    "score_lead": 0.27,
+    "screen_loss": 2.44,
+    "gap_fast": 2.27,
+    "gap_strong": 2.03,
+    "strong_best": "R15",
+    "strong_answer_loss": 0.02,
+    "best_fast": "C9",
+    "good_moves": "C9 +0.0, R15 -0.1, D9 -0.3, D10 -0.3, C10 -0.3, G5 -0.4",
+    "good_ideas": 3,
+    "choice_distance": 5,
+    "stone_stdev_mean": 0.1,
+    "stone_stdev_max": 0.283,
+    "lines": "no atari or capture",
+    "mover_rank": "6k",
+    "mistake_human_policy": 0.273,
+    "mistake_human_order": 1,
+    "answer_natural_policy": 0.692,
+    "curve": {
+      "20k": 0.3,
+      "15k": 0.32,
+      "10k": 0.32,
+      "5k": 0.47,
+      "1k": 0.89,
+      "3d": 1.0,
+      "6d": 1.0,
+      "9d": 1.0
+    },
+    "crossover": "1k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1647"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:27",
+      "verdict": "good",
+      "tags": [],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": true
+    }
+  ]
+}

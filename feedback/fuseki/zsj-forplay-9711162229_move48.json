@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "id": "zsj-forplay-9711162229_move48",
+  "kind": "problem",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1997/11/zsj-forplay-9711162229",
+    "game": "zsj-forplay-9711162229",
+    "move": 48,
+    "to_play": "W",
+    "game_move": "B7",
+    "black": "forplay",
+    "black_rank": "5k*",
+    "white": "zsj",
+    "white_rank": "5k*",
+    "date": "1997-11-16",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[zsj-forplay(B) (Tournement) NNGS]\nEV[None]\nRE[W+Time]\nPW[zsj]WR[5k*]\nPB[forplay]BR[5k*]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1997-11-16]\nSZ[19]TM[600]KM[5.5]\n\n;B[pp];W[pd];B[dp];W[dc];B[jp];W[qn];B[nq];W[rp];B[de];W[cn];B[cl];W[en]\n;B[fp];W[bp];B[cq];W[dk];B[ck];W[dj];B[cj];W[di];B[ci];W[dh];B[ch];W[ce]\n;B[cf];W[cd];B[dg];W[bf];B[ec];W[bg];B[cg];W[ed];B[dd];W[db];B[cc];W[bc]\n;B[eb];W[cb];B[ee];W[fd];B[gc];W[gd];B[hc];W[hd];B[ic];W[id];B[kc];W[bm]\n;B[dl];W[fh];B[eg];W[gj];B[fl];W[gn];B[eh];W[fi];B[ei];W[ej];B[ek];W[fj]\n;B[dn];W[do];B[dm];W[eo];B[bq];W[em];B[el];W[ep];B[eq];W[cp];B[dq];W[hp]\n;B[go];W[ho];B[hn];W[gp];B[gm];W[fo];B[fq];W[in];B[hm];W[jo];B[kp];W[iq]\n;B[jd];W[ff];B[jf];W[ef];B[df];W[ij];B[fm];W[ln];B[jl];W[kj];B[ll];W[nn]\n;B[jj];W[ji];B[jk];W[kh];B[ih];W[ii];B[fg];W[hf];B[gf];W[ig];B[hh];W[gg]\n;B[fe];W[hg];B[jg];W[jh];B[he];W[ie];B[ge];W[if];B[qq];W[rq];B[qk];W[pl]\n;B[pj];W[lq];B[lp];W[mq];B[mp];W[kq];B[jq];W[jr];B[ip];W[hr];B[io];W[jn]\n;B[np];W[qr];B[pr];W[qp];B[pq];W[rr];B[mr];W[lr];B[ls];W[kr];B[nr];W[ms]\n;B[pn];W[pm];B[on];W[nm];B[po];W[no];B[kn];W[km];B[ko];W[kl];B[kk];W[lm]\n;B[jm];W[lk];B[lj];W[mk];B[ki];W[mi];B[qf];W[pf];B[pg];W[qe];B[of];W[pe]\n;B[qg];W[mc];B[pb];W[qc];B[oc];W[nd];B[mb];W[lb];B[nc];W[od];B[lc];W[md]\n;B[nb];W[og];B[je];W[gh];B[hi];W[oh];B[li];W[lh];B[mh];W[mj];B[kj];W[mg]\n;B[rm];W[rn];B[rl];W[qi];B[ri];W[pi];B[rh];W[qj];B[rj];W[rf];B[rg];W[re]\n;B[qb];W[ql];B[rk];W[sg]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[bm:A][eg:B]TR[kc]C[White to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1997/11/zsj-forplay-9711162229, move 48 (the game move was B7).\nCorrect: B = E13. Mistake: A = B7, the game move.\nGap: 6.6 strong net, 3.8 fast net.\nStrong net best move: E13, the answer is 0.0 behind it.\nGood moves (fast net, within 0.5 of best): K16 +0.0, G5 -0.0, F12 -0.2, E13 -0.2 = 3 ideas.\nCalm: score B+2.0, stone ownership stdev mean 0.10 max 0.28, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.83, 15k 0.84, 10k 0.86, 5k 0.92, 1k 0.98, 3d 1.00, 6d 1.00, 9d 1.00. Crosses 50%: already at 20k.\nHuman policy for the game move at rank_5k: 1.5% (choice #10).FORCE]AB[cf][cg][ch][ci][cj][ck][cl][cq][dd][de][dg][dp][eb][ec][ee][fp][gc][hc][ic][jp][kc][nq][pp]AW[bc][bf][bg][bp][cb][cd][ce][cn][db][dc][dh][di][dj][dk][ed][en][fd][gd][hd][id][pd][qn][rp]GM[1]FF[4]SZ[19]KM[7.5]PL[W]AP[autoprob fuseki prototype]PB[forplay]BR[5k*]PW[zsj]WR[5k*]DT[1997-11-16]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;W[bm]C[This loses about 7 points compared with B.])\n(;W[eg]C[Correct. This is about 7 points better than A.RIGHT]))",
+    "correct": "E13",
+    "correct_label": "B",
+    "mistake": "B7",
+    "mistake_label": "A"
+  },
+  "metrics": {
+    "status": "accepted",
+    "reasons": "",
+    "score_lead": -1.95,
+    "screen_loss": 3.93,
+    "gap_fast": 3.79,
+    "gap_strong": 6.57,
+    "strong_best": "E13",
+    "strong_answer_loss": 0.05,
+    "best_fast": "K16",
+    "good_moves": "K16 +0.0, G5 -0.0, F12 -0.2, E13 -0.2",
+    "good_ideas": 3,
+    "choice_distance": 9,
+    "stone_stdev_mean": 0.098,
+    "stone_stdev_max": 0.284,
+    "lines": "no atari or capture",
+    "mover_rank": "5k",
+    "mistake_human_policy": 0.015,
+    "mistake_human_order": 10,
+    "answer_natural_policy": 0.322,
+    "curve": {
+      "20k": 0.83,
+      "15k": 0.84,
+      "10k": 0.86,
+      "5k": 0.92,
+      "1k": 0.98,
+      "3d": 1.0,
+      "6d": 1.0,
+      "9d": 1.0
+    },
+    "crossover": "already at 20k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1533"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:26",
+      "verdict": "bad",
+      "tags": [
+        "tactical"
+      ],
+      "why": "",
+      "blind_pick": "B",
+      "blind_correct": true
+    }
+  ]
+}

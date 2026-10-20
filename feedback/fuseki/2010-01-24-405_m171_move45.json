@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "id": "2010-01-24-405_m171_move45",
+  "kind": "rejected",
+  "created": "backfilled",
+  "source": {
+    "path": "sample_games/2010-01-24-405_m171.sgf",
+    "game": "2010-01-24-405_m171",
+    "move": 45,
+    "to_play": "B",
+    "game_move": "E13",
+    "black": "ingenuous",
+    "black_rank": "4d",
+    "white": "Vinata",
+    "white_rank": "5d",
+    "date": "2010-01-24",
+    "sgf": "(;GM[1]\nFF[4]\nSZ[19]\nPW[Vinata]\nWR[5d]\nPB[ingenuous]\nBR[4d]\nDT[2010-01-24]\nPC[The KGS Go Server at http://www.gokgs.com/]\nKM[0.50]\nRE[W+Resign]\nRU[Japanese]\nCA[UTF-8]\nST[2]\nAP[CGoban:3]\nTM[0]\nOT[3x20 byo-yomi]\n;B[pd];W[dd];B[qp];W[op];B[oq];W[nq];B[pq];W[mp];B[qn];W[iq];B[dq];W[co];B[cl];W[fq];B[do];W[dn];B[eo];W[cp];B[eq];W[cq];B[fp];W[gq];B[cn];W[en];B[fn];W[bn];B[cm];W[em];B[fm];W[el];B[bm];W[bo];B[fl];W[ek];B[ci];W[cg];B[ch];W[dg];B[gj];W[ei];B[eh];W[dh];B[di];W[fi];B[eg];W[ef];B[gh];W[fk];B[gk];W[gi];B[gg];W[hi];B[ff];W[bg];B[bk];W[ee];B[gd];W[ge];B[fe];W[fd];B[fc];W[ed];B[he];W[fh];B[fg];W[gc];B[hd];W[hc];B[eb];W[ic];B[cc];W[hf];B[gf];W[if];B[be];W[ce];B[nc];W[bd];B[bc];W[cd];B[gb];W[kc];B[ad];W[bf];B[lq];W[mr];B[jq];W[jp];B[kp];W[jr];B[kr];W[kq];B[jd];W[id];B[jq];W[jo];B[ko];W[kq];B[cr];W[br];B[jq];W[jn];B[kq];W[ir];B[hp];W[gp];B[go];W[kn];B[lo];W[nn];B[mm];W[mn];B[ln];W[lm];B[km];W[ll];B[ip];W[ho];B[io];W[in];B[hn];W[hq];B[ho];W[jl];B[fr];W[gr];B[er];W[cs];B[hs];W[ks];B[ls];W[dr];B[gs];W[nk];B[pk];W[om];B[qe];W[qm];B[je];W[ie];B[qi];W[rn];B[ro];W[pn];B[qo];W[rl];B[nj];W[mj];B[mk];W[ok];B[lk];W[ml];B[kl];W[nm];B[jk];W[lj];B[kk];W[oj];B[ph];W[nh];B[ld];W[lc];B[md];W[or];B[pr];W[nb];B[ob];W[mb];B[sn];W[rm];B[ji];W[ij];B[pc];W[al];B[am];W[aj];B[ai];W[bi];B[bj];W[ah];B[ak];W[cj];B[ni];W[oi];B[jg];W[ki];B[ih];W[hh];B[kh];W[jj];B[kj];W[li];B[lh];W[mi];B[ik];W[lf];B[mg];W[jf];B[mf];W[og];B[le];W[rj];B[ri];W[si];B[sh];W[sj];B[rg];W[pg];B[qj];W[qk];B[dj];W[dk];B[hb];W[ib];B[kf];W[qg];B[qh];W[ii];B[jc];W[jb];B[os];W[nr];B[pj];W[pl];B[qf];W[kd];B[ke];W[oe];B[ig];W[hg];B[jh];W[hk];B[hl];W[hj];B[il];W[dp];B[ep];W[ha];B[fa];W[ec];B[fb];W[ae];B[ba];W[ac];B[ab];W[db];B[cb];W[dc];B[da];W[od];B[oc];W[sm];B[so];W[pp];B[rq];W[es];B[fs];W[ds])\n"
+  },
+  "problem": {
+    "sgf": "(;LB[bg:A][eg:B]TR[fi]C[REJECTED (rejected at calm check): only 2 good ideas (B13 +0.0, C2 -0.3)\n\nBlack to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: sample_games/2010-01-24-405_m171.sgf, move 45 (the game move was E13).\nCorrect: A = B13. Mistake: B = E13, the game move.\nGap: 2.3 fast net.\nGood moves (fast net, within 0.5 of best): B13 +0.0, C2 -0.3 = 2 ideas.\nCalm: score W+1.0, stone ownership stdev mean 0.08 max 0.30, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.49, 15k 0.47, 10k 0.59, 5k 0.75, 1k 0.86, 3d 0.90, 6d 0.95, 9d 0.98. Crosses 50%: 10k.\nHuman policy for the game move at rank_4d: 6.8% (choice #2).FORCE]AB[bm][ch][ci][cl][cm][cn][di][do][dq][eh][eo][eq][fl][fm][fn][fp][gj][oq][pd][pq][qn][qp]AW[bn][bo][cg][co][cp][cq][dd][dg][dh][dn][ei][ek][el][em][en][fi][fq][gq][iq][mp][nq][op]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[ingenuous]BR[4d]PW[Vinata]WR[5d]DT[2010-01-24]PC[The KGS Go Server at http://www.gokgs.com/]\n(;B[bg]C[Correct. This is about 2 points better than B.RIGHT])\n(;B[eg]C[This loses about 2 points compared with A.]))",
+    "correct": "B13",
+    "correct_label": "A",
+    "mistake": "E13",
+    "mistake_label": "B"
+  },
+  "metrics": {
+    "status": "rejected at calm check",
+    "reasons": "only 2 good ideas (B13 +0.0, C2 -0.3)",
+    "score_lead": -0.99,
+    "screen_loss": 2.23,
+    "gap_fast": 2.32,
+    "best_fast": "B13",
+    "good_moves": "B13 +0.0, C2 -0.3",
+    "good_ideas": 2,
+    "choice_distance": 3,
+    "stone_stdev_mean": 0.081,
+    "stone_stdev_max": 0.304,
+    "lines": "no atari or capture",
+    "mover_rank": "4d",
+    "mistake_human_policy": 0.068,
+    "mistake_human_order": 2,
+    "answer_natural_policy": 0.662,
+    "curve": {
+      "20k": 0.49,
+      "15k": 0.47,
+      "10k": 0.59,
+      "5k": 0.75,
+      "1k": 0.86,
+      "3d": 0.9,
+      "6d": 0.95,
+      "9d": 0.98
+    },
+    "crossover": "10k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261005-2357"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:27",
+      "verdict": "bad",
+      "tags": [
+        "tactical"
+      ],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": true
+    }
+  ]
+}

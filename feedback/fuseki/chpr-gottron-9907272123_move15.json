@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "id": "chpr-gottron-9907272123_move15",
+  "kind": "near_miss",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1999/07/chpr-gottron-9907272123",
+    "game": "chpr-gottron-9907272123",
+    "move": 15,
+    "to_play": "B",
+    "game_move": "E4",
+    "black": "chpr",
+    "black_rank": "10k*",
+    "white": "gottron",
+    "white_rank": "10k*",
+    "date": "1999-07-27",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[gottron-chpr(B) NNGS]\nEV[None]\nRE[B+Resign]\nPW[gottron]WR[10k*]\nPB[chpr]BR[10k*]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1999-07-27]\nSZ[19]TM[600]KM[4.5]\n\n;B[dq];W[pd];B[cd];W[pp];B[cj];W[ed];B[kq];W[do];B[nq];W[pn];B[cm];W[fo]\n;B[ko];W[gq];B[ep];W[eo];B[fp];W[gp];B[fq];W[fr];B[dp];W[gn];B[er];W[gr]\n;B[co];W[cp];B[cq];W[cn];B[bo];W[bn];B[bp];W[dm];B[cl];W[ek];B[dl];W[em]\n;B[el];W[fl];B[fk];W[ej];B[gl];W[fm];B[gk];W[dh];B[bh];W[cf];B[cg];W[dg]\n;B[bf];W[ce];B[be];W[dd];B[cc];W[ch];B[bg];W[jc];B[fj];W[ei];B[ij];W[jl]\n;B[gh];W[dc];B[gf];W[gd];B[df];W[ef];B[de];W[ee];B[fg];W[eg];B[hm];W[pj]\n;B[jm];W[kl];B[km];W[ll];B[ir];W[mn];B[ho];W[go];B[hn];W[hp];B[ip];W[ci]\n;B[bi];W[ck];B[bk];W[dk];B[bl];W[ki];B[qj];W[qk];B[qi];W[rk];B[qh];W[oh]\n;B[pf];W[qd];B[og];W[pg];B[ph];W[qg];B[qf];W[rg];B[of];W[pi];B[rf];W[rh]\n;B[nh];W[oi];B[ni];W[nj];B[nd];W[oc];B[mj];W[nk];B[li];W[mf];B[mg];W[lf]\n;B[kj];W[ji];B[jj];W[ie];B[mk];W[nl];B[ml];W[lm];B[nm];W[rj];B[nn];W[mm]\n;B[no];W[mo];B[mp];W[lp];B[lq];W[pq];B[pm];W[qm];B[pk];W[ri];B[ol];W[oj]\n;B[od];W[nc];B[nf];W[lg];B[lh];W[kh];B[ii];W[ih];B[hh];W[ig];B[me];W[md]\n;B[ld]C[\n Supratic started observation.\n]\n;W[mc];B[le];W[ke];B[kd];W[kf];B[jd];W[id]C[\n yalpog started observation.\n]\n;B[je];W[jf];B[kc];W[kb];B[jb];W[lc];B[ic];W[ne];B[oe];W[hc];B[lb];W[ib]\n;B[jc];W[mb];B[ka];W[cb];B[hb];W[gb];B[ia];W[bb];B[bc];W[im];B[in];W[il]\n;B[hf];W[if];B[he];W[hd];B[ga];W[fa];B[ha];W[fb];B[sc];W[rc];B[sd];W[rd]\n;B[se];W[rb];B[pb];W[pc];B[rq];W[qr];B[or];W[pr];B[ql];W[rl];B[qn];W[pl]\n;B[po];W[om];B[on];W[qo];B[pm];W[rn];B[qp];W[pn];B[ma];W[na];B[qn];W[ro]\n;B[rr];W[pn];B[oa];W[la];B[qn];W[rp];B[qq];W[rs];B[qs];W[ps];B[ql];W[pn]\n;B[ma];W[nb];B[qn];W[pl];B[qb];W[pn];B[oo];W[om];B[sb];W[qa];B[pa];W[ra]\n;B[ob];W[la];B[kb]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[co:A][ep:B]TR[gq]C[NEAR MISS: strong net gap 2.47, the bar is 2.5.\n\nBlack to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1999/07/chpr-gottron-9907272123, move 15 (the game move was E4).\nCorrect: A = C5. Mistake: B = E4, the game move.\nGap: 2.5 strong net, 2.2 fast net.\nStrong net best move: C5, the answer is 0.0 behind it.\nGood moves (fast net, within 0.5 of best): C5 +0.0, E17 -0.0, E6 -0.1, R17 -0.4 = 4 ideas.\nCalm: score W+2.6, stone ownership stdev mean 0.10 max 0.32, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.94, 15k 0.94, 10k 0.91, 5k 0.89, 1k 0.97, 3d 0.99, 6d 1.00, 9d 1.00. Crosses 50%: already at 20k.\nHuman policy for the game move at rank_10k: 2.9% (choice #9).FORCE]AB[cd][cj][cm][dq][ko][kq][nq]AW[do][ed][fo][gq][pd][pn][pp]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[chpr]BR[10k*]PW[gottron]WR[10k*]DT[1999-07-27]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;B[co]C[Correct. This is about 2 points better than B.RIGHT])\n(;B[ep]C[This loses about 2 points compared with A.]))",
+    "correct": "C5",
+    "correct_label": "A",
+    "mistake": "E4",
+    "mistake_label": "B"
+  },
+  "metrics": {
+    "status": "near miss",
+    "reasons": "strong net gap only 2.5",
+    "score_lead": -2.61,
+    "screen_loss": 2.29,
+    "gap_fast": 2.21,
+    "gap_strong": 2.47,
+    "strong_best": "C5",
+    "strong_answer_loss": 0.03,
+    "best_fast": "C5",
+    "good_moves": "C5 +0.0, E17 -0.0, E6 -0.1, R17 -0.4",
+    "good_ideas": 4,
+    "choice_distance": 3,
+    "stone_stdev_mean": 0.103,
+    "stone_stdev_max": 0.319,
+    "lines": "no atari or capture",
+    "mover_rank": "10k",
+    "mistake_human_policy": 0.029,
+    "mistake_human_order": 9,
+    "answer_natural_policy": 0.805,
+    "curve": {
+      "20k": 0.94,
+      "15k": 0.94,
+      "10k": 0.91,
+      "5k": 0.89,
+      "1k": 0.97,
+      "3d": 0.99,
+      "6d": 1.0,
+      "9d": 1.0
+    },
+    "crossover": "already at 20k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1533"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:27",
+      "verdict": "bad",
+      "tags": [
+        "not-fuseki"
+      ],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": true
+    }
+  ]
+}

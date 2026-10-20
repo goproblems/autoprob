@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "id": "adp-wannabe-200201192033_force_m180_move29",
+  "kind": "rejected",
+  "created": "backfilled",
+  "source": {
+    "path": "sample_games/adp-wannabe-200201192033_force_m180.sgf",
+    "game": "adp-wannabe-200201192033_force_m180",
+    "move": 29,
+    "to_play": "B",
+    "game_move": "D1",
+    "black": "adp",
+    "black_rank": "5k*",
+    "white": "wannabe",
+    "white_rank": "4k*",
+    "date": "2002-01-19",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[wannabe-adp(B) NNGS]\nEV[None]\nRE[B+Resign]\nPW[wannabe]WR[4k*]\nPB[adp]BR[5k*]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[2002-01-19]\nSZ[19]TM[600]KM[0.5]\n\n;B[pd];W[dq];B[cd];W[qp];B[do];W[cm];B[en];W[cp];B[eq];W[co];B[dp];W[dn]C[\n strainarch started observation.\n]\n;B[dm];W[cn];B[dl];W[dr];B[fp];W[fr];B[er];W[gq];B[hp];W[gp];B[go];W[hq]\n;B[ip];W[iq];B[jp];W[kq];B[ds];W[cs];B[es];W[cr];B[cl];W[kp];B[id];W[ec]\n;B[ed];W[fd];B[ee];W[dc];B[cc];W[fe];B[ef];W[em];B[fn];W[qj];B[gc];W[fc]\n;B[if];W[gb];B[hc];W[hb];B[ib];W[cb];B[bb];W[ca];B[ea];W[eb];B[ha];W[fa]\n;B[pi];W[pj];B[oi];W[ff];B[eg];W[qe];B[pe];W[qd];B[qc];W[rc];B[qb];W[qf]\n;B[pf];W[qg];B[qi];W[pg];B[og];W[rb];B[oc];W[qa];B[pb];W[qm];B[ri];W[lm]\n;B[qq];W[pq];B[pr];W[rq];B[qr];W[oq];B[or];W[nq];B[rr];W[rp];B[nr];W[mr]\n;B[sr];W[lj];B[lh];W[jj];B[fj];W[kh];B[lg];W[kg];B[kf];W[lf];B[ke];W[li]\n;B[nh];W[mi];B[nj];W[oj];B[ni];W[nk];B[rk];W[rj];B[sj];W[qk];B[rl];W[ql]\n;B[rm];W[rn];B[sf];W[se];B[sg];W[rf];B[sh];W[sd];B[ko];W[jn];B[jo];W[lo]\n;B[kn];W[ln];B[jm];W[fi];B[ei];W[gi];B[gj];W[il];B[hi];W[fg];B[fh];W[gh]\n;B[eh];W[hh];B[jl];W[im];B[in];W[ik];B[ij];W[jk];B[ji];W[ih];B[ii];W[jh]\n;B[kk];W[kl];B[km];W[ll];B[bl];W[gl];B[fl];W[gm];B[fm];W[bm];B[ms];W[ns]\n;B[os];W[lr];B[fq];W[gr];B[am];W[an];B[al];W[ba];B[ao];W[bn];B[bq];W[bp]\n;B[br];W[cq];B[ap];W[aq];B[bs];W[bo];B[ap]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[cl:A][ds:B]TR[kq]C[REJECTED (rejected at calm check): answer beats the game move by only 1.8; only 2 good ideas (C8 +0.0, L4 -0.3)\n\nBlack to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: sample_games/adp-wannabe-200201192033_force_m180.sgf, move 29 (the game move was D1).\nCorrect: A = C8. Mistake: B = D1, the game move.\nGap: 1.8 fast net.\nGood moves (fast net, within 0.5 of best): C8 +0.0, L4 -0.3 = 2 ideas.\nCalm: score B+2.0, stone ownership stdev mean 0.06 max 0.10, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.62, 15k 0.62, 10k 0.48, 5k 0.27, 1k 0.35, 3d 0.57, 6d 0.72, 9d 0.81. Crosses 50%: already at 20k.\nHuman policy for the game move at rank_5k: 31.3% (choice #1).FORCE]AB[cd][dl][dm][do][dp][en][eq][er][fp][go][hp][ip][jp][pd]AW[cm][cn][co][cp][dn][dq][dr][fr][gp][gq][hq][iq][kq][qp]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[adp]BR[5k*]PW[wannabe]WR[4k*]DT[2002-01-19]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;B[cl]C[Correct. This is about 2 points better than B.RIGHT])\n(;B[ds]C[This loses about 2 points compared with A.]))",
+    "correct": "C8",
+    "correct_label": "A",
+    "mistake": "D1",
+    "mistake_label": "B"
+  },
+  "metrics": {
+    "status": "rejected at calm check",
+    "reasons": "answer beats the game move by only 1.8; only 2 good ideas (C8 +0.0, L4 -0.3)",
+    "score_lead": 1.96,
+    "screen_loss": 1.86,
+    "gap_fast": 1.82,
+    "best_fast": "C8",
+    "good_moves": "C8 +0.0, L4 -0.3",
+    "good_ideas": 2,
+    "choice_distance": 8,
+    "stone_stdev_mean": 0.063,
+    "stone_stdev_max": 0.1,
+    "lines": "no atari or capture",
+    "mover_rank": "5k",
+    "mistake_human_policy": 0.312,
+    "mistake_human_order": 1,
+    "answer_natural_policy": 0.382,
+    "curve": {
+      "20k": 0.62,
+      "15k": 0.62,
+      "10k": 0.48,
+      "5k": 0.27,
+      "1k": 0.35,
+      "3d": 0.57,
+      "6d": 0.72,
+      "9d": 0.81
+    },
+    "crossover": "already at 20k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261005-2357"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:29",
+      "verdict": "bad",
+      "tags": [
+        "tactical"
+      ],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": true
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "id": "yuch-tricam-9709130321_move21",
+  "kind": "problem",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1997/09/yuch-tricam-9709130321",
+    "game": "yuch-tricam-9709130321",
+    "move": 21,
+    "to_play": "B",
+    "game_move": "R4",
+    "black": "yuch",
+    "black_rank": "10k",
+    "white": "tricam",
+    "white_rank": "7k*",
+    "date": "1997-09-13",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[tricam-yuch(B) NNGS]\nEV[None]\nRE[B+30.5]\nPW[tricam]WR[7k*]\nPB[yuch]BR[10k ]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1997-09-13]\nSZ[19]TM[900]KM[0.5]\n\n;B[pd];W[dp];B[pp];W[cc];B[dd];W[cd];B[de];W[dc];B[ce];W[fc];B[ci];W[nq]\n;B[lq];W[qq];B[pq];W[pr];B[or];W[qr];B[oq];W[ro];B[qp];W[rp];B[np];W[qf]\n;B[qh];W[of];B[nd];W[rd];B[qc];W[mf];B[qk];W[rh];B[ri];W[rg];B[oh];W[ld]\n;B[me];W[le];B[nf];W[ng];B[ne];W[og];B[lf];W[mg];B[kf];W[mc];B[rc];W[qd]\n;B[pe];W[pf];B[qe];W[re];B[sf];W[ob];B[nc];W[nb];B[pb];W[oc];B[pc];W[ra]\n;B[qg];W[rf];B[kh];W[ph];B[pi];W[pg];B[qi];W[oi];B[nh];W[ni];B[mh];W[lh]\n;B[mi];W[mj];B[li];W[lg];B[kg];W[sc];B[sb];W[sd];B[qa];W[rb];B[qb];W[od]\n;B[oe];W[md];B[sa];W[ra];B[sh];W[rb];B[lj];W[nk];B[oj];W[nj];B[lk];W[rl]\n;B[ok];W[nl];B[ol];W[nm];B[lm];W[om];B[ql];W[qm];B[pm];W[pn];B[pl];W[on]\n;B[qn];W[qo];B[rm];W[rn];B[po];W[qm];B[sb];W[pa];B[qn];W[ln];B[qm];W[mm]\n;B[mo];W[mn];B[km];W[no];B[mp];W[ko];B[jo];W[jp];B[kn];W[oo];B[op];W[nr]\n;B[ns];W[kq];B[lo];W[kp];B[io];W[ms];B[os];W[lr];B[mr];W[kr];B[ls];W[ks]\n;B[mk];W[ms];B[ml];W[hq];B[ip];W[iq];B[fp];W[dn];B[cl];W[dl];B[ck];W[cm]\n;B[fq];W[dq];B[er];W[gr];B[cr];W[dr];B[ds];W[cq];B[br];W[bq];B[ir];W[ar]\n;B[cs];W[fr];B[eq];W[fs];B[es];W[hp];B[fn];W[ho];B[em];W[en];B[fo];W[hn]\n;B[fl];W[jn];B[dm];W[bm];B[cn];W[co];B[jm];W[in];B[hl];W[id];B[hf];W[fe]\n;B[ff];W[ef];B[ee];W[eg];B[fd];W[ge];B[gf];W[ec];B[gd];W[gc];B[hd];W[hc]\n;B[sr];W[rr];B[sq];W[rq];B[sn];W[so];B[ps];W[ss];B[rs];W[sm];B[qs];W[lp]\n;B[nn];W[mq];B[bl];W[bn];B[be];W[bd];B[ie];W[jd];B[ke];W[gm];B[fm];W[gl]\n;B[hm];W[gk];B[gn];W[ek];B[fk];W[ej];B[fj];W[fi];B[gi];W[di];B[ch];W[dh]\n;B[cg];W[gh];B[fh];W[kd];B[ei];W[ae];B[af];W[ad];B[bg];W[al];B[ak];W[im]\n;B[il];W[je];B[jf];W[se];B[sg];W[si];B[sj];W[sh];B[rj];W[ed];B[he];W[am]\n;B[bk];W[gq];B[bs];W[aq];B[tt];W[eo]C[\n tricam 7k*: i'm not done yet\n]\n;B[ep];W[cj];B[bj];W[tt]C[\n tricam 7k*: i am so stupid for losing corner\n  tricam 7k*: hello\n]\n;B[dj]C[\n tricam 7k*: it was so easy to defend, but i didn't pay\n tricam 7k*: enough attention\n tricam 7k*: i guess i deserve it\n tricam 7k*: it cost me the game too\n tricam 7k*: STUPID!!!  :(\n]\n;W[tt]C[\n  tricam 7k*: done\n]\n;B[tt]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[fq:A][qp:B]TR[ro]C[Black to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1997/09/yuch-tricam-9709130321, move 21 (the game move was R4).\nCorrect: A = F3. Mistake: B = R4, the game move.\nGap: 2.6 strong net, 2.4 fast net.\nStrong net best move: R6, the answer is 0.2 behind it.\nGood moves (fast net, within 0.5 of best): R6 +0.0, F3 -0.1, R14 -0.3, C6 -0.3, D3 -0.4 = 4 ideas.\nCalm: score W+1.7, stone ownership stdev mean 0.06 max 0.26, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.17, 15k 0.17, 10k 0.18, 5k 0.35, 1k 0.90, 3d 1.00, 6d 1.00, 9d 1.00. Crosses 50%: 1k.\nHuman policy for the game move at rank_10k: 16.8% (choice #2).FORCE]AB[ce][ci][dd][de][lq][oq][or][pd][pp][pq]AW[cc][cd][dc][dp][fc][nq][pr][qq][qr][ro]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[yuch]BR[10k]PW[tricam]WR[7k*]DT[1997-09-13]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;B[fq]C[Correct. This is about 3 points better than B.RIGHT])\n(;B[qp]C[This loses about 3 points compared with A.]))",
+    "correct": "F3",
+    "correct_label": "A",
+    "mistake": "R4",
+    "mistake_label": "B"
+  },
+  "metrics": {
+    "status": "accepted",
+    "reasons": "",
+    "score_lead": -1.72,
+    "screen_loss": 2.2,
+    "gap_fast": 2.36,
+    "gap_strong": 2.64,
+    "strong_best": "R6",
+    "strong_answer_loss": 0.19,
+    "best_fast": "R6",
+    "good_moves": "R6 +0.0, F3 -0.1, R14 -0.3, C6 -0.3, D3 -0.4",
+    "good_ideas": 4,
+    "choice_distance": 12,
+    "stone_stdev_mean": 0.059,
+    "stone_stdev_max": 0.259,
+    "lines": "no atari or capture",
+    "mover_rank": "10k",
+    "mistake_human_policy": 0.168,
+    "mistake_human_order": 2,
+    "answer_natural_policy": 0.31,
+    "curve": {
+      "20k": 0.17,
+      "15k": 0.17,
+      "10k": 0.18,
+      "5k": 0.35,
+      "1k": 0.9,
+      "3d": 1.0,
+      "6d": 1.0,
+      "9d": 1.0
+    },
+    "crossover": "1k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1647"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:25",
+      "verdict": "good",
+      "tags": [],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": true
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "id": "tricam-senor-9903111149_move42",
+  "kind": "problem",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1999/03/tricam-senor-9903111149",
+    "game": "tricam-senor-9903111149",
+    "move": 42,
+    "to_play": "W",
+    "game_move": "O8",
+    "black": "senor",
+    "black_rank": "7k*",
+    "white": "tricam",
+    "white_rank": "7k*",
+    "date": "1999-03-11",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[tricam-senor(B) NNGS]\nEV[None]\nRE[W+16.5]\nPW[tricam]WR[7k*]\nPB[senor]BR[7k*]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1999-03-11]\nSZ[19]TM[720]KM[1.5]\n\n;B[pd]C[\n senor 7k*: hi\n chudnall started observation.\n tricam 7k*: hi\n]\n;W[cp];B[pq];W[dc];B[ep];W[eq];B[fq];W[dq];B[gp];W[cn];B[kq];W[pj];B[pm]\n;W[qf];B[nc];W[rd];B[qc];W[qo];B[po];W[pp];B[op];W[qp];B[on];W[qq];B[pr]\n;W[qr];B[ps];W[qs];B[nq];W[ce];B[rn];W[qn];B[qm];W[pn];B[oo];W[ro];B[rm]\n;W[om];B[ol];W[nm];B[pk];W[nl];B[nk];W[qj];B[mk];W[oj];B[ok];W[lm];B[sq]\n;W[sp];B[rq];W[sr];B[rr];W[rs];B[ss];W[qk];B[sn];W[sr];B[ml];W[mm];B[ss]\n;W[ql];B[so];W[sr];B[rp];W[sp]C[\n senor 7k*: mis read\n tricam 7k*: yup\n]\n;B[pl];W[jm];B[mh];W[mi];B[kk];W[kl];B[li];W[ni];B[lj];W[nh];B[mg];W[ng]\n;B[mf];W[jd]C[\n tribit started observation.\n]\n;B[nf];W[of];B[oe];W[pf];B[hd];W[jf];B[hf];W[jh];B[kg];W[jg];B[ke];W[je]\n;B[ee];W[ed];B[fe];W[fd];B[gd];W[hh];B[fh];W[gi];B[gh];W[hi];B[ej];W[fi]\n;B[ei];W[eh];B[eg];W[dh];B[dg];W[ch]C[\n JBRU started observation.\n]\n;B[cg];W[hg];B[gf];W[cj];B[bh];W[ci];B[fk];W[hk];B[fm];W[el];B[fl];W[hm]\n;B[fo];W[ip];B[iq];W[hq];B[hp];W[jq];B[ir];W[jp];B[jr];W[kp];B[lq];W[dk]\n;B[be];W[bd];B[bf];W[fc];B[gb];W[gc];B[hc];W[fb];B[kc];W[kd];B[le]C[\n VoGl started observation.\n]\n;W[kh];B[lh];W[ld];B[md];W[lc];B[jc];W[nb];B[ob];W[mc];B[nd];W[kb];B[jb]\n;W[mb];B[ak];W[bk];B[ai];W[al];B[aj];W[bl];B[rc];W[qd];B[sd];W[pe];B[sf]\n;W[rf];B[sh];W[pc];B[od];W[pb];B[oa];W[qb];B[rb];W[sc];B[sb];W[se];B[re]\n;W[qe];B[qa];W[se];B[il];W[jk];B[hl];W[jl];B[im];W[sc];B[pa];W[ra];B[oc]\n;W[ik];B[in];W[jn];B[hn];W[rl];B[sd];W[re];B[lo];W[kj];B[ko];W[jo];B[lk]\n;W[lp];B[mp];W[ln];B[mo];W[ki];B[er];W[dr];B[fr];W[do];B[ka];W[gg];B[fg]\n;W[gk];B[ad];W[bc];B[ac];W[ab];B[ae];W[bb];B[ga];W[fa];B[ib];W[gl];B[gm]\n;W[fj];B[ek];W[em];B[en];W[dn];B[kf];W[de];B[ds];W[cr];B[cs];W[bs];B[es]\n;W[br];B[lb];W[eo]C[\n yalpog started observation.\n]\n;B[fn];W[dp];B[fp];W[ie];B[he];W[df];B[id];W[ef];B[ff];W[ma];B[if];W[la]\n;B[ig];W[ih];B[kb];W[kn];B[io];W[nn];B[bi];W[no];B[np];W[dj];B[bj];W[sl]\n;B[sc];W[dl];B[tt];W[nj]C[\n tricam 7k*: just for aesthetics :)\n]\n;B[tt];W[tt]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[nl:A][oj:B]TR[pk]C[White to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1999/03/tricam-senor-9903111149, move 42 (the game move was O8).\nCorrect: B = P10. Mistake: A = O8, the game move.\nGap: 3.0 strong net, 2.9 fast net.\nStrong net best move: P10, the answer is 0.0 behind it.\nGood moves (fast net, within 0.5 of best): R11 +0.0, P10 -0.1, R10 -0.4, N16 -0.5, Q15 -0.5 = 4 ideas.\nCalm: score W+6.4, stone ownership stdev mean 0.11 max 0.28, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.71, 15k 0.71, 10k 0.76, 5k 0.85, 1k 0.91, 3d 0.97, 6d 0.99, 9d 1.00. Crosses 50%: already at 20k.\nHuman policy for the game move at rank_7k: 6.0% (choice #4).FORCE]AB[ep][fq][gp][kq][nc][nq][ol][on][oo][op][pd][pk][pm][po][pq][pr][ps][qc][qm][rm][rn]AW[ce][cn][cp][dc][dq][eq][nm][om][pj][pn][pp][qf][qn][qo][qp][qq][qr][qs][rd][ro]GM[1]FF[4]SZ[19]KM[7.5]PL[W]AP[autoprob fuseki prototype]PB[senor]BR[7k*]PW[tricam]WR[7k*]DT[1999-03-11]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;W[nl]C[This loses about 3 points compared with B.])\n(;W[oj]C[Correct. This is about 3 points better than A.RIGHT]))",
+    "correct": "P10",
+    "correct_label": "B",
+    "mistake": "O8",
+    "mistake_label": "A"
+  },
+  "metrics": {
+    "status": "accepted",
+    "reasons": "",
+    "score_lead": 6.42,
+    "screen_loss": 2.68,
+    "gap_fast": 2.88,
+    "gap_strong": 3.05,
+    "strong_best": "P10",
+    "strong_answer_loss": 0.0,
+    "best_fast": "R11",
+    "good_moves": "R11 +0.0, P10 -0.1, R10 -0.4, N16 -0.5, Q15 -0.5",
+    "good_ideas": 4,
+    "choice_distance": 3,
+    "stone_stdev_mean": 0.106,
+    "stone_stdev_max": 0.277,
+    "lines": "no atari or capture",
+    "mover_rank": "7k",
+    "mistake_human_policy": 0.06,
+    "mistake_human_order": 4,
+    "answer_natural_policy": 0.512,
+    "curve": {
+      "20k": 0.71,
+      "15k": 0.71,
+      "10k": 0.76,
+      "5k": 0.85,
+      "1k": 0.91,
+      "3d": 0.97,
+      "6d": 0.99,
+      "9d": 1.0
+    },
+    "crossover": "already at 20k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1647"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:25",
+      "verdict": "bad",
+      "tags": [
+        "tactical"
+      ],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": false
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "id": "odonnell-freehand-9810091201_move30",
+  "kind": "problem",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1998/10/odonnell-freehand-9810091201",
+    "game": "odonnell-freehand-9810091201",
+    "move": 30,
+    "to_play": "W",
+    "game_move": "R12",
+    "black": "freehand",
+    "black_rank": "6k*",
+    "white": "ODonnell",
+    "white_rank": "5k*",
+    "date": "1998-10-09",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[ODonnell-freehand(B) NNGS]\nEV[None]\nRE[W+Resign]\nPW[ODonnell]WR[5k*]\nPB[freehand]BR[6k*]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1998-10-09]\nSZ[19]TM[600]KM[0.5]\n\n;B[dp]C[\n ODonnell 5k*: Hi, nice to meet you\n]\n;W[pp]C[\n freehand 6k*: helo\n]\n;B[dc];W[pd];B[nc];W[pf];B[qc];W[pc];B[pb];W[ob];B[qb];W[oc];B[nb];W[oa]\n;B[re];W[rf];B[qe];W[qf];B[pe];W[oe];B[qd];W[nd];B[lc];W[ld];B[kc];W[qm]\n;B[of];W[nf];B[og];W[qh];B[me]C[\n teemu started observation.\n]\n;W[md];B[ne];W[od];B[mf];W[kd];B[jc];W[jd];B[id];W[ic];B[hc];W[ib];B[hb]\n;W[ie];B[hd];W[mc];B[mb];W[jb];B[kb];W[lf];B[mg];W[nh];B[ng];W[oh];B[pg]\n;W[ph];B[qg];W[rg];B[sf];W[rh];B[mh];W[mi];B[kh];W[li];B[kg];W[jf];B[he]\n;W[hf];B[ig];W[if];B[hh];W[hg];B[ih];W[gh];B[gi];W[ff];B[fh];W[ge];B[gg]\n;W[fg];B[gh];W[gf];B[dg];W[fc];B[ed];W[gb];B[ia]C[\n sigue started observation.\n]\n;W[db];B[fd];W[gd];B[gc];W[ha]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[ng:A][qh:B]TR[og]C[White to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1998/10/odonnell-freehand-9810091201, move 30 (the game move was R12).\nCorrect: A = O13. Mistake: B = R12, the game move.\nGap: 2.5 strong net, 2.7 fast net.\nStrong net best move: R11, the answer is 0.7 behind it.\nGood moves (fast net, within 0.5 of best): R11 +0.0, O13 -0.1, L16 -0.5 = 3 ideas.\nCalm: score B+3.5, stone ownership stdev mean 0.10 max 0.40, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.53, 15k 0.44, 10k 0.26, 5k 0.18, 1k 0.44, 3d 0.88, 6d 0.98, 9d 1.00. Crosses 50%: already at 20k.\nHuman policy for the game move at rank_5k: 42.6% (choice #1).FORCE]AB[dc][dp][kc][lc][nb][nc][of][og][pb][pe][qb][qc][qd][qe][re]AW[ld][nd][nf][oa][ob][oc][oe][pc][pd][pf][pp][qf][qm][rf]GM[1]FF[4]SZ[19]KM[7.5]PL[W]AP[autoprob fuseki prototype]PB[freehand]BR[6k*]PW[ODonnell]WR[5k*]DT[1998-10-09]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;W[ng]C[Correct. This is about 3 points better than B.RIGHT])\n(;W[qh]C[This loses about 3 points compared with A.]))",
+    "correct": "O13",
+    "correct_label": "A",
+    "mistake": "R12",
+    "mistake_label": "B"
+  },
+  "metrics": {
+    "status": "accepted",
+    "reasons": "",
+    "score_lead": -3.47,
+    "screen_loss": 3.09,
+    "gap_fast": 2.73,
+    "gap_strong": 2.53,
+    "strong_best": "R11",
+    "strong_answer_loss": 0.67,
+    "best_fast": "R11",
+    "good_moves": "R11 +0.0, O13 -0.1, L16 -0.5",
+    "good_ideas": 3,
+    "choice_distance": 4,
+    "stone_stdev_mean": 0.098,
+    "stone_stdev_max": 0.405,
+    "lines": "no atari or capture",
+    "mover_rank": "5k",
+    "mistake_human_policy": 0.426,
+    "mistake_human_order": 1,
+    "answer_natural_policy": 0.362,
+    "curve": {
+      "20k": 0.53,
+      "15k": 0.44,
+      "10k": 0.26,
+      "5k": 0.18,
+      "1k": 0.44,
+      "3d": 0.88,
+      "6d": 0.98,
+      "9d": 1.0
+    },
+    "crossover": "already at 20k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1647"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:22",
+      "verdict": "bad",
+      "tags": [
+        "tactical"
+      ],
+      "why": "",
+      "blind_pick": "B",
+      "blind_correct": false
+    }
+  ]
+}

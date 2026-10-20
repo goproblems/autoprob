@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "id": "chern-takechan-9704120419_move33",
+  "kind": "problem",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1997/04/chern-takechan-9704120419",
+    "game": "chern-takechan-9704120419",
+    "move": 33,
+    "to_play": "B",
+    "game_move": "R14",
+    "black": "takechan",
+    "black_rank": "14k",
+    "white": "chern",
+    "white_rank": "11k*",
+    "date": "1997-04-12",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[chern-takechan(B) NNGS]\nEV[None]\nRE[W+18.5]\nPW[chern]WR[11k*]\nPB[takechan]BR[14k ]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1997-04-12]\nSZ[19]TM[900]KM[0.5]\n\n;B[pd];W[dp];B[cd];W[pp];B[ec];W[jp];B[qj];W[kc];B[cj];W[cm];B[dg];W[nc]\n;B[oc];W[hc];B[nd];W[mc];B[md];W[ld];B[ob];W[me];B[ne];W[mf];B[nf];W[mg]\n;B[ng];W[ql];B[pj];W[nh];B[oh];W[ni];B[oi];W[nj];B[qf];W[fe];B[qn];W[oj]\n;B[pg];W[pm];B[qq];W[pq];B[qp];W[pn];B[rm];W[qm];B[rl];W[qo];B[ro];W[po]\n;B[pr];W[or];B[qr];W[dk];B[rn];W[ch];B[dh];W[cg];B[cf];W[fg];B[ci];W[dj]\n;B[di];W[ei];B[gb];W[gc];B[fb];W[hb];B[ck];W[dl];B[bl];W[bm];B[cl];W[dm]\n;B[jq];W[iq];B[kq];W[kp];B[lq];W[lp];B[mq];W[nq];B[ir];W[hq];B[hr];W[mr]\n;B[lr];W[gr];B[ms];W[nr];B[ls];W[mp];B[os];W[gq];B[ns];W[np];B[jr];W[jk]\n;B[cq];W[dq];B[cp];W[co];B[bo];W[bn];B[dr];W[er];B[do];W[eo];B[eq];W[dn]\n;B[fr];W[ep];B[es];W[bp];B[bq];W[ao];B[aq];W[fq];B[gs];W[er];B[cs];W[fs]\n;B[fk];W[gk];B[fr];W[eq];B[fs];W[qc];B[qd];W[pb];B[pc];W[rd];B[rc];W[qb]\n;B[re];W[nb];B[oa];W[na];B[sd];W[eh];B[pk];W[ok];B[pl];W[ol];B[qk];W[lh]\n;B[ef];W[ff];B[ee];W[fc];B[eb];W[eg];B[ha];W[ia];B[ga];W[ib];B[ap];W[bo]\n;B[fd];W[gd];B[ed];W[al];B[ak];W[am];B[bk];W[be];B[bf];W[bc];B[bd];W[cb]\n;B[cc];W[ad];B[bb];W[tt];B[tt]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[qf:A][qq:B]TR[nj]C[Black to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1997/04/chern-takechan-9704120419, move 33 (the game move was R14).\nCorrect: B = R3. Mistake: A = R14, the game move.\nGap: 11.4 strong net, 11.4 fast net.\nStrong net best move: R6, the answer is 0.4 behind it.\nGood moves (fast net, within 0.5 of best): R6 +0.0, D3 -0.1, R3 -0.1, E6 -0.1, F3 -0.1, Q3 -0.3, O3 -0.5 = 5 ideas.\nCalm: score W+2.9, stone ownership stdev mean 0.03 max 0.20, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.89, 15k 0.92, 10k 0.95, 5k 0.99, 1k 1.00, 3d 1.00, 6d 1.00, 9d 1.00. Crosses 50%: already at 20k.\nHuman policy for the game move at rank_14k: 0.4% (choice #42).FORCE]AB[cd][cj][dg][ec][md][nd][ne][nf][ng][ob][oc][oh][oi][pd][pj][qj]AW[cm][dp][hc][jp][kc][ld][mc][me][mf][mg][nc][nh][ni][nj][pp][ql]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[takechan]BR[14k]PW[chern]WR[11k*]DT[1997-04-12]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;B[qf]C[This loses about 11 points compared with B.])\n(;B[qq]C[Correct. This is about 11 points better than A.RIGHT]))",
+    "correct": "R3",
+    "correct_label": "B",
+    "mistake": "R14",
+    "mistake_label": "A"
+  },
+  "metrics": {
+    "status": "accepted",
+    "reasons": "",
+    "score_lead": -2.93,
+    "screen_loss": 11.67,
+    "gap_fast": 11.44,
+    "gap_strong": 11.38,
+    "strong_best": "R6",
+    "strong_answer_loss": 0.39,
+    "best_fast": "R6",
+    "good_moves": "R6 +0.0, D3 -0.1, R3 -0.1, E6 -0.1, F3 -0.1, Q3 -0.3, O3 -0.5",
+    "good_ideas": 5,
+    "choice_distance": 11,
+    "stone_stdev_mean": 0.027,
+    "stone_stdev_max": 0.199,
+    "lines": "no atari or capture",
+    "mover_rank": "14k",
+    "mistake_human_policy": 0.004,
+    "mistake_human_order": 42,
+    "answer_natural_policy": 0.244,
+    "curve": {
+      "20k": 0.89,
+      "15k": 0.92,
+      "10k": 0.95,
+      "5k": 0.99,
+      "1k": 1.0,
+      "3d": 1.0,
+      "6d": 1.0,
+      "9d": 1.0
+    },
+    "crossover": "already at 20k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1533"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:21",
+      "verdict": "bad",
+      "tags": [
+        "implausible-mistake"
+      ],
+      "why": "",
+      "blind_pick": "B",
+      "blind_correct": true
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "id": "oil-mareks-9703062302_move36",
+  "kind": "problem",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1997/03/oil-mareks-9703062302",
+    "game": "oil-mareks-9703062302",
+    "move": 36,
+    "to_play": "W",
+    "game_move": "O5",
+    "black": "oil",
+    "black_rank": "11k",
+    "white": "mareks",
+    "white_rank": "10k*",
+    "date": "1997-03-06",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[mareks-oil(B) NNGS]\nEV[None]\nRE[B+40.5]\nPW[mareks]WR[10k*]\nPB[oil]BR[11k ]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1997-03-06]\nSZ[19]TM[600]KM[0.5]\n\n;B[dq];W[pd];B[cc];W[pp];B[nc];W[ld];B[ne];W[pf];B[pb];W[qc];B[mb];W[lc]\n;B[lb];W[kb];B[qb];W[rb];B[qh];W[qg];B[ph];W[rg];B[qn];W[np];B[pk];W[ec]\n;B[lq];W[mq];B[lp];W[iq];B[gq];W[io];B[ln];W[qp];B[nn];W[on];B[om];W[no]\n;B[mn];W[ee];B[dj];W[ce];B[bd];W[be];B[db];W[eb];B[bb];W[dl];B[dg];W[co]\n;B[do];W[cn];B[cp];W[ck];B[cj];W[im];B[dn];W[dm];B[gn];W[fm];B[gm];W[fn]\n;B[fo];W[go];B[ho];W[gp];B[hp];W[fp];B[fq];W[ep];B[eo];W[gl];B[hn];W[in]\n;B[ip];W[jp];B[jq];W[hq];B[eq];W[hm];B[dp]C[\n  mareks 10k*: k3 was mistake do you want undo?\n]\n;W[fg];B[bg];W[lf];B[jf];W[ng];B[jh];W[fi];B[hg];W[hd];B[jd];W[kc];B[he]\n;W[gd];B[id];W[ge];B[gf];W[gg];B[hi];W[bi];B[bj];W[ch];B[fj];W[dh];B[ei]\n;W[fh];B[eh];W[cg];B[eg];W[ff];B[cf];W[bf];B[bh];W[ah];B[df];W[de];B[gj]\n;W[hf];B[if];W[ie];B[je];W[hh];B[ig];W[ii];B[ih];W[ij];B[gh];W[gi];B[hj]\n;W[ik];B[hh];W[kg];B[ki];W[kk];B[lj];W[lk];B[mj];W[nk];B[mk];W[ml];B[nl]\n;W[pm];B[pl];W[pn];B[qm];W[kq];B[jr];W[kr];B[lr];W[ir];B[ib]C[\n  mareks 10k*: type undo at terminal\n  oil 11k : thx\n]\n;W[nf]C[\n  oil 11k : this is typo\n]\n;B[me];W[le];B[lh];W[kh];B[ji];W[nj];B[ni];W[la];B[ma];W[qa];B[pa];W[ob]\n;B[ra];W[oa];B[rc];W[pc];B[sb];W[rd];B[oc];W[mc];B[oe];W[of];B[mf];W[mg]\n;B[lg];W[mh];B[li];W[mi];B[oi];W[od];B[nd];W[pe];B[nb];W[rh];B[ri];W[qe]\n;B[os];W[lo];B[mo];W[ko];B[mp];W[qr];B[nq];W[oq];B[nr];W[or];B[ps];W[pr]\n;B[po];W[qo];B[oo];W[op];B[bp];W[bo];B[kn];W[jo];B[ea];W[fa];B[da];W[gb]\n;B[al];W[hc];B[jb];W[fs];B[fr];W[hs];B[er];W[es];B[ds];W[cs];B[gs];W[fs]\n;B[gr];W[bk];B[ak];W[ek];B[ej];W[qs];B[ns];W[bm];B[ao];W[an];B[ap];W[bl]\n;B[ll];W[kl];B[lm];W[jm];B[hk];W[hl];B[fk];W[fl];B[si];W[rn];B[rm];W[sn]\n;B[sm];W[ro];B[dc];W[dd];B[ae];W[af];B[ad];W[hb];B[ha];W[ga];B[ia];W[sd]\n;B[sc];W[ls];B[mr];W[am];B[aj];W[jj];B[dk];W[ic];B[jc];W[hr];B[sh];W[sg]\n;B[el];W[em];B[ci];W[ag];B[ai];W[bh];B[ek];W[he];B[km];W[kp];B[ms];W[ks]\n;B[kj];W[jl]C[\n  oil 11k : no more?\n]\n;B[oh]C[\n  mareks 10k*: i don't see any more pts\n]\n;W[pg];B[tt];W[tt]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[jc:A][no:B]TR[om]C[White to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1997/03/oil-mareks-9703062302, move 36 (the game move was O5).\nCorrect: A = K17. Mistake: B = O5, the game move.\nGap: 2.8 strong net, 2.3 fast net.\nStrong net best move: K17, the answer is 0.0 behind it.\nGood moves (fast net, within 0.5 of best): H17 +0.0, D4 -0.2, K17 -0.2, C16 -0.3 = 3 ideas.\nCalm: score B+1.9, stone ownership stdev mean 0.06 max 0.24, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.03, 15k 0.04, 10k 0.09, 5k 0.21, 1k 0.47, 3d 0.71, 6d 0.82, 9d 0.95. Crosses 50%: 3d.\nHuman policy for the game move at rank_10k: 6.0% (choice #3).FORCE]AB[cc][dq][gq][lb][ln][lp][lq][mb][nc][ne][nn][om][pb][ph][pk][qb][qh][qn]AW[ec][io][iq][kb][lc][ld][mq][np][on][pd][pf][pp][qc][qg][qp][rb][rg]GM[1]FF[4]SZ[19]KM[7.5]PL[W]AP[autoprob fuseki prototype]PB[oil]BR[11k]PW[mareks]WR[10k*]DT[1997-03-06]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;W[jc]C[Correct. This is about 3 points better than B.RIGHT])\n(;W[no]C[This loses about 3 points compared with A.]))",
+    "correct": "K17",
+    "correct_label": "A",
+    "mistake": "O5",
+    "mistake_label": "B"
+  },
+  "metrics": {
+    "status": "accepted",
+    "reasons": "",
+    "score_lead": -1.86,
+    "screen_loss": 2.5,
+    "gap_fast": 2.34,
+    "gap_strong": 2.8,
+    "strong_best": "K17",
+    "strong_answer_loss": 0.05,
+    "best_fast": "H17",
+    "good_moves": "H17 +0.0, D4 -0.2, K17 -0.2, C16 -0.3",
+    "good_ideas": 3,
+    "choice_distance": 16,
+    "stone_stdev_mean": 0.064,
+    "stone_stdev_max": 0.238,
+    "lines": "no atari or capture",
+    "mover_rank": "10k",
+    "mistake_human_policy": 0.06,
+    "mistake_human_order": 3,
+    "answer_natural_policy": 0.073,
+    "curve": {
+      "20k": 0.03,
+      "15k": 0.04,
+      "10k": 0.09,
+      "5k": 0.21,
+      "1k": 0.47,
+      "3d": 0.71,
+      "6d": 0.82,
+      "9d": 0.95
+    },
+    "crossover": "3d"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1647"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:23",
+      "verdict": "unsure",
+      "tags": [],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": true
+    }
+  ]
+}

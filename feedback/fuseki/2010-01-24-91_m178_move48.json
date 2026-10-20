@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "id": "2010-01-24-91_m178_move48",
+  "kind": "rejected",
+  "created": "backfilled",
+  "source": {
+    "path": "sample_games/2010-01-24-91_m178.sgf",
+    "game": "2010-01-24-91_m178",
+    "move": 48,
+    "to_play": "W",
+    "game_move": "D3",
+    "black": "houbou",
+    "black_rank": "3d",
+    "white": "gribben74",
+    "white_rank": "4d",
+    "date": "2010-01-24",
+    "sgf": "(;GM[1]FF[4]SZ[19]PW[gribben74]WR[4d]PB[houbou]BR[3d]DT[2010-01-24]PC[The KGS Go Server at http://www.gokgs.com/]KM[0.50]RE[B+29.50]RU[Japanese]CA[UTF-8]ST[2]AP[Sabaki:0.52.2]TM[0]OT[11x10 byo-yomi]C[added as problem https://www.goproblems.com/23838\nautoprob finds this and extracts it pretty well, but can get confused finding the right moves at low playouts];B[pd];W[dc];B[oq];W[dp];B[de];W[dg];B[fe];W[fc];B[cc];W[cb];B[cd];W[eb];B[cg];W[ch];B[dh];W[di];B[eh];W[bg];B[cf];W[ci];B[bf];W[fi];B[ei];W[ej];B[fj];W[ek];B[gj];W[fg];B[eg];W[ef];B[df];W[fh];B[dg];W[hh];B[ff];W[hj];B[hk];W[gi];B[ij];W[hi];B[fl];W[el];B[fm];W[em];B[fn];W[en];B[fo];W[dq];B[ik];W[jh];B[fq];W[kp];B[mp];W[kn];B[mn];W[hq];B[er];W[lq];B[mq];W[dr];B[kj];W[qp];B[qn];W[rn];B[ro];W[qo];B[rp];W[rm];B[qq];W[no];B[mo];W[pq];B[po];W[pn];B[pp];W[qm];B[qj];W[pj];B[pi];W[qi];B[qk];W[pk];B[qh];W[ri];B[rh];W[oi];B[ph];W[ql];B[rj];W[rk];B[si];W[nj];B[mi];W[nm];B[on];W[pm];B[jq];W[ip];B[lr];W[hn];B[gp];W[kr];B[kq];W[jr];B[lp];W[jp];B[gr];W[hr];B[ho];W[kl];B[mm];W[io];B[jm];W[hp];B[go];W[jn];B[ko];W[ln];B[lo];W[ll];B[ml];W[lj];B[mj];W[mk];B[li];W[lk];B[nl];W[nk];B[ki];W[ji];B[kk];W[ol];B[jf];W[if];B[ie];W[he];B[hf];W[ig];B[id];W[hd];B[hc];W[gf];B[gd];W[hg];B[ge];W[hf];B[gc];W[kg];B[mg];W[je];B[kf];W[lf];B[ke];W[jd];B[ic];W[lg];B[kd];W[mf];B[ng];W[nf];B[ni];W[oh];B[og];W[nc];B[nd];W[md];B[oc];W[ne];B[od];W[mb];B[lc];W[mc];B[jg];W[kh];B[ii];W[ih];B[ob];W[le];B[ds];W[cs];B[es];W[cr];B[bb];W[ba];B[ab];W[ed];B[bh];W[bi];B[ag];W[qd];B[qc];W[rc];B[qe];W[rd];B[qb];W[ld];B[kc];W[nn];B[ai];W[bj];B[aj];W[ak];B[ah];W[bk];B[eo];W[do];B[gb];W[fb];B[oo];W[om];B[sk];W[gs];B[im];W[in];B[hm];W[fk];B[gk];W[eq];B[fr];W[sl];B[rl];W[qf];B[pe];W[rk];B[nh];W[oj];B[rl];W[jj];B[jk];W[rk];B[dd];W[fd];B[rl];W[ee];B[sm];W[jb];B[jc];W[la];B[ib];W[ka];B[ia];W[sn];B[qo];W[np];B[nq];W[sl];B[rk];W[iq];B[lq];W[so];B[sp];W[of];B[pf];W[gn];B[gm];W[jl];B[na];W[il];B[hl];W[ls];B[ms];W[ks];B[fa];W[ea];B[ga];W[nb];B[lh];W[op];B[pr];W[sm];B[gq];W[ep];B[bc];W[ma];B[oa];W[];B[aa];W[ca];B[fs];W[hs];B[];W[])"
+  },
+  "problem": {
+    "sgf": "(;LB[dq:A][ik:B]TR[fo]C[REJECTED (rejected at calm check): only 1 good idea (J9 +0.0); fight in the line after J9: atari by W at line move 5 (F9)\n\nWhite to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: sample_games/2010-01-24-91_m178.sgf, move 48 (the game move was D3).\nCorrect: B = J9. Mistake: A = D3, the game move.\nGap: 4.6 fast net.\nGood moves (fast net, within 0.5 of best): J9 +0.0 = 1 idea.\nCalm: score W+3.3, stone ownership stdev mean 0.06 max 0.56, lines: J9: atari by W at line move 5 (F9).\nP(pick correct over mistake) by rank: 20k 0.99, 15k 1.00, 10k 1.00, 5k 1.00, 1k 1.00, 3d 1.00, 6d 1.00, 9d 1.00. Crosses 50%: already at 20k.\nHuman policy for the game move at rank_4d: 0.0% (choice #11).FORCE]AB[bf][cc][cd][cf][cg][de][df][dg][dh][eg][eh][ei][fe][ff][fj][fl][fm][fn][fo][gj][hk][ij][oq][pd]AW[bg][cb][ch][ci][dc][di][dp][eb][ef][ej][ek][el][em][en][fc][fg][fh][fi][gi][hh][hi][hj]GM[1]FF[4]SZ[19]KM[7.5]PL[W]AP[autoprob fuseki prototype]PB[houbou]BR[3d]PW[gribben74]WR[4d]DT[2010-01-24]PC[The KGS Go Server at http://www.gokgs.com/]\n(;W[dq]C[This loses about 5 points compared with B.])\n(;W[ik]C[Correct. This is about 5 points better than A.RIGHT]))",
+    "correct": "J9",
+    "correct_label": "B",
+    "mistake": "D3",
+    "mistake_label": "A"
+  },
+  "metrics": {
+    "status": "rejected at calm check",
+    "reasons": "only 1 good idea (J9 +0.0); fight in the line after J9: atari by W at line move 5 (F9)",
+    "score_lead": 3.35,
+    "screen_loss": 4.78,
+    "gap_fast": 4.63,
+    "best_fast": "J9",
+    "good_moves": "J9 +0.0",
+    "good_ideas": 1,
+    "choice_distance": 11,
+    "stone_stdev_mean": 0.06,
+    "stone_stdev_max": 0.562,
+    "lines": "J9: atari by W at line move 5 (F9)",
+    "mover_rank": "4d",
+    "mistake_human_policy": 0.0,
+    "mistake_human_order": 11,
+    "answer_natural_policy": 0.935,
+    "curve": {
+      "20k": 0.99,
+      "15k": 1.0,
+      "10k": 1.0,
+      "5k": 1.0,
+      "1k": 1.0,
+      "3d": 1.0,
+      "6d": 1.0,
+      "9d": 1.0
+    },
+    "crossover": "already at 20k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261005-2357"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:28",
+      "verdict": "bad",
+      "tags": [
+        "not-fuseki"
+      ],
+      "why": "",
+      "blind_pick": "B",
+      "blind_correct": true
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "id": "2010-01-24-9_m138_move23",
+  "kind": "rejected",
+  "created": "backfilled",
+  "source": {
+    "path": "sample_games/2010-01-24-9_m138.sgf",
+    "game": "2010-01-24-9_m138",
+    "move": 23,
+    "to_play": "B",
+    "game_move": "O8",
+    "black": "kvv",
+    "black_rank": "5d",
+    "white": "GoVortex",
+    "white_rank": "5d",
+    "date": "2010-01-24",
+    "sgf": "(;GM[1]FF[4]SZ[19]PW[GoVortex]WR[5d]PB[kvv]BR[5d]DT[2010-01-24]PC[The KGS Go Server at http://www.gokgs.com/]KM[6.50]RE[W+Resign]RU[Japanese]CA[UTF-8]ST[2]AP[Sabaki:0.52.2]TM[60]OT[25/300 Canadian]C[on site as https://www.goproblems.com/23839\nseems to work pretty well];B[pd];W[dp];B[pq];W[ed];B[fq];W[cn];B[ip];W[qn];B[po];W[rp];B[pn];W[qm];B[pl];W[pm];B[om];W[qq];B[pr];W[ol];B[pk];W[nm];B[on];W[rk];B[nl];W[ok];B[pj];W[oj];B[pi];W[ml];B[oi];W[nk];B[mo];W[kq];B[lm];W[ko];B[mj];W[ll];B[km];W[kl];B[jm];W[ir];B[kj];W[jl];B[il];W[jk];B[hq];W[mq];B[nr];W[mn];B[nn];W[mm];B[lo];W[ln];B[kn];W[im];B[kp];W[jo];B[jp];W[kc];B[rj];W[rl];B[rr];W[qr];B[qs];W[rq];B[nc];W[er];B[fr];W[qd];B[qc];W[qe];B[pc];W[of];B[qg];W[ri];B[pe];W[sj];B[ic];W[je];B[ie];W[if];B[he];W[jf];B[hf];W[ih];B[hg];W[kh];B[ec];W[dc];B[fd];W[ee];B[fb];W[eb];B[fc];W[db];B[cd];W[cc];B[cf];W[bd];B[ef];W[ce];B[mh];W[cj];B[dq];W[cq];B[cr];W[cp];B[eq];W[ff];B[fg];W[eg];B[df];W[gg];B[fh];W[gh];B[fi];W[gi];B[dh];W[fj];B[dj];W[ei];B[eh];W[di];B[ci];W[ej];B[bi];W[dk];B[ig];W[jg];B[hh];W[hi];B[ii];W[jh];B[bf];W[ch];B[dg];W[bh];B[be];W[dd];B[ag];W[ai];B[jb];W[ae];B[gf];W[fe];B[ij];W[hk];B[ki];W[mg];B[nh];W[jc];B[kb];W[lb];B[hb];W[lh];B[gj];W[hj];B[ik];W[hl];B[mk];W[md];B[hm];W[jn];B[gm];W[fl];B[km];W[hn];B[gn];W[io];B[ho];W[go];B[in];W[ji];B[jj];W[hn];B[bj];W[bk];B[in];W[li];B[lj];W[hn];B[mc];W[hp];B[ld];W[iq];B[lp];W[gq];B[bq];W[bp];B[br];W[lq];B[np];W[nq];B[oq];W[mr];B[nj];W[nl];B[os];W[rg];B[qh];W[qf];B[pf];W[re];B[rh];W[sh];B[fo];W[fn];B[eo];W[ms];B[ns];W[rc];B[fm];W[em];B[gr];W[hr];B[en];W[gl];B[dm];W[fn];B[el];W[cm];B[fm];W[gd];B[hd];W[gc];B[gb];W[lc];B[me];W[ge];B[lf];W[hc];B[id];W[jd])"
+  },
+  "problem": {
+    "sgf": "(;LB[nl:A][rj:B]TR[rk]C[REJECTED (rejected at calm check): only 2 good ideas (S8 +0.0, S10 -0.0, O6 -0.5); fight in the line after S8: atari by W at line move 4 (T8); fight in the line after O8: atari by B at line move 1 (O8)\n\nBlack to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: sample_games/2010-01-24-9_m138.sgf, move 23 (the game move was O8).\nCorrect: B = S10. Mistake: A = O8, the game move.\nGap: 2.8 fast net.\nGood moves (fast net, within 0.5 of best): S8 +0.0, S10 -0.0, O6 -0.5 = 2 ideas.\nCalm: score B+0.1, stone ownership stdev mean 0.14 max 0.64, lines: S8: atari by W at line move 4 (T8) (2 ataris, 1 stones captured); O8: atari by B at line move 1 (O8) (3 ataris, 0 stones captured).\nP(pick correct over mistake) by rank: 20k 0.14, 15k 0.14, 10k 0.18, 5k 0.41, 1k 0.62, 3d 0.58, 6d 0.61, 9d 0.73. Crosses 50%: 1k.\nHuman policy for the game move at rank_5d: 18.9% (choice #2).FORCE]AB[fq][ip][om][on][pd][pk][pl][pn][po][pq][pr]AW[cn][dp][ed][nm][ol][pm][qm][qn][qq][rk][rp]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[kvv]BR[5d]PW[GoVortex]WR[5d]DT[2010-01-24]PC[The KGS Go Server at http://www.gokgs.com/]\n(;B[nl]C[This loses about 3 points compared with B.])\n(;B[rj]C[Correct. This is about 3 points better than A.RIGHT]))",
+    "correct": "S10",
+    "correct_label": "B",
+    "mistake": "O8",
+    "mistake_label": "A"
+  },
+  "metrics": {
+    "status": "rejected at calm check",
+    "reasons": "only 2 good ideas (S8 +0.0, S10 -0.0, O6 -0.5); fight in the line after S8: atari by W at line move 4 (T8); fight in the line after O8: atari by B at line move 1 (O8)",
+    "score_lead": 0.07,
+    "screen_loss": 3.15,
+    "gap_fast": 2.76,
+    "best_fast": "S8",
+    "good_moves": "S8 +0.0, S10 -0.0, O6 -0.5",
+    "good_ideas": 2,
+    "choice_distance": 6,
+    "stone_stdev_mean": 0.138,
+    "stone_stdev_max": 0.642,
+    "lines": "S8: atari by W at line move 4 (T8) (2 ataris, 1 stones captured); O8: atari by B at line move 1 (O8) (3 ataris, 0 stones captured)",
+    "mover_rank": "5d",
+    "mistake_human_policy": 0.189,
+    "mistake_human_order": 2,
+    "answer_natural_policy": 0.25,
+    "curve": {
+      "20k": 0.14,
+      "15k": 0.14,
+      "10k": 0.18,
+      "5k": 0.41,
+      "1k": 0.62,
+      "3d": 0.58,
+      "6d": 0.61,
+      "9d": 0.73
+    },
+    "crossover": "1k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261005-2357"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:29",
+      "verdict": "bad",
+      "tags": [
+        "tactical"
+      ],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": false
+    }
+  ]
+}

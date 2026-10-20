@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "id": "jimm-bobk-200103120215_move31",
+  "kind": "problem",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/2001/03/jimm-bobk-200103120215",
+    "game": "jimm-bobk-200103120215",
+    "move": 31,
+    "to_play": "B",
+    "game_move": "L15",
+    "black": "bobk",
+    "black_rank": "8k*",
+    "white": "jimm",
+    "white_rank": "7k*",
+    "date": "2001-03-12",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[jimm-bobk(B) NNGS]\nEV[None]\nRE[W+32.5]\nPW[jimm]WR[7k*]\nPB[bobk]BR[8k*]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[2001-03-12]\nSZ[19]TM[420]KM[0.5]\n\n;B[dp];W[pd];B[pp];W[dc];B[jc];W[cf];B[nc];W[pc];B[fc];W[dj];B[qf];W[qe]\n;B[pf];W[qj];B[pi];W[pj];B[oi];W[qn];B[qi];W[jq];B[gq];W[nq];B[oo];W[rp]\n;B[pe];W[rd];B[od];W[rf];B[rg];W[jf];B[ke];W[je];B[kf];W[cn];B[jd];W[he]\n;B[fe];W[lp];B[dd];W[cd];B[de];W[ce];B[ec];W[db];B[df];W[dg];B[eg];W[dh]\n;B[eh];W[jh];B[kg];W[jg];B[kh];W[id];B[ic];W[hc];B[hb];W[gc];B[gb];W[hg]\n;B[ei];W[ej];B[di];W[ci];B[fj];W[el];B[fk];W[ek];B[oj];W[pl];B[rj];W[rk]\n;B[sj];W[sk];B[rh];W[ql];B[ok];W[nm];B[ji];W[ii];B[jj];W[ij];B[if];W[ig]\n;B[hi];W[ik];B[jk];W[il];B[jl];W[im];B[jm];W[in];B[jn];W[qq];B[mo];W[ml]\n;B[lo];W[pq];B[kp];W[kq];B[mj];W[gm];B[fl];W[fm];B[em];W[dm];B[en];W[go]\n;B[ep];W[ck];B[io];W[ho];B[ip];W[mp];B[fn];W[gn];B[gf];W[hf];B[hh];W[ih]\n;B[gg];W[ob];B[nb];W[no];B[nn];W[np];B[om];W[mn];B[on];W[ol];B[ln];W[mm]\n;B[oc];W[pb];B[sf];W[re];B[oa];W[pa];B[rb];W[rc];B[qb];W[qc];B[na];W[sb]\n;B[iq];W[ir];B[hr];W[jr];B[fp];W[bp];B[co];W[bo];B[cq];W[bq];B[br];W[cp]\n;B[cr];W[do];B[aq];W[ap];B[ar];W[jp];B[ko];W[jo];B[lk];W[lm];B[kn];W[eb]\n;B[fb];W[gl];B[hj];W[gk];B[gj];W[hk];B[dn];W[dl];B[gp];W[hp];B[hq];W[pk]\n;B[mk];W[nk];B[nj];W[nl];B[kl];W[ge];B[gd];W[hd];B[fd];W[co];B[ea];W[da]\n;B[fa];W[bc];B[is];W[js];B[hs];W[se];B[sg];W[ll];B[eo];W[km];B[tt];W[tt]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[fe:A][ke:B]TR[jf]C[Black to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/2001/03/jimm-bobk-200103120215, move 31 (the game move was L15).\nCorrect: A = F15. Mistake: B = L15, the game move.\nGap: 3.2 strong net, 3.1 fast net.\nStrong net best move: M3, the answer is 0.2 behind it.\nGood moves (fast net, within 0.5 of best): M3 +0.0, Q8 -0.1, E15 -0.4, F15 -0.5 = 3 ideas.\nCalm: score W+4.6, stone ownership stdev mean 0.07 max 0.32, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.43, 15k 0.39, 10k 0.35, 5k 0.43, 1k 0.87, 3d 0.99, 6d 1.00, 9d 1.00. Crosses 50%: 1k.\nHuman policy for the game move at rank_8k: 6.3% (choice #2).FORCE]AB[dp][fc][gq][jc][nc][od][oi][oo][pe][pf][pi][pp][qf][qi][rg]AW[cf][dc][dj][jf][jq][nq][pc][pd][pj][qe][qj][qn][rd][rf][rp]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[bobk]BR[8k*]PW[jimm]WR[7k*]DT[2001-03-12]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;B[fe]C[Correct. This is about 3 points better than B.RIGHT])\n(;B[ke]C[This loses about 3 points compared with A.]))",
+    "correct": "F15",
+    "correct_label": "A",
+    "mistake": "L15",
+    "mistake_label": "B"
+  },
+  "metrics": {
+    "status": "accepted",
+    "reasons": "",
+    "score_lead": -4.61,
+    "screen_loss": 3.7,
+    "gap_fast": 3.14,
+    "gap_strong": 3.17,
+    "strong_best": "M3",
+    "strong_answer_loss": 0.22,
+    "best_fast": "M3",
+    "good_moves": "M3 +0.0, Q8 -0.1, E15 -0.4, F15 -0.5",
+    "good_ideas": 3,
+    "choice_distance": 5,
+    "stone_stdev_mean": 0.073,
+    "stone_stdev_max": 0.323,
+    "lines": "no atari or capture",
+    "mover_rank": "8k",
+    "mistake_human_policy": 0.063,
+    "mistake_human_order": 2,
+    "answer_natural_policy": 0.115,
+    "curve": {
+      "20k": 0.43,
+      "15k": 0.39,
+      "10k": 0.35,
+      "5k": 0.43,
+      "1k": 0.87,
+      "3d": 0.99,
+      "6d": 1.0,
+      "9d": 1.0
+    },
+    "crossover": "1k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1533"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:21",
+      "verdict": "good",
+      "tags": [],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": true
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "id": "chern-takechan-9704120419_move19",
+  "kind": "near_miss",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1997/04/chern-takechan-9704120419",
+    "game": "chern-takechan-9704120419",
+    "move": 19,
+    "to_play": "B",
+    "game_move": "P18",
+    "black": "takechan",
+    "black_rank": "14k",
+    "white": "chern",
+    "white_rank": "11k*",
+    "date": "1997-04-12",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[chern-takechan(B) NNGS]\nEV[None]\nRE[W+18.5]\nPW[chern]WR[11k*]\nPB[takechan]BR[14k ]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1997-04-12]\nSZ[19]TM[900]KM[0.5]\n\n;B[pd];W[dp];B[cd];W[pp];B[ec];W[jp];B[qj];W[kc];B[cj];W[cm];B[dg];W[nc]\n;B[oc];W[hc];B[nd];W[mc];B[md];W[ld];B[ob];W[me];B[ne];W[mf];B[nf];W[mg]\n;B[ng];W[ql];B[pj];W[nh];B[oh];W[ni];B[oi];W[nj];B[qf];W[fe];B[qn];W[oj]\n;B[pg];W[pm];B[qq];W[pq];B[qp];W[pn];B[rm];W[qm];B[rl];W[qo];B[ro];W[po]\n;B[pr];W[or];B[qr];W[dk];B[rn];W[ch];B[dh];W[cg];B[cf];W[fg];B[ci];W[dj]\n;B[di];W[ei];B[gb];W[gc];B[fb];W[hb];B[ck];W[dl];B[bl];W[bm];B[cl];W[dm]\n;B[jq];W[iq];B[kq];W[kp];B[lq];W[lp];B[mq];W[nq];B[ir];W[hq];B[hr];W[mr]\n;B[lr];W[gr];B[ms];W[nr];B[ls];W[mp];B[os];W[gq];B[ns];W[np];B[jr];W[jk]\n;B[cq];W[dq];B[cp];W[co];B[bo];W[bn];B[dr];W[er];B[do];W[eo];B[eq];W[dn]\n;B[fr];W[ep];B[es];W[bp];B[bq];W[ao];B[aq];W[fq];B[gs];W[er];B[cs];W[fs]\n;B[fk];W[gk];B[fr];W[eq];B[fs];W[qc];B[qd];W[pb];B[pc];W[rd];B[rc];W[qb]\n;B[re];W[nb];B[oa];W[na];B[sd];W[eh];B[pk];W[ok];B[pl];W[ol];B[qk];W[lh]\n;B[ef];W[ff];B[ee];W[fc];B[eb];W[eg];B[ha];W[ia];B[ga];W[ib];B[ap];W[bo]\n;B[fd];W[gd];B[ed];W[al];B[ak];W[am];B[bk];W[be];B[bf];W[bc];B[bd];W[cb]\n;B[cc];W[ad];B[bb];W[tt];B[tt]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[nb:A][ob:B]TR[ld]C[NEAR MISS: strong net gap 2.20, the bar is 2.5.\n\nBlack to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1997/04/chern-takechan-9704120419, move 19 (the game move was P18).\nCorrect: A = O18. Mistake: B = P18, the game move.\nGap: 2.2 strong net, 2.2 fast net.\nStrong net best move: K16, the answer is 0.1 behind it.\nGood moves (fast net, within 0.5 of best): O18 +0.0, Q3 -0.2, K16 -0.3, D3 -0.4 = 4 ideas.\nCalm: score W+1.4, stone ownership stdev mean 0.05 max 0.12, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.77, 15k 0.74, 10k 0.52, 5k 0.21, 1k 0.51, 3d 0.96, 6d 1.00, 9d 1.00. Crosses 50%: already at 20k.\nHuman policy for the game move at rank_14k: 2.6% (choice #9).FORCE]AB[cd][cj][dg][ec][md][nd][oc][pd][qj]AW[cm][dp][hc][jp][kc][ld][mc][nc][pp]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[takechan]BR[14k]PW[chern]WR[11k*]DT[1997-04-12]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;B[nb]C[Correct. This is about 2 points better than B.RIGHT])\n(;B[ob]C[This loses about 2 points compared with A.]))",
+    "correct": "O18",
+    "correct_label": "A",
+    "mistake": "P18",
+    "mistake_label": "B"
+  },
+  "metrics": {
+    "status": "near miss",
+    "reasons": "strong net gap only 2.2",
+    "score_lead": -1.36,
+    "screen_loss": 2.32,
+    "gap_fast": 2.2,
+    "gap_strong": 2.2,
+    "strong_best": "K16",
+    "strong_answer_loss": 0.12,
+    "best_fast": "O18",
+    "good_moves": "O18 +0.0, Q3 -0.2, K16 -0.3, D3 -0.4",
+    "good_ideas": 4,
+    "choice_distance": 1,
+    "stone_stdev_mean": 0.051,
+    "stone_stdev_max": 0.115,
+    "lines": "no atari or capture",
+    "mover_rank": "14k",
+    "mistake_human_policy": 0.026,
+    "mistake_human_order": 9,
+    "answer_natural_policy": 0.097,
+    "curve": {
+      "20k": 0.77,
+      "15k": 0.74,
+      "10k": 0.52,
+      "5k": 0.21,
+      "1k": 0.51,
+      "3d": 0.96,
+      "6d": 1.0,
+      "9d": 1.0
+    },
+    "crossover": "already at 20k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1533"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:27",
+      "verdict": "bad",
+      "tags": [
+        "local-shape"
+      ],
+      "why": "",
+      "blind_pick": "A",
+      "blind_correct": true
+    }
+  ]
+}

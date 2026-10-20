@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "id": "teemu-asmo-9708210953_move21",
+  "kind": "problem",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1997/08/teemu-asmo-9708210953",
+    "game": "teemu-asmo-9708210953",
+    "move": 21,
+    "to_play": "B",
+    "game_move": "D13",
+    "black": "asmo",
+    "black_rank": "5k",
+    "white": "teemu",
+    "white_rank": "5k*",
+    "date": "1997-08-21",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[teemu-asmo(B) NNGS]\nEV[None]\nRE[W+Resign]\nPW[teemu]WR[5k*]\nPB[asmo]BR[5k ]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1997-08-21]\nSZ[19]TM[1800]KM[5.5]\n\n;B[dp];W[qd];B[dd];W[qp];B[oc];W[pf];B[oe];W[of];B[ne];W[ic];B[qg];W[qf]\n;B[ph];W[cf];B[fc];W[bd];B[ef];W[ci];B[dh];W[ch];B[dg];W[lc];B[cg];W[bg]\n;B[ce];W[be];B[cj];W[di];B[dj];W[ei];B[qc];W[pc];B[pd];W[pb];B[qb];W[ob]\n;B[qe];W[rd];B[re];W[pe];B[od];W[rf];B[nb];W[rc];B[rb];W[oq];B[nf];W[oh]\n;B[og];W[pg];B[ng];W[qh];B[pi];W[rg];B[ni];W[ej];B[dl];W[cq];B[dq];W[cp]\n;B[co];W[bo];B[cn];W[bn];B[bm];W[dr];B[er];W[cr];B[fq];W[kq];B[qn];W[qi]\n;B[pj];W[ql];B[qj];W[pn];B[pm];W[po];B[qm];W[om];B[ol];W[nm];B[lb];W[gb]\n;B[hc];W[hb];B[jb];W[jc];B[kc];W[kd];B[kb];W[ib];B[jd];W[hd];B[gc];W[je]\n;B[ke];W[ld];B[ie];W[id];B[jf];W[jd];B[if];W[da];B[fb];W[fa];B[eb];W[ea]\n;B[db];W[cb];B[cc];W[bc];B[le];W[hq];B[bi];W[bh];B[bj];W[kn];B[jp];W[jq]\n;B[ip];W[kp];B[iq];W[ir];B[hp];W[gq];B[gp];W[jl];B[ko];W[lo];B[jo];W[km]\n;B[lp];W[lq];B[mp];W[mo];B[mq];W[mr];B[jr];W[kr];B[hr];W[js];B[gr];W[ro]\n;B[kk];W[rl];B[rn];W[rj];B[rk];W[ri];B[pl];W[qk];B[nl];W[jk];B[kl];W[jm]\n;B[mm];W[nn];B[ml];W[ln];B[op];W[nq];B[jj];W[ij];B[ji];W[pk];B[ok];W[mc]\n;B[nc];W[mb];B[ma];W[ja];B[la];W[gf];B[he];W[ge];B[gd];W[gh];B[gg];W[fg]\n;B[hg];W[ff];B[fh];W[eh];B[ia];W[bb];B[cd];W[df];B[ee];W[fe];B[fi];W[eg]\n;B[ik];W[hj];B[fj];W[fk];B[gi];W[gj];B[hi];W[ii];B[hh];W[hl];B[gm];W[ih]\n;B[ek];W[el];B[fl];W[dk];B[gk];W[ek];B[gl];W[hk];B[im];W[il];B[jh];W[ig]\n;B[hf];W[jg];B[kg];W[dm]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[dg:A][kc:B]TR[ch]C[Black to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1997/08/teemu-asmo-9708210953, move 21 (the game move was D13).\nCorrect: B = L17. Mistake: A = D13, the game move.\nGap: 3.6 strong net, 2.9 fast net.\nStrong net best move: L17, the answer is 0.0 behind it.\nGood moves (fast net, within 0.5 of best): O12 +0.0, R18 -0.1, Q4 -0.1, L17 -0.2, L16 -0.3, P3 -0.4 = 4 ideas.\nCalm: score W+2.9, stone ownership stdev mean 0.09 max 0.38, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.43, 15k 0.58, 10k 0.69, 5k 0.91, 1k 1.00, 3d 1.00, 6d 1.00, 9d 1.00. Crosses 50%: 15k.\nHuman policy for the game move at rank_5k: 3.7% (choice #7).FORCE]AB[dd][dh][dp][ef][fc][ne][oc][oe][ph][qg]AW[bd][cf][ch][ci][ic][of][pf][qd][qf][qp]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[asmo]BR[5k]PW[teemu]WR[5k*]DT[1997-08-21]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;B[dg]C[This loses about 4 points compared with B.])\n(;B[kc]C[Correct. This is about 4 points better than A.RIGHT]))",
+    "correct": "L17",
+    "correct_label": "B",
+    "mistake": "D13",
+    "mistake_label": "A"
+  },
+  "metrics": {
+    "status": "accepted",
+    "reasons": "",
+    "score_lead": -2.93,
+    "screen_loss": 3.24,
+    "gap_fast": 2.89,
+    "gap_strong": 3.64,
+    "strong_best": "L17",
+    "strong_answer_loss": 0.01,
+    "best_fast": "O12",
+    "good_moves": "O12 +0.0, R18 -0.1, Q4 -0.1, L17 -0.2, L16 -0.3, P3 -0.4",
+    "good_ideas": 4,
+    "choice_distance": 11,
+    "stone_stdev_mean": 0.088,
+    "stone_stdev_max": 0.382,
+    "lines": "no atari or capture",
+    "mover_rank": "5k",
+    "mistake_human_policy": 0.037,
+    "mistake_human_order": 7,
+    "answer_natural_policy": 0.467,
+    "curve": {
+      "20k": 0.43,
+      "15k": 0.58,
+      "10k": 0.69,
+      "5k": 0.91,
+      "1k": 1.0,
+      "3d": 1.0,
+      "6d": 1.0,
+      "9d": 1.0
+    },
+    "crossover": "15k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1647"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:25",
+      "verdict": "good",
+      "tags": [],
+      "why": "",
+      "blind_pick": "B",
+      "blind_correct": true
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "id": "leeccf-bacz-9905192119_move19",
+  "kind": "problem",
+  "created": "backfilled",
+  "source": {
+    "path": "NNGS/1999/05/leeccf-bacz-9905192119",
+    "game": "leeccf-bacz-9905192119",
+    "move": 19,
+    "to_play": "B",
+    "game_move": "B3",
+    "black": "leeccf",
+    "black_rank": "11k*",
+    "white": "bacz",
+    "white_rank": "11k*",
+    "date": "1999-05-19",
+    "sgf": "\n(;\nGM[1]US[Brought to you by No Name Go Server]\nCoPyright[\n  This game was played on the No Name Go Server\n  Permission to reproduce this game is given.]\nGN[bacz-leeccf(B) NNGS]\nEV[None]\nRE[B+Resign]\nPW[bacz]WR[11k*]\nPB[leeccf]BR[11k*]\nPC[NNGS Worldwide: nngs.cosmic.org 9696]\nDT[1999-05-19]\nSZ[19]TM[600]KM[5.5]\n\n;B[pp];W[dd];B[dp];W[pd];B[nc];W[pf];B[kc];W[cn];B[cl];W[en];B[ci];W[fq]\n;B[cq];W[iq];B[lq];W[fo];B[eq];W[bp];B[bq];W[co];B[dr];W[fr];B[er];W[cg]\n;B[ce];W[de];B[cf];W[cd];B[bg];W[dg];B[ch];W[be];B[bf];W[bd];B[fc];W[hc]\n;B[hd];W[gd];B[gc];W[id];B[he];W[ic];B[fe];W[ie];B[hf];W[ec];B[ed];W[ee]\n;B[fd];W[db];B[eb];W[dc];B[fb];W[if];B[hg];W[bb];B[pb];W[qc];B[qb];W[rb]\n;B[pc];W[qd];B[od];W[ld];B[lc];W[oe];B[ne];W[nf];B[md];W[me];B[nd];W[lf]\n;B[kd];W[le];B[qi];W[qk];B[pk];W[pj];B[qj];W[pl];B[ok];W[ql];B[oi];W[qo]\n;B[qp];W[rp];B[rq];W[ro];B[nq];W[qg];B[ol];W[on];B[om];W[pm];B[nn];W[rj]\n;B[ri];W[rk];B[pn];W[qn];B[po];W[ig];B[hh];W[dk];B[ck];W[jj];B[lj];W[eg]\n;B[fg];W[kk];B[io];W[jo];B[jp];W[jn];B[ip];W[hq];B[hp];W[gp];B[hn];W[kp]\n;B[ko];W[jq];B[kq];W[kn];B[lo];W[kr];B[lr];W[jr];B[eh];W[el];B[fj];W[lk]\n;B[mk];W[mi];B[mj];W[ih];B[ii];W[ji];B[ij];W[ki];B[li];W[lh];B[mh];W[mg]\n;B[nh];W[ik];B[hk];W[ei];B[fi];W[ej];B[fk];W[aj];B[bj];W[al];B[bm];W[dh]\n;B[am];W[hl];B[gk];W[im];B[ln];W[lm];B[mm];W[rg];B[ll];W[km];B[kl];W[jl]\n;B[ml];W[rm];B[og];W[ph];B[pi];W[ng];B[oh];W[ke];B[jb];W[in];B[lp];W[gn]\n;B[gm];W[gl];B[fl];W[fm];B[ek];W[dl];B[fh];W[cm];B[bl];W[aq];B[ar];W[ap]\n;B[br];W[jd];B[jc];W[ib];B[mb];W[ls];B[ms];W[ks];B[nr];W[sq];B[rr];W[sr]\n;B[of];W[pe];B[cp];W[bo];B[ep];W[fp];B[di];W[dj];B[ai];W[af];B[ag];W[ae]\n;B[df];W[ef];B[bh];W[do];B[eo];W[es];B[ds];W[fs];B[ho];W[hm];B[ra];W[sb]\n;B[sj];W[sk];B[si];W[sh];B[rh];W[sg];B[pg];W[re];B[qh];W[ea];B[fa];W[da]\n;B[ia];W[kj];B[ff];W[ha];B[ja];W[go];B[kp];W[bn];B[an];W[sp];B[rs];W[cj]\n;B[qa];W[rc];B[ga];W[hb]C[\n Supratic started observation.\n]\n;B[sa]\n;)\n\n---\n"
+  },
+  "problem": {
+    "sgf": "(;LB[bq:A][fr:B]TR[bp]C[Black to play. Which is better, A or B?\n\n-- prototype analysis --\nSource: NNGS/1999/05/leeccf-bacz-9905192119, move 19 (the game move was B3).\nCorrect: B = F2. Mistake: A = B3, the game move.\nGap: 4.9 strong net, 3.1 fast net.\nStrong net best move: F2, the answer is 0.0 behind it.\nGood moves (fast net, within 0.5 of best): F2 +0.0, C16 -0.0, P15 -0.3 = 3 ideas.\nCalm: score W+2.0, stone ownership stdev mean 0.07 max 0.21, lines: no atari or capture.\nP(pick correct over mistake) by rank: 20k 0.32, 15k 0.30, 10k 0.30, 5k 0.47, 1k 0.87, 3d 0.98, 6d 0.99, 9d 1.00. Crosses 50%: 1k.\nHuman policy for the game move at rank_11k: 55.0% (choice #1).FORCE]AB[ci][cl][cq][dp][eq][kc][lq][nc][pp]AW[bp][cn][dd][en][fo][fq][iq][pd][pf]GM[1]FF[4]SZ[19]KM[7.5]PL[B]AP[autoprob fuseki prototype]PB[leeccf]BR[11k*]PW[bacz]WR[11k*]DT[1999-05-19]PC[NNGS Worldwide: nngs.cosmic.org 9696]\n(;B[bq]C[This loses about 5 points compared with B.])\n(;B[fr]C[Correct. This is about 5 points better than A.RIGHT]))",
+    "correct": "F2",
+    "correct_label": "B",
+    "mistake": "B3",
+    "mistake_label": "A"
+  },
+  "metrics": {
+    "status": "accepted",
+    "reasons": "",
+    "score_lead": -2.0,
+    "screen_loss": 3.33,
+    "gap_fast": 3.06,
+    "gap_strong": 4.92,
+    "strong_best": "F2",
+    "strong_answer_loss": 0.0,
+    "best_fast": "F2",
+    "good_moves": "F2 +0.0, C16 -0.0, P15 -0.3",
+    "good_ideas": 3,
+    "choice_distance": 5,
+    "stone_stdev_mean": 0.066,
+    "stone_stdev_max": 0.212,
+    "lines": "no atari or capture",
+    "mover_rank": "11k",
+    "mistake_human_policy": 0.55,
+    "mistake_human_order": 1,
+    "answer_natural_policy": 0.971,
+    "curve": {
+      "20k": 0.32,
+      "15k": 0.3,
+      "10k": 0.3,
+      "5k": 0.47,
+      "1k": 0.87,
+      "3d": 0.98,
+      "6d": 0.99,
+      "9d": 1.0
+    },
+    "crossover": "1k"
+  },
+  "generator": {
+    "commit": "unknown (before candidate json)",
+    "run": "20261006-1647"
+  },
+  "reviews": [
+    {
+      "reviewer": "adammiller",
+      "date": "2026-10-19 20:21",
+      "verdict": "bad",
+      "tags": [
+        "local-shape"
+      ],
+      "why": "",
+      "blind_pick": "B",
+      "blind_correct": true
+    }
+  ]
+}

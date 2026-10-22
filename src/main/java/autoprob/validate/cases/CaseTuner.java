@@ -14,8 +14,8 @@ import autoprob.validate.ChoiceRule;
 import autoprob.validate.DecisionRecord;
 
 // cmd=cases-tune: tries alternative choice settings against the case library offline.
-// the engine's numbers for every opponent decision are already stored, so re-choosing
-// under a grid of settings takes seconds. pass the values to try as tune.<setting>,
+// the engine's numbers for every decision are already stored, so re-choosing under a
+// grid of settings takes seconds. pass the values to try as tune.<setting>,
 // e.g. tune.threat_stones=3,4,5 tune.response_criterion=testing,human. settings not
 // named keep their current config values.
 //
@@ -38,12 +38,9 @@ public class CaseTuner {
 
     public void run() throws Exception {
         CaseFeatures features = CaseFeatures.load(props);
-        List<CaseFeatures.Item> items = new ArrayList<>();
-        for (CaseFeatures.Item item : features.items) {
-            if (item.c.role.equals(DecisionRecord.OPPONENT)) items.add(item);
-        }
+        List<CaseFeatures.Item> items = new ArrayList<>(features.items);
         if (items.isEmpty()) {
-            System.out.println("no opponent decision cases with numbers; run cmd=cases first");
+            System.out.println("no decision cases with numbers; run cmd=cases first");
             return;
         }
 
@@ -61,7 +58,7 @@ public class CaseTuner {
             if (basePass[i]) baseCount++;
         }
 
-        System.out.println("tuning over " + items.size() + " opponent decision cases"
+        System.out.println("tuning over " + items.size() + " decision cases"
                 + (features.resultsId != null ? " (numbers from replay " + features.resultsId + " where available)" : "")
                 + (features.missing > 0 ? ", " + features.missing + " cases skipped without numbers" : ""));
         System.out.println("current settings pass " + baseCount + "/" + items.size());
@@ -106,7 +103,11 @@ public class CaseTuner {
 
     private static boolean passes(CaseFeatures.Item item, ChoiceParams p) {
         List<Point> stakes = CaseExporter.stakes(item.c);
-        return item.c.passes(ChoiceRule.chooseOpponent(item.decision, p, stakes).move);
+        DecisionRecord d = item.decision.copyAt(item.decision.at);
+        ChoiceRule.Choice choice = ChoiceRule.decide(d, p, stakes);
+        d.chose = choice.move;
+        d.alternatives = choice.also;
+        return item.c.passes(d);
     }
 
     private static List<Map<String, String>> combinations(List<String> names, Map<String, List<String>> grid) {

@@ -9,28 +9,50 @@ import java.util.Map;
 
 import autoprob.go.Intersection;
 
-// picks a move (or END) from a decision's recorded candidates. pure: no engine calls,
-// so the same function drives live generation, case replay, and offline tuning over
-// stored candidates.
+// picks the moves (or END) a decision puts in the solution tree, from its recorded
+// candidates. pure: no engine calls, so the same function drives live generation, case
+// replay, and offline tuning over stored candidates.
 public class ChoiceRule {
     private static final DecimalFormat df = new DecimalFormat("0.00");
 
     public static class Choice {
-        public final String move; // with color, or END
+        public final String move;       // the main choice, with color, or END
+        public final List<String> also; // further moves that branch the tree here
         public final String reason;
 
         public Choice(String move, String reason) {
+            this(move, new ArrayList<>(), reason);
+        }
+
+        public Choice(String move, List<String> also, String reason) {
             this.move = move;
+            this.also = also;
             this.reason = reason;
         }
 
         public boolean isEnd() {
             return move.equals(DecisionRecord.END);
         }
+
+        public List<String> moves() {
+            List<String> out = new ArrayList<>();
+            out.add(move);
+            out.addAll(also);
+            return out;
+        }
     }
 
-    // the solver plays katago's top move; a top move of pass ends the line
-    public static Choice chooseSolver(DecisionRecord rec) {
+    public static Choice decide(DecisionRecord rec, ChoiceParams p, List<Point> stakes) {
+        return rec.role.equals(DecisionRecord.SOLVER) ? chooseSolver(rec, p) : chooseOpponent(rec, p, stakes);
+    }
+
+    // the solver plays every move that works: in a problem, any move that solves it must be
+    // in the tree or a correct answer gets marked wrong. a candidate works when its lead
+    // after the move is within alt_score_tolerance of the best reliable candidate's (see
+    // bestAfterLead), and, unless it is katago's top move, it is within alt_region_dist of
+    // a stake stone: a move away from the fight is a tenuki, not an answer to the problem.
+    // the main choice is katago's top move when it works. a top move of pass ends the line.
+    public static Choice chooseSolver(DecisionRecord rec, ChoiceParams p) {
         if (rec.candidates.isEmpty()) {
             return new Choice(DecisionRecord.END, "no solver moves");
         }
@@ -38,12 +60,60 @@ public class ChoiceRule {
         if (top.point().equals("pass")) {
             return new Choice(DecisionRecord.END, "solver wants to pass");
         }
-        return new Choice(top.move, "katago's top move");
+        double best = bestAfterLead(rec);
+        if (Double.isNaN(best)) {
+            // alternatives were not evaluated: the top move alone
+            return new Choice(top.move, "katago's top move");
+        }
+        List<String> working = new ArrayList<>();
+        for (CandidateFeatures c : rec.candidates) {
+            if (c != top && !nearFight(c, p)) continue;
+            if (works(c, best, p.altScoreTolerance)) working.add(c.move);
+        }
+        if (working.isEmpty()) {
+            return new Choice(top.move, "katago's top move (no candidate evaluated)");
+        }
+        // katago's top move stays the main line when it works
+        if (working.remove(top.move)) working.add(0, top.move);
+        int found = working.size();
+        if (working.size() > p.maxSolverMoves) working = new ArrayList<>(working.subList(0, p.maxSolverMoves));
+        String main = working.remove(0);
+        String reason = found == 1 ? "the only move that works"
+                : found + " moves work" + (found > p.maxSolverMoves ? ", kept " + p.maxSolverMoves : "");
+        return new Choice(main, working, reason);
+    }
+
+    static boolean works(CandidateFeatures c, double best, double tolerance) {
+        if (c.afterLead == null || Boolean.TRUE.equals(c.error) || c.point().equals("pass")) return false;
+        return c.afterLead >= best - tolerance;
+    }
+
+    static boolean nearFight(CandidateFeatures c, ChoiceParams p) {
+        return p.altRegionDist < 0 || c.stakeDist == null || c.stakeDist <= p.altRegionDist;
+    }
+
+    // the yardstick a solver move is measured against: the best lead after any reliable
+    // candidate, or NaN when nothing was evaluated. reliable means katago's top move or a
+    // katago move its search gave at least a tenth of the top move's visits. a move the
+    // search barely looked at can come back with an inflated lead (the search after it
+    // can wander into a line that flatters it) and must not push out the real answer.
+    static double bestAfterLead(DecisionRecord rec) {
+        double best = Double.NaN;
+        CandidateFeatures top = rec.candidates.get(0);
+        for (CandidateFeatures c : rec.candidates) {
+            if (c.afterLead == null || Boolean.TRUE.equals(c.error) || c.point().equals("pass")) continue;
+            boolean reliable = c == top || ("katago".equals(c.source) && c.visits != null && top.visits != null
+                    && c.visits >= 0.1 * top.visits);
+            if (!reliable) continue;
+            if (Double.isNaN(best) || c.afterLead > best) best = c.afterLead;
+        }
+        return best;
     }
 
     // the opponent response for the main line: the strongest resistance that is still a
     // real threat. a correct path continues only while the opponent has a move the solver
     // must answer; lesser tries belong in refutation branches. END when nothing threatens.
+    // with opponent_branches above 1, the next most testing severe threats branch too.
     public static Choice chooseOpponent(DecisionRecord rec, ChoiceParams p, List<Point> stakes) {
         List<CandidateFeatures> candidates = gather(rec, p);
         if (candidates.isEmpty()) {
@@ -54,76 +124,118 @@ public class ChoiceRule {
             // only the opponent's best move may extend the main line
             CandidateFeatures c = candidates.get(0);
             int threat = countThreat(c, p, stakes);
-            if (threat >= p.threatStones) {
+            if (threat >= p.threatStones && realTry(c, p)) {
                 return new Choice(c.move, "primary response " + c.point() + ", threat " + threat);
             }
-            return new Choice(DecisionRecord.END, "primary response " + c.point() + " only threatens "
-                    + threat + " stones");
+            return new Choice(DecisionRecord.END, "primary response " + c.point()
+                    + (threat >= p.threatStones ? " is answered by " + c.answers + " moves"
+                    : " only threatens " + threat + " stones"));
         }
 
         if (p.responseCriterion.equals("order")) {
-            // the first candidate that still threatens extends the main line
+            // the first candidates that still threaten extend the tree, in katago's order
+            List<String> picked = new ArrayList<>();
             for (CandidateFeatures c : candidates) {
-                int threat = countThreat(c, p, stakes);
-                if (threat >= p.threatStones) {
-                    return new Choice(c.move, "first threatening response " + c.point() + ", threat " + threat);
-                }
+                if (countThreat(c, p, stakes) >= p.threatStones && realTry(c, p)) picked.add(c.move);
+                if (picked.size() >= Math.max(1, p.opponentBranches)) break;
             }
-            return new Choice(DecisionRecord.END, "no opponent threat remains");
+            if (picked.isEmpty()) return new Choice(DecisionRecord.END, "no opponent threat remains");
+            String main = picked.remove(0);
+            return new Choice(main, picked, "first threatening response " + main.substring(2)
+                    + ", threat " + countThreat(rec.candidate(main), p, stakes));
         }
 
         // choose among the sufficiently severe threats
         List<CandidateFeatures> threatening = new ArrayList<>();
         int maxThreat = 0;
+        int easy = 0;
         for (CandidateFeatures c : candidates) {
             int threat = countThreat(c, p, stakes);
-            if (threat >= p.threatStones) {
-                threatening.add(c);
-                maxThreat = Math.max(maxThreat, threat);
+            if (threat < p.threatStones) continue;
+            if (!realTry(c, p)) {
+                easy++;
+                continue;
             }
+            threatening.add(c);
+            maxThreat = Math.max(maxThreat, threat);
         }
         if (threatening.isEmpty()) {
-            return new Choice(DecisionRecord.END, "no opponent threat remains");
+            return new Choice(DecisionRecord.END, easy > 0
+                    ? "no testing threat remains (" + easy + " threat" + (easy == 1 ? "" : "s") + " any of several answers handle)"
+                    : "no opponent threat remains");
         }
         double severeFloor = maxThreat * p.severeThreatRatio;
-        CandidateFeatures best = null;
+        List<CandidateFeatures> severe = new ArrayList<>();
         for (CandidateFeatures c : threatening) {
-            if (countThreat(c, p, stakes) < severeFloor) continue;
-            if (best == null || better(c, best, p)) {
-                best = c;
-            }
+            if (countThreat(c, p, stakes) >= severeFloor) severe.add(c);
         }
-        return new Choice(best.move, "chose response " + best.point() + " (human " + df.format(humanPolicy(best))
-                + ", threat " + countThreat(best, p, stakes) + ", human answer " + df.format(humanAnswer(best)) + ")");
+        // rank by the criterion: repeatedly take the best of what is left, so ties keep
+        // their candidate order exactly as a single pass would
+        List<CandidateFeatures> ranked = new ArrayList<>();
+        while (!severe.isEmpty() && ranked.size() < Math.max(1, p.opponentBranches)) {
+            CandidateFeatures best = null;
+            for (CandidateFeatures c : severe) {
+                if (best == null || better(c, best, p)) best = c;
+            }
+            ranked.add(best);
+            severe.remove(best);
+        }
+        CandidateFeatures best = ranked.get(0);
+        List<String> also = new ArrayList<>();
+        for (int i = 1; i < ranked.size(); i++) also.add(ranked.get(i).move);
+        return new Choice(best.move, also, "chose response " + best.point() + " (human " + df.format(humanPolicy(best))
+                + ", threat " + countThreat(best, p, stakes) + ", human answer " + df.format(humanAnswer(best)) + ")"
+                + (also.isEmpty() ? "" : ", also " + String.join(", ", also.stream().map(m -> m.substring(2)).toList())));
     }
 
-    // would a small change in the numbers flip this decision? engine noise between runs
-    // moves human policies by a few hundredths and threat counts by a stone, so a choice
-    // that flips under such nudges is a close call and may not reproduce on replay.
+    // a threat is a real try only if few solver answers handle it: when many moves answer
+    // it, it does not test anything and an author would not put it in the tree. unknown
+    // (older records) counts as a real try.
+    static boolean realTry(CandidateFeatures c, ChoiceParams p) {
+        if (p.maxAnswers <= 0 || c.answers == null) return true;
+        return c.answers >= 1 && c.answers <= p.maxAnswers;
+    }
+
+    // would a small change in the numbers change this decision? engine noise between runs
+    // moves scores by a fraction of a point, human policies by a few hundredths and threat
+    // counts by a stone, so a decision that changes under such nudges is a close call and
+    // may not reproduce on replay.
     public static boolean isFragile(DecisionRecord rec, ChoiceParams p, List<Point> stakes) {
         if (rec.role.equals(DecisionRecord.SOLVER)) {
-            // katago orders by visits: a runner-up with comparable visits can take over
-            if (rec.candidates.size() < 2) return false;
-            Integer top = rec.candidates.get(0).visits, second = rec.candidates.get(1).visits;
-            return top != null && second != null && second >= 0.6 * top;
+            double best = bestAfterLead(rec);
+            if (Double.isNaN(best)) {
+                // katago orders by visits: a runner-up with comparable visits can take over
+                if (rec.candidates.size() < 2) return false;
+                Integer top = rec.candidates.get(0).visits, second = rec.candidates.get(1).visits;
+                return top != null && second != null && second >= 0.6 * top;
+            }
+            // a candidate within half a point of the works / does not work line
+            double line = best - p.altScoreTolerance;
+            CandidateFeatures top = rec.candidates.get(0);
+            for (CandidateFeatures c : rec.candidates) {
+                if (c.afterLead == null || Boolean.TRUE.equals(c.error) || c.afterLead == best) continue;
+                if (c != top && !nearFight(c, p)) continue;
+                if (Math.abs(c.afterLead - line) < 0.5) return true;
+            }
+            return false;
         }
-        String base = chooseOpponent(rec, p, stakes).move;
+        List<String> base = chooseOpponent(rec, p, stakes).moves();
         for (int d : new int[]{-1, 1}) {
             ChoiceParams q = p.copy();
             q.threatStones += d;
-            if (!chooseOpponent(rec, q, stakes).move.equals(base)) return true;
+            if (!chooseOpponent(rec, q, stakes).moves().equals(base)) return true;
         }
         for (CandidateFeatures c : rec.candidates) {
             Double humanAnswer = c.humanAnswer, humanPolicy = c.humanPolicy;
             try {
                 for (double d : new double[]{-0.05, 0.05}) {
                     c.humanAnswer = humanAnswer == null ? null : Math.max(0, humanAnswer + d);
-                    if (!chooseOpponent(rec, p, stakes).move.equals(base)) return true;
+                    if (!chooseOpponent(rec, p, stakes).moves().equals(base)) return true;
                 }
                 c.humanAnswer = humanAnswer;
                 for (double d : new double[]{-0.03, 0.03}) {
                     c.humanPolicy = humanPolicy == null ? null : Math.max(0, humanPolicy + d);
-                    if (!chooseOpponent(rec, p, stakes).move.equals(base)) return true;
+                    if (!chooseOpponent(rec, p, stakes).moves().equals(base)) return true;
                 }
             } finally {
                 c.humanAnswer = humanAnswer;
@@ -188,7 +300,7 @@ public class ChoiceRule {
     }
 
     public static int countThreat(CandidateFeatures c, double threshold, int regionDist, List<Point> stakes) {
-        if (Boolean.TRUE.equals(c.error) || c.deltas == null) return 0;
+        if (c == null || Boolean.TRUE.equals(c.error) || c.deltas == null) return 0;
         int count = 0;
         for (Map.Entry<String, Double> e : c.deltas.entrySet()) {
             if (Math.abs(e.getValue()) <= threshold) continue;

@@ -24,14 +24,16 @@ import autoprob.validate.ProblemIsolator;
 import autoprob.validate.ProblemRecord;
 import autoprob.validate.ProblemRedoer;
 import autoprob.validate.RunRecorder;
+import autoprob.validate.TreeComparison;
 
 // cmd=cases: replays the case library against the current code and settings.
 //
 // decision cases rebuild their frozen position and ask the generator for just that one
 // decision, so a failure points at the decision logic. close calls (choices that flip
 // under small nudges, see ChoiceRule.isFragile) are re-run to tell a real failure from
-// engine noise. with cases.lines=true, line cases regenerate each problem from scratch
-// and check the line against the author's RIGHT paths plus accepted lines.
+// engine noise. with cases.lines=true, line cases regenerate each problem's tree from
+// scratch: it passes when every working solver move the author has is in the tree and
+// every generated line is acceptable (an author RIGHT line or an accepted line).
 //
 // results go to cases_results/<id>.json, with fresh candidate numbers for every
 // decision, and are compared against the previous results file.
@@ -57,7 +59,7 @@ public class CaseReplayer {
         public List<String> tags;
         public String expect;
         public String outcome;
-        public List<String> choices = new ArrayList<>(); // one per attempt
+        public List<String> choices = new ArrayList<>(); // the moves chosen, one entry per attempt
         public boolean fragile;
         public DecisionRecord decision; // fresh numbers from the first attempt
         public String error;
@@ -70,11 +72,11 @@ public class CaseReplayer {
     public static class LineResult {
         public String problem;
         public String outcome;
-        public List<String> generated;
-        public List<String> closest; // the acceptable line sharing the longest prefix
-        public int prefix;
-        public String divergence; // the position where generation left the closest line
-        public String divergenceCase; // what a decision case there expects, if one exists
+        public List<List<String>> generatedLines;
+        public TreeComparison tree;
+        // generated lines that are not acceptable, each with where it left the closest
+        // acceptable line and what a decision case there expects
+        public List<String> unacceptable = new ArrayList<>();
         public String error;
     }
 
@@ -160,41 +162,33 @@ public class CaseReplayer {
             ProblemIsolator.IsolatedProblem iso = c.isolation.toIsolated();
             Node node = Positions.play(iso, c.at);
             DecisionFeatureExtractor extractor = new DecisionFeatureExtractor(props, brain, iso, params);
-            int attempts = 1;
+            int attempts = 1, passed = 0;
             for (int i = 0; i < attempts; i++) {
-                DecisionRecord rec;
-                ChoiceRule.Choice choice;
-                if (c.role.equals(DecisionRecord.SOLVER)) {
-                    rec = extractor.solver(node, c.at, c.at.isEmpty() ? visitsRoot : visits);
-                    choice = rec.error == null ? ChoiceRule.chooseSolver(rec) : null;
-                } else {
-                    rec = extractor.opponent(node, c.at);
-                    choice = rec.error == null ? ChoiceRule.chooseOpponent(rec, params, iso.stakes) : null;
-                }
-                if (choice == null) {
+                DecisionRecord rec = c.role.equals(DecisionRecord.SOLVER)
+                        ? extractor.solver(node, c.at, c.at.isEmpty() ? visitsRoot : visits)
+                        : extractor.opponent(node, c.at);
+                if (rec.error != null) {
                     r.outcome = ERROR;
                     r.error = rec.error;
                     return r;
                 }
+                ChoiceRule.Choice choice = ChoiceRule.decide(rec, params, iso.stakes);
                 rec.chose = choice.move;
+                rec.alternatives = new ArrayList<>(choice.also);
                 rec.reason = choice.reason;
-                r.choices.add(choice.move);
+                r.choices.add(String.join(" + ", choice.moves()));
+                if (c.passes(rec)) passed++;
                 if (i == 0) {
                     r.decision = rec;
                     r.fragile = ChoiceRule.isFragile(rec, params, iso.stakes);
                     if (r.fragile) attempts = Math.max(1, repeat);
                 }
             }
+            r.outcome = passed == r.choices.size() ? PASS : passed == 0 ? FAIL : UNSTABLE;
         } catch (Exception e) {
             r.outcome = ERROR;
             r.error = e.getMessage() == null ? e.toString() : e.getMessage();
-            return r;
         }
-        int passed = 0;
-        for (String chose : r.choices) {
-            if (c.passes(chose)) passed++;
-        }
-        r.outcome = passed == r.choices.size() ? PASS : passed == 0 ? FAIL : UNSTABLE;
         return r;
     }
 
@@ -216,30 +210,30 @@ public class CaseReplayer {
             lr.error = result.error;
             return lr;
         }
-        lr.generated = ProblemRecord.moves(result.generated);
+        lr.generatedLines = new ArrayList<>();
+        for (MovePath line : result.generatedLines) lr.generatedLines.add(ProblemRecord.moves(line));
+        lr.tree = result.tree;
         List<List<String>> acceptable = new ArrayList<>(cf.acceptedLines);
         for (MovePath ref : result.refs) acceptable.add(ProblemRecord.moves(ref));
-        lr.prefix = -1;
-        for (List<String> line : acceptable) {
-            int prefix = 0;
-            while (prefix < line.size() && prefix < lr.generated.size()
-                    && line.get(prefix).equals(lr.generated.get(prefix))) prefix++;
-            if (prefix > lr.prefix) {
-                lr.prefix = prefix;
-                lr.closest = line;
+        for (List<String> line : lr.generatedLines) {
+            if (acceptable.contains(line)) continue;
+            int best = -1;
+            for (List<String> ok : acceptable) {
+                int prefix = 0;
+                while (prefix < ok.size() && prefix < line.size() && ok.get(prefix).equals(line.get(prefix))) prefix++;
+                best = Math.max(best, prefix);
             }
+            String at = DecisionRecord.key(line.subList(0, Math.max(0, Math.min(best, line.size()))));
+            DecisionCase dc = cf.find(at);
+            lr.unacceptable.add(String.join(" ", line) + " (leaves the closest acceptable line at " + at
+                    + (dc != null ? ", where the case expects " + dc.describeExpect() : "") + ")");
         }
-        if (acceptable.contains(lr.generated)) {
-            lr.outcome = PASS;
-        } else {
-            lr.outcome = FAIL;
-            List<String> at = lr.generated.subList(0, Math.min(lr.prefix, lr.generated.size()));
-            lr.divergence = DecisionRecord.key(at);
-            DecisionCase dc = cf.find(lr.divergence);
-            if (dc != null) lr.divergenceCase = dc.describeExpect() + " (" + dc.source + ")";
-        }
-        System.out.println(lr.outcome.toUpperCase() + " line " + cf.problem + ": " + String.join(", ", lr.generated)
-                + (lr.divergence != null ? "; left the closest acceptable line at " + lr.divergence : ""));
+        lr.outcome = lr.unacceptable.isEmpty() && lr.tree.missingSolverMoves.isEmpty() ? PASS : FAIL;
+        System.out.println(lr.outcome.toUpperCase() + " tree " + cf.problem + ": " + lr.generatedLines.size()
+                + " lines, " + lr.unacceptable.size() + " not acceptable, " + lr.tree.missingSolverMoves.size()
+                + " author solver moves missing");
+        for (String u : lr.unacceptable) System.out.println("  not acceptable: " + u);
+        for (String m : lr.tree.missingSolverMoves) System.out.println("  missing solver move: " + m);
         return lr;
     }
 
@@ -264,7 +258,8 @@ public class CaseReplayer {
         if (!results.lines.isEmpty()) {
             int pass = 0;
             for (LineResult lr : results.lines) if (lr.outcome.equals(PASS)) pass++;
-            System.out.println("lines: " + pass + "/" + results.lines.size() + " reproduce an acceptable line");
+            System.out.println("trees: " + pass + "/" + results.lines.size()
+                    + " have every author solver move and only acceptable lines");
         }
 
         if (previous == null) return;

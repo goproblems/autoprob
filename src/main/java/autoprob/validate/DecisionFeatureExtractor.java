@@ -3,7 +3,9 @@ package autoprob.validate;
 import java.awt.Point;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 import autoprob.KataBrain;
@@ -30,6 +32,11 @@ public class DecisionFeatureExtractor {
     private final int passVisits;
     private final double nearDist;
     private final String[] humanRanks;
+    private final boolean evaluateAlternatives;
+    private final int solverCandidates;
+    // analyses of positions after a solver move, by position, so the tree builder can
+    // reuse them as the starting point of the opponent's decision
+    private final Map<String, KataAnalysisResult> afterCache = new HashMap<>();
 
     public DecisionFeatureExtractor(Properties props, KataBrain brain, IsolatedProblem iso, ChoiceParams params) {
         this.brain = brain;
@@ -40,13 +47,18 @@ public class DecisionFeatureExtractor {
         passVisits = Integer.parseInt(props.getProperty("redo.pass_visits", "1000"));
         nearDist = Double.parseDouble(props.getProperty("redo.near_dist", "2.1"));
         humanRanks = props.getProperty("redo.human_ranks", "5k,1d").split(",");
+        evaluateAlternatives = Boolean.parseBoolean(props.getProperty("redo.solver_alternatives", "true"));
+        solverCandidates = Integer.parseInt(props.getProperty("redo.solver_candidates", "6"));
     }
 
     public KataAnalysisResult analyzeNear(Node node, int v) throws Exception {
         return na.analyzeNode(brain, node, v, nearDist, true, iso.filledStones);
     }
 
-    // solver to move: katago's top moves
+    // solver to move: katago's top moves, plus moves a human would naturally try. with
+    // redo.solver_alternatives on, each plausible one is played and analyzed on its own, so
+    // ChoiceRule can keep every move that works: a working move missing from the tree
+    // would mark a correct answer wrong.
     public DecisionRecord solver(Node node, List<String> at, int v) throws Exception {
         DecisionRecord rec = newRecord(node, at, DecisionRecord.SOLVER);
         KataAnalysisResult kar = analyzeNear(node, v);
@@ -62,7 +74,76 @@ public class DecisionFeatureExtractor {
             c.scoreLead = mi.scoreLead;
             rec.candidates.add(c);
         }
+        if (!evaluateAlternatives || rec.candidates.get(0).point().equals("pass")) {
+            return rec;
+        }
+
+        List<KataAnalysisResult.Policy> human = blendedHumanPolicy(node);
+        for (KataAnalysisResult.Policy hp : human) {
+            if (hp.policy < params.minHumanPolicy) continue;
+            addCandidate(rec, node, new CandidateFeatures(
+                    rec.toMove + " " + Intersection.toGTPloc(hp.x, hp.y, 19), "human"));
+        }
+        for (CandidateFeatures c : rec.candidates) {
+            if (c.point().equals("pass")) continue;
+            Point p = Intersection.gtp2point(c.point());
+            c.humanPolicy = 0.0;
+            for (KataAnalysisResult.Policy hp : human) {
+                if (hp.x == p.x && hp.y == p.y) c.humanPolicy = hp.policy;
+            }
+            c.stakeDist = distanceToStakes(p);
+        }
+
+        // play each plausible candidate and see whether the solver keeps the result
+        int sign = rec.toMove.equals("B") ? 1 : -1;
+        int evaluated = 0;
+        for (int i = 0; i < rec.candidates.size() && evaluated < solverCandidates; i++) {
+            CandidateFeatures c = rec.candidates.get(i);
+            if (c.point().equals("pass")) continue;
+            boolean plausible = i == 0 || "human".equals(c.source)
+                    || c.prior >= params.minResponsePrior || c.visits >= v * 0.1;
+            // a move away from the fight is a tenuki, not an answer: not worth the engine time
+            if (!plausible || (i > 0 && !ChoiceRule.nearFight(c, params))) continue;
+            Point p = Intersection.gtp2point(c.point());
+            if (!node.legalMove(p)) continue;
+            Node tike = node.addBasicMove(p.x, p.y);
+            try {
+                KataAnalysisResult after = after(tike);
+                if (after.isError()) {
+                    c.error = true;
+                } else {
+                    c.afterLead = sign * after.blackScore();
+                }
+            } finally {
+                node.removeChildNode(tike);
+            }
+            evaluated++;
+        }
         return rec;
+    }
+
+    // the analysis of a position right after a solver move, at redo.visits, from the cache
+    // when the solver's decision already looked at it
+    public KataAnalysisResult after(Node node) throws Exception {
+        String key = positionKey(node);
+        KataAnalysisResult kar = afterCache.get(key);
+        if (kar == null) {
+            kar = analyzeNear(node, visits);
+            if (!kar.isError()) afterCache.put(key, kar);
+        }
+        return kar;
+    }
+
+    // identifies a position regardless of the move order that reached it
+    public static String positionKey(Node node) {
+        StringBuilder sb = new StringBuilder(380);
+        for (int y = 0; y < 19; y++)
+            for (int x = 0; x < 19; x++)
+                sb.append((char) ('0' + node.board.board[x][y].stone));
+        sb.append(node.getToMove());
+        Point ko = node.getKo();
+        if (ko != null) sb.append('k').append(ko.x).append(',').append(ko.y);
+        return sb.toString();
     }
 
     // opponent to move, analyzing the position first
@@ -114,12 +195,13 @@ public class DecisionFeatureExtractor {
             measureThreat(node, c);
             System.out.println("  response candidate " + c.point() + " (" + describe(c) + "): threat " + c.threat
                     + ", answer prior " + fmt(c.answerPrior) + ", human answer " + fmt(c.humanAnswer)
-                    + ", stake dist " + c.stakeDist);
+                    + ", answers " + c.answers + ", stake dist " + c.stakeDist);
         }
         return rec;
     }
 
     public static String describe(CandidateFeatures c) {
+        if (c == null) return "?";
         if ("katago".equals(c.source)) {
             return "katago " + c.point() + " v" + c.visits + " p" + df.format(c.prior);
         }
@@ -159,6 +241,7 @@ public class DecisionFeatureExtractor {
             }
             c.answerPrior = 1.0;
             c.humanAnswer = 1.0;
+            c.answers = countAnswers(karMove);
             if (!karMove.moveInfos.isEmpty()) {
                 MoveInfo answer = karMove.moveInfos.get(0);
                 c.answer = answer.move;
@@ -194,6 +277,26 @@ public class DecisionFeatureExtractor {
         } finally {
             node.removeChildNode(tike);
         }
+    }
+
+    // how many solver answers hold the result: katago moves its search took seriously (a
+    // tenth of the top move's visits) scoring within alt_score_tolerance of the best of them.
+    // 0 when the solver's best answer is to pass.
+    private int countAnswers(KataAnalysisResult kar) {
+        if (kar.moveInfos.isEmpty() || kar.moveInfos.get(0).move.equals("pass")) return 0;
+        int sign = iso.solverColor == Intersection.BLACK ? 1 : -1;
+        int top = kar.moveInfos.get(0).visits;
+        double best = Double.NEGATIVE_INFINITY;
+        for (MoveInfo mi : kar.moveInfos) {
+            if (mi.move.equals("pass") || mi.visits < 0.1 * top) continue;
+            best = Math.max(best, sign * mi.scoreLead);
+        }
+        int count = 0;
+        for (MoveInfo mi : kar.moveInfos) {
+            if (mi.move.equals("pass") || mi.visits < 0.1 * top) continue;
+            if (sign * mi.scoreLead >= best - params.altScoreTolerance) count++;
+        }
+        return count;
     }
 
     private int distanceToStakes(Point p) {

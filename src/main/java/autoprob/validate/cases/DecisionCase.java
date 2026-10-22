@@ -26,8 +26,7 @@ public class DecisionCase {
     public IsolationRecord isolation;
     public Observed observed;
 
-    // moves (or END) that are right here, and moves that are wrong. a decision passes
-    // when it avoids every avoid entry and, if choose is not empty, picks one of choose.
+    // moves (or END) that are right here, and moves that are wrong. see passes().
     public static class Expect {
         public List<String> choose = new ArrayList<>();
         public List<String> avoid = new ArrayList<>();
@@ -45,9 +44,21 @@ public class DecisionCase {
         return DecisionRecord.key(at);
     }
 
-    public boolean passes(String chose) {
-        if (expect.avoid.contains(chose)) return false;
-        return expect.choose.isEmpty() || expect.choose.contains(chose);
+    // whether a decision meets this case. no move the decision puts in the tree may be in
+    // avoid. at a solver turn every move in choose must be in the tree: each one works,
+    // and a working move left out marks a correct answer wrong. at an opponent turn
+    // choose lists acceptable resistances, and one of them must be chosen.
+    public boolean passes(DecisionRecord d) {
+        List<String> moves = d.chosenMoves();
+        for (String m : moves) {
+            if (expect.avoid.contains(m)) return false;
+        }
+        if (DecisionRecord.SOLVER.equals(role)) return moves.containsAll(expect.choose);
+        if (expect.choose.isEmpty()) return true;
+        for (String m : moves) {
+            if (expect.choose.contains(m)) return true;
+        }
+        return false;
     }
 
     public String describeExpect() {

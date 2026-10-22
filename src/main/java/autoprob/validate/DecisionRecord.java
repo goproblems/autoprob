@@ -15,7 +15,10 @@ public class DecisionRecord {
     public String toMove; // B or W
     public String role;   // solver or opponent
     public List<CandidateFeatures> candidates = new ArrayList<>();
-    public String chose;  // a move with color, or END
+    public String chose;  // the main choice: a move with color, or END
+    // further moves included in the solution tree at this position: for the solver every
+    // other move that also works, for the opponent any extra resistances
+    public List<String> alternatives = new ArrayList<>();
     public String reason; // why, in words
     public String error;  // set when the engine analysis failed
 
@@ -25,6 +28,25 @@ public class DecisionRecord {
 
     public String key() {
         return key(at);
+    }
+
+    // every move this decision puts in the tree, main choice first
+    public List<String> chosenMoves() {
+        List<String> out = new ArrayList<>();
+        if (chose != null) out.add(chose);
+        if (alternatives != null) out.addAll(alternatives);
+        return out;
+    }
+
+    // the same decision at a position reached by another move order
+    public DecisionRecord copyAt(List<String> otherAt) {
+        DecisionRecord rec = new DecisionRecord();
+        rec.at = new ArrayList<>(otherAt);
+        rec.toMove = toMove;
+        rec.role = role;
+        rec.candidates = new ArrayList<>(candidates);
+        rec.error = error;
+        return rec;
     }
 
     public CandidateFeatures candidate(String move) {

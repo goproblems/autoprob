@@ -17,7 +17,6 @@
   <main id="main">
     <div id="empty" class="muted">Loading…</div>
     <section id="boardPane" hidden>
-      <div id="lineTabs" role="tablist"></div>
       <div id="board"></div>
       <div id="boardBar">
         <span id="stepLabel"></span>
@@ -26,10 +25,20 @@
         <label><input type="checkbox" id="fullBoard"> full board</label>
       </div>
       <div id="notes"></div>
+      <div class="tree-head">
+        <span class="section-label">Correct tree</span>
+        <span class="legend">
+          <span><i class="sw" style="background:#65a30d"></i>both</span>
+          <span><i class="sw" style="background:#2563eb"></i>generated only</span>
+          <span><i class="sw dashed"></i>author only</span>
+          <span><i class="halo"></i>line ends</span>
+          <span><i class="dot" style="background:#22c55e"></i><i class="dot" style="background:#ef4444"></i>case passes / fails</span>
+        </span>
+      </div>
+      <div id="tree"></div>
     </section>
     <section id="side" hidden>
       <div id="lineHead"></div>
-      <ol id="moves"></ol>
       <div id="decision"></div>
     </section>
   </main>
@@ -37,16 +46,16 @@
 <dialog id="help">
   <h2>Keyboard</h2>
   <table>
-    <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>previous / next decision (or move, on a reference line)</td></tr>
+    <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>previous / next position in the tree (click a node to jump)</td></tr>
+    <tr><td><kbd>Home</kbd></td><td>start position</td></tr>
     <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>previous / next problem</td></tr>
-    <tr><td><kbd>g</kbd></td><td>the chosen move is right</td></tr>
-    <tr><td><kbd>b</kbd></td><td>the chosen move is wrong</td></tr>
-    <tr><td><kbd>e</kbd></td><td>the line should end here instead</td></tr>
-    <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>toggle a candidate as also right (or click the board)</td></tr>
-    <tr><td><kbd>x</kbd></td><td>clear the verdict on the chosen move</td></tr>
+    <tr><td><kbd>g</kbd></td><td>what the tree plays here is right</td></tr>
+    <tr><td><kbd>b</kbd></td><td>the main move is wrong (at an end: the line should continue)</td></tr>
+    <tr><td><kbd>e</kbd></td><td>the line should end here instead of this response</td></tr>
+    <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>cycle a candidate: right, wrong, unjudged (or click the board); <kbd>0</kbd> the end</td></tr>
+    <tr><td><kbd>x</kbd></td><td>clear the verdict on what the tree plays here</td></tr>
     <tr><td><kbd>d</kbd></td><td>delete this decision's case</td></tr>
-    <tr><td><kbd>A</kbd></td><td>accept the whole generated line</td></tr>
-    <tr><td><kbd>r</kbd></td><td>cycle generated / reference lines</td></tr>
+    <tr><td><kbd>A</kbd></td><td>accept the whole generated tree</td></tr>
     <tr><td><kbd>s</kbd> <kbd>f</kbd></td><td>toggle stakes / full board</td></tr>
   </table>
   <p class="muted">Every change is saved to <code>cases/&lt;problem&gt;.json</code> immediately.</p>

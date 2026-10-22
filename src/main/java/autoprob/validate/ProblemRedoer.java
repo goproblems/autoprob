@@ -6,7 +6,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
@@ -17,8 +19,9 @@ import autoprob.go.parse.Parser;
 import autoprob.validate.SolutionPathGenerator.GenResult;
 
 // takes an existing, well crafted problem, excises the correct solution paths,
-// regenerates a solution line from scratch with katago + human policy, and then
-// scores the regenerated line against the original human crafted paths.
+// regenerates the correct part of the solution tree from scratch with katago + human
+// policy, and then scores it against the original human crafted paths: the main line
+// against the closest author line, and the whole tree against the author's correct tree.
 // this lets us measure how close our path creation is to high quality human data.
 public class ProblemRedoer {
     private final Properties props;
@@ -28,7 +31,9 @@ public class ProblemRedoer {
         public String error;
         public int refCount;
         public List<String> refFirstMoves = new ArrayList<>();
-        public MovePath generated;
+        public MovePath generated; // the main line: the first choice at every turn
+        public List<MovePath> generatedLines = new ArrayList<>(); // every line of the generated tree
+        public TreeComparison tree;
         public boolean endedNaturally;
         public MovePath bestRef;
         public int bestPrefix;
@@ -145,6 +150,10 @@ public class ProblemRedoer {
         if (r.generated != null) {
             rec.generated = ProblemRecord.moves(r.generated);
         }
+        for (MovePath line : r.generatedLines) {
+            rec.generatedLines.add(ProblemRecord.moves(line));
+        }
+        rec.tree = r.tree;
         if (r.error == null && r.generated != null && r.bestRef != null) {
             ProblemRecord.Metrics m = new ProblemRecord.Metrics();
             m.firstMoveMatch = r.firstMoveMatch;
@@ -201,7 +210,7 @@ public class ProblemRedoer {
         if (forceFirst && !refPaths.isEmpty()) {
             generator.setForcedFirstMove(refPaths.get(0).moves.get(0).loc);
         }
-        GenResult gen = generator.generateMainLine();
+        GenResult gen = generator.generate();
         result.isolation = IsolationRecord.from(iso); // before recalibration can change it
 
         // if the score drifted, the isolation baseline missed the solution's value:
@@ -218,7 +227,7 @@ public class ProblemRedoer {
                 if (forceFirst && !refPaths.isEmpty()) {
                     generator.setForcedFirstMove(refPaths.get(0).moves.get(0).loc);
                 }
-                GenResult gen2 = generator.generateMainLine();
+                GenResult gen2 = generator.generate();
                 if (gen2.endNode != null) {
                     gen2.notes.add(0, "regenerated after recalibration");
                     gen = gen2;
@@ -235,7 +244,12 @@ public class ProblemRedoer {
             throw new RuntimeException("no path was generated");
         }
         result.generated = MovePath.fromEndNode(gen.endNode);
-        System.out.println("generated (" + result.generated.length() + " moves): " + result.generated);
+        result.generatedLines = MovePath.extractRightPaths(iso.problem);
+        System.out.println("generated tree (" + result.generatedLines.size() + " lines):");
+        for (MovePath line : result.generatedLines) {
+            System.out.println("  " + line);
+        }
+        result.tree = TreeComparison.compare(lines(result.generatedLines), lines(refPaths));
 
         evaluate(result, refPaths);
         evaluateTreeWalk(result, root);
@@ -262,6 +276,12 @@ public class ProblemRedoer {
         result.bestPrefix = bestPrefix;
         result.firstMoveMatch = bestPrefix >= 1;
         result.exact = bestPrefix == result.generated.length() && bestPrefix == best.length();
+    }
+
+    static List<List<String>> lines(List<MovePath> paths) {
+        List<List<String>> out = new ArrayList<>();
+        for (MovePath p : paths) out.add(ProblemRecord.moves(p));
+        return out;
     }
 
     private boolean hasDriftNote(List<String> notes) {
@@ -299,6 +319,14 @@ public class ProblemRedoer {
                 + ", exact: " + (result.exact ? "yes" : "no")
                 + ", in tree: " + result.inTreeDepth + "/" + result.generated.length()
                 + (result.endsOnRight ? " ending RIGHT" : ""));
+        TreeComparison tc = result.tree;
+        System.out.println("tree: " + tc.summary());
+        for (String m : tc.missingSolverMoves) System.out.println("  missing solver move   " + m);
+        for (String m : tc.extraSolverMoves) System.out.println("  extra solver move     " + m);
+        for (String m : tc.missingResponses) System.out.println("  missing response      " + m);
+        for (String m : tc.extraResponses) System.out.println("  extra response        " + m);
+        for (String m : tc.endsEarly) System.out.println("  ends early at         " + m);
+        for (String m : tc.endsLate) System.out.println("  continues past end at " + m);
         for (String note : result.notes) {
             System.out.println("note: " + note);
         }
@@ -346,7 +374,8 @@ public class ProblemRedoer {
         return outDir;
     }
 
-    // write the original problem with the generated line grafted in for eyeballing
+    // write the original problem with the generated tree grafted in for eyeballing: each
+    // generated first move is a new variation commented GENERATED, with its branches below
     private void writeOutputSgf(File file, String sgf, RedoResult result) throws Exception {
         if (!Boolean.parseBoolean(props.getProperty("redo.write_file", "true"))) {
             return;
@@ -356,15 +385,23 @@ public class ProblemRedoer {
         // fresh parse so we do not disturb evaluation state
         Parser parser = new Parser();
         Node root = parser.parse(sgf);
-        Node cur = root;
-        for (int i = 0; i < result.generated.length(); i++) {
-            MovePath.Move move = result.generated.moves.get(i);
-            cur = cur.addBasicMove(move.loc.x, move.loc.y);
-            if (i == 0) {
-                cur.addAct(new CommentAction("GENERATED"));
+        Map<String, Node> grafted = new HashMap<>();
+        for (MovePath line : result.generatedLines) {
+            Node cur = root;
+            List<String> at = new ArrayList<>();
+            for (MovePath.Move move : line.moves) {
+                at.add(move.toString());
+                String key = DecisionRecord.key(at);
+                Node next = grafted.get(key);
+                if (next == null) {
+                    next = cur.addBasicMove(move.loc.x, move.loc.y);
+                    if (at.size() == 1) next.addAct(new CommentAction("GENERATED"));
+                    grafted.put(key, next);
+                }
+                cur = next;
             }
+            cur.result = autoprob.go.Intersection.RIGHT;
         }
-        cur.result = autoprob.go.Intersection.RIGHT;
 
         String baseName = file.getName().replaceAll("\\.sgf$", "");
         File outFile = new File(outDir, baseName + "_redo.sgf");
@@ -379,6 +416,7 @@ public class ProblemRedoer {
         System.out.println("==== SUMMARY (" + results.size() + " problems) ====");
         int ok = 0, firstMove = 0, exact = 0, natural = 0;
         int totalPrefix = 0, totalGenLen = 0, totalRefLen = 0, totalAbsDelta = 0;
+        int complete = 0, missingSolver = 0, extraSolver = 0, authorLines = 0, reproduced = 0;
         for (RedoResult r : results) {
             if (r.error != null) {
                 System.out.println(pad(r.file, 28) + " ERROR: " + r.error);
@@ -392,6 +430,12 @@ public class ProblemRedoer {
             totalGenLen += r.generated.length();
             totalRefLen += r.bestRef.length();
             totalAbsDelta += Math.abs(r.lengthDelta());
+            TreeComparison tc = r.tree;
+            if (tc.missingSolverMoves.isEmpty()) complete++;
+            missingSolver += tc.missingSolverMoves.size();
+            extraSolver += tc.extraSolverMoves.size();
+            authorLines += tc.authorLines;
+            reproduced += tc.reproduced;
             System.out.println(pad(r.file, 28)
                     + " first:" + (r.firstMoveMatch ? "y" : "N")
                     + " prefix:" + r.bestPrefix
@@ -400,6 +444,8 @@ public class ProblemRedoer {
                     + " delta:" + (r.lengthDelta() >= 0 ? "+" : "") + r.lengthDelta()
                     + " exact:" + (r.exact ? "y" : "n")
                     + " tree:" + r.inTreeDepth + (r.endsOnRight ? "R" : "")
+                    + " lines:" + tc.generatedLines + "/" + tc.authorLines + " repro:" + tc.reproduced
+                    + " solver-missing:" + tc.missingSolverMoves.size() + " extra:" + tc.extraSolverMoves.size()
                     + (r.endedNaturally ? "" : " (truncated)"));
         }
         if (ok > 0) {
@@ -412,6 +458,9 @@ public class ProblemRedoer {
                     + ", avg generated length: " + df1(totalGenLen / (double) ok)
                     + ", avg ref length: " + df1(totalRefLen / (double) ok)
                     + ", avg |length delta|: " + df1(totalAbsDelta / (double) ok));
+            System.out.println("every author solver move generated: " + complete + "/" + ok
+                    + " (missing " + missingSolver + ", extra " + extraSolver + ")");
+            System.out.println("author lines reproduced: " + reproduced + "/" + authorLines);
         }
     }
 
@@ -421,16 +470,20 @@ public class ProblemRedoer {
             return;
         }
         try (PrintWriter writer = new PrintWriter(csvPath)) {
-            writer.println("file,error,refpaths,firstmatch,prefix,genlen,reflen,delta,exact,natural,intree,endsright,generated");
+            writer.println("file,error,refpaths,firstmatch,prefix,genlen,reflen,delta,exact,natural,intree,endsright,"
+                    + "genlines,reproduced,solvermissing,solverextra,respmissing,respextra,endsearly,endslate,generated");
             for (RedoResult r : results) {
                 if (r.error != null) {
-                    writer.println(r.file + "," + r.error.replace(',', ';') + ",,,,,,,,,,,");
+                    writer.println(r.file + "," + r.error.replace(',', ';') + ",,,,,,,,,,,,,,,,,,,");
                     continue;
                 }
                 writer.println(r.file + ",," + r.refCount + "," + r.firstMoveMatch + "," + r.bestPrefix
                         + "," + r.generated.length() + "," + r.bestRef.length() + "," + r.lengthDelta()
                         + "," + r.exact + "," + r.endedNaturally
                         + "," + r.inTreeDepth + "," + r.endsOnRight
+                        + "," + r.tree.generatedLines + "," + r.tree.reproduced + "," + r.tree.missingSolverMoves.size()
+                        + "," + r.tree.extraSolverMoves.size() + "," + r.tree.missingResponses.size()
+                        + "," + r.tree.extraResponses.size() + "," + r.tree.endsEarly.size() + "," + r.tree.endsLate.size()
                         + "," + r.generated.toString().replace(',', ' '));
             }
         }

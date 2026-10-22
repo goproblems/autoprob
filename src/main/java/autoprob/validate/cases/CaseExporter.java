@@ -12,13 +12,14 @@ import autoprob.validate.ChoiceRule;
 import autoprob.validate.DecisionRecord;
 
 // cmd=cases-export: one csv row per candidate per decision case, labeled by what the
-// case expects, for analysis in a spreadsheet or notebook. opponent decisions also get
-// an END row carrying the decision's largest threat, since "should the line end here"
-// is mostly a question about that number.
+// case expects, for analysis in a spreadsheet or notebook. solver rows carry the lead
+// after the move, which decides whether it works. opponent decisions also get an END
+// row carrying the decision's largest threat, since "should the line end here" is
+// mostly a question about that number.
 public class CaseExporter {
     private static final String HEADER = "problem,position,depth,role,source,tags,expect_choose,expect_avoid,"
-            + "passes,candidate,cand_source,label,algo_chose,prior,visits,score_lead,human_policy,threat,"
-            + "answer,answer_prior,human_answer,stake_dist,features_from";
+            + "passes,candidate,cand_source,label,algo_chose,prior,visits,score_lead,after_lead,human_policy,threat,"
+            + "answer,answer_prior,human_answer,answers,stake_dist,features_from";
 
     private final Properties props;
 
@@ -39,7 +40,7 @@ public class CaseExporter {
                 List<Point> stakes = stakes(c);
                 String prefix = csv(item.file.problem) + "," + csv(c.key()) + "," + c.at.size() + "," + c.role
                         + "," + c.source + "," + csv(String.join(" ", c.tags)) + "," + csv(String.join(" ", c.expect.choose))
-                        + "," + csv(String.join(" ", c.expect.avoid)) + "," + c.passes(d.chose);
+                        + "," + csv(String.join(" ", c.expect.avoid)) + "," + c.passes(d);
                 int maxThreat = 0;
                 for (CandidateFeatures cand : d.candidates) {
                     Integer threat = null;
@@ -48,15 +49,15 @@ public class CaseExporter {
                         maxThreat = Math.max(maxThreat, threat);
                     }
                     w.println(prefix + "," + csv(cand.move) + "," + cand.source + "," + label(c, cand.move)
-                            + "," + cand.move.equals(d.chose) + "," + num(cand.prior) + "," + num(cand.visits)
-                            + "," + num(cand.scoreLead) + "," + num(cand.humanPolicy) + "," + num(threat)
+                            + "," + d.chosenMoves().contains(cand.move) + "," + num(cand.prior) + "," + num(cand.visits)
+                            + "," + num(cand.scoreLead) + "," + num(cand.afterLead) + "," + num(cand.humanPolicy) + "," + num(threat)
                             + "," + csv(cand.answer) + "," + num(cand.answerPrior) + "," + num(cand.humanAnswer)
-                            + "," + num(cand.stakeDist) + "," + item.from);
+                            + "," + num(cand.answers) + "," + num(cand.stakeDist) + "," + item.from);
                     rows++;
                 }
                 if (c.role.equals(DecisionRecord.OPPONENT)) {
                     w.println(prefix + "," + DecisionRecord.END + ",," + label(c, DecisionRecord.END) + ","
-                            + DecisionRecord.END.equals(d.chose) + ",,,,," + maxThreat + ",,,,," + item.from);
+                            + DecisionRecord.END.equals(d.chose) + ",,,,,," + maxThreat + ",,,,,," + item.from);
                     rows++;
                 }
             }

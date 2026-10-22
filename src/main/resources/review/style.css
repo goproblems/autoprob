@@ -14,6 +14,7 @@
   --wood: #e2bd78;
   --grid: #5b4320;
   --select: #fff6d6;
+  --tree-bg: #f7f7f7;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -33,6 +34,7 @@
     --wood: #b98f4e;
     --grid: #3a2a12;
     --select: #3b3520;
+    --tree-bg: #2a2b30;
     color-scheme: dark;
   }
 }
@@ -40,7 +42,7 @@
   --bg: #17181b; --panel: #212226; --text: #e8e8ea; --muted: #9a9aa2; --line: #34353b;
   --accent: #7ea2ff; --accent-soft: #263257; --good: #5cc98a; --good-soft: #1d3a2a;
   --bad: #ff7b72; --bad-soft: #432422; --warn: #e0a640; --wood: #b98f4e; --grid: #3a2a12;
-  --select: #3b3520; color-scheme: dark;
+  --select: #3b3520; --tree-bg: #2a2b30; color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -143,29 +145,34 @@ kbd {
 #notes { margin-top: 8px; font-size: 13px; }
 #notes div { color: var(--warn); }
 
-#lineHead { font-size: 13px; margin-bottom: 6px; }
-#moves {
-  list-style: none;
-  margin: 0 0 12px;
-  padding: 0;
+#lineHead { font-size: 13px; margin-bottom: 10px; }
+#lineHead .gaps { margin: 6px 0 0; padding-left: 18px; color: var(--muted); }
+#lineHead .gaps li { margin: 2px 0; }
+.bad-text { color: var(--bad); }
+
+.tree-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin-top: 14px;
 }
-#moves li button {
-  padding: 2px 8px;
-  font-size: 13px;
-  display: flex;
-  gap: 4px;
-  align-items: center;
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend .sw { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
+.legend .sw.dashed { background: repeating-linear-gradient(90deg, #d97706 0 5px, transparent 5px 9px); }
+.legend .halo { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #65a30d; }
+.legend .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+#tree {
+  margin-top: 6px;
+  max-height: 340px;
+  overflow: auto;
+  background: var(--tree-bg);
+  border-radius: 8px;
+  border: 1px solid var(--line);
 }
-#moves li button.sel { border-color: var(--accent); background: var(--accent-soft); }
-#moves .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
-#moves .dot.good { background: var(--good); }
-#moves .dot.bad { background: var(--bad); }
-#moves .stone { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #000; }
-#moves .stone.B { background: #111; }
-#moves .stone.W { background: #fafafa; }
+#tree svg { display: block; }
+#tree .tnode { cursor: pointer; }
 
 #decision h3 { margin: 4px 0 2px; font-size: 15px; }
 #decision .reason { color: var(--muted); font-size: 13px; margin-bottom: 8px; }

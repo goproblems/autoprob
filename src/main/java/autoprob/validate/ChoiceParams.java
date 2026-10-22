@@ -14,6 +14,13 @@ public class ChoiceParams {
     public double testingBand;       // width of the human answer bands the testing criterion compares
     public int threatRegionDist;     // only count threats near the stakes; -1 counts everywhere
 
+    // solution tree branching
+    public double altScoreTolerance; // a solver move works if its lead is within this of the best move's
+    public int altRegionDist;        // alternatives must be this close to a stake stone; -1 anywhere
+    public int maxSolverMoves;       // most solver moves kept at one position (main plus alternatives)
+    public int opponentBranches;     // most opponent resistances kept at one position
+    public int maxAnswers;           // a resistance this many solver answers handle is no real try; 0 off
+
     // candidate gathering. applied live by the extractor; offline they can only
     // narrow the recorded candidates, never add new ones
     public int visits;
@@ -33,6 +40,11 @@ public class ChoiceParams {
         // redo.threat_region_dist is not applied to live generation yet (see docs/redo.md
         // known gaps); the tuner can try it offline first
         p.threatRegionDist = -1;
+        p.altScoreTolerance = Double.parseDouble(props.getProperty("redo.alt_score_tolerance", "1.5"));
+        p.altRegionDist = Integer.parseInt(props.getProperty("redo.alt_region_dist", "3"));
+        p.maxSolverMoves = Integer.parseInt(props.getProperty("redo.max_solver_moves", "4"));
+        p.opponentBranches = Integer.parseInt(props.getProperty("redo.opponent_branches", "1"));
+        p.maxAnswers = Integer.parseInt(props.getProperty("redo.max_answers", "3"));
         p.visits = Integer.parseInt(props.getProperty("redo.visits", "1000"));
         p.responseCandidates = Integer.parseInt(props.getProperty("redo.response_candidates", "4"));
         p.minResponsePrior = Double.parseDouble(props.getProperty("redo.min_response_prior", "0.02"));
@@ -50,6 +62,11 @@ public class ChoiceParams {
         p.severeThreatRatio = severeThreatRatio;
         p.testingBand = testingBand;
         p.threatRegionDist = threatRegionDist;
+        p.altScoreTolerance = altScoreTolerance;
+        p.altRegionDist = altRegionDist;
+        p.maxSolverMoves = maxSolverMoves;
+        p.opponentBranches = opponentBranches;
+        p.maxAnswers = maxAnswers;
         p.visits = visits;
         p.responseCandidates = responseCandidates;
         p.minResponsePrior = minResponsePrior;
@@ -68,6 +85,11 @@ public class ChoiceParams {
             case "severe_threat_ratio" -> severeThreatRatio = Double.parseDouble(value);
             case "testing_band" -> testingBand = Double.parseDouble(value);
             case "threat_region_dist" -> threatRegionDist = Integer.parseInt(value);
+            case "alt_score_tolerance" -> altScoreTolerance = Double.parseDouble(value);
+            case "alt_region_dist" -> altRegionDist = Integer.parseInt(value);
+            case "max_solver_moves" -> maxSolverMoves = Integer.parseInt(value);
+            case "opponent_branches" -> opponentBranches = Integer.parseInt(value);
+            case "max_answers" -> maxAnswers = Integer.parseInt(value);
             case "response_candidates" -> responseCandidates = Integer.parseInt(value);
             case "min_response_prior" -> minResponsePrior = Double.parseDouble(value);
             case "min_human_policy" -> minHumanPolicy = Double.parseDouble(value);

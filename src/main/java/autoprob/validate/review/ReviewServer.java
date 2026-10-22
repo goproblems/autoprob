@@ -111,7 +111,7 @@ public class ReviewServer {
                 DecisionCase c = cf == null ? null : cf.find(d.key());
                 if (c == null) continue;
                 judged++;
-                if (!c.passes(d.chose)) failing++;
+                if (!c.passes(d)) failing++;
             }
             Map<String, Object> p = new LinkedHashMap<>();
             p.put("problem", name);
@@ -120,7 +120,8 @@ public class ReviewServer {
             p.put("decisions", rec.decisions.size());
             p.put("judged", judged);
             p.put("failing", failing);
-            p.put("accepted", cf != null && cf.acceptedLines.contains(rec.generated));
+            p.put("accepted", cf != null && !lines(rec).isEmpty() && cf.acceptedLines.containsAll(lines(rec)));
+            p.put("tree", rec.tree);
             problems.add(p);
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -130,21 +131,36 @@ public class ReviewServer {
         return out;
     }
 
-    // a problem's record, the board after every move of each line, and its cases
+    // a problem's record, the board at every position of the generated and author trees
+    // (keyed like decisions: the moves from the root, or "root"), and its cases
     private Object problem(String name) throws Exception {
         ProblemRecord rec = RunRecorder.readProblem(runDir, check(name));
         Map<String, Object> out = new LinkedHashMap<>();
+        rec.generatedLines = lines(rec);
         out.put("record", rec);
         if (rec.isolation != null) {
-            out.put("generatedBoards", Positions.boards(rec.isolation.toIsolated(), rec.generated));
-            List<List<List<String>>> refBoards = new ArrayList<>();
-            for (List<String> ref : rec.refs) {
-                refBoards.add(Positions.boards(rec.isolation.toIsolated(), ref));
+            Map<String, List<String>> boards = new LinkedHashMap<>();
+            List<List<String>> all = new ArrayList<>(rec.generatedLines);
+            all.addAll(rec.refs);
+            for (DecisionRecord d : rec.decisions) all.add(d.at);
+            for (List<String> line : all) {
+                List<List<String>> steps = Positions.boards(rec.isolation.toIsolated(), line);
+                for (int i = 0; i < steps.size(); i++) {
+                    boards.putIfAbsent(DecisionRecord.key(line.subList(0, i)), steps.get(i));
+                }
             }
-            out.put("refBoards", refBoards);
+            out.put("boards", boards);
         }
         CaseFile cf = store.load(name);
         out.put("cases", cf == null ? emptyCases(name) : cf);
+        return out;
+    }
+
+    // the generated tree's lines; runs from before trees only have the main line
+    private static List<List<String>> lines(ProblemRecord rec) {
+        if (rec.generatedLines != null && !rec.generatedLines.isEmpty()) return rec.generatedLines;
+        List<List<String>> out = new ArrayList<>();
+        if (rec.generated != null && !rec.generated.isEmpty()) out.add(rec.generated);
         return out;
     }
 
@@ -188,18 +204,18 @@ public class ReviewServer {
         return cf;
     }
 
-    // accept (or un-accept) the generated line as a whole. accepting also marks every
-    // decision on it that has no case yet as right.
+    // accept (or un-accept) the generated tree as a whole: its lines become acceptable,
+    // and every decision in it that has no case yet is marked right as generated
     private Object acceptLine(String name, boolean accept) throws Exception {
         ProblemRecord rec = RunRecorder.readProblem(runDir, check(name));
         CaseFile cf = caseFile(rec);
         if (!accept) {
-            cf.acceptedLines.remove(rec.generated);
+            cf.acceptedLines.removeAll(lines(rec));
             store.save(cf);
             return cf;
         }
-        if (!rec.generated.isEmpty() && !cf.acceptedLines.contains(rec.generated)) {
-            cf.acceptedLines.add(new ArrayList<>(rec.generated));
+        for (List<String> line : lines(rec)) {
+            if (!cf.acceptedLines.contains(line)) cf.acceptedLines.add(new ArrayList<>(line));
         }
         for (DecisionRecord d : rec.decisions) {
             if (cf.find(d.key()) != null) continue;
@@ -207,7 +223,7 @@ public class ReviewServer {
             c.at = new ArrayList<>(d.at);
             c.toMove = d.toMove;
             c.role = d.role;
-            c.expect.choose.add(d.chose);
+            c.expect.choose.addAll(d.chosenMoves());
             c.source = DecisionCase.REVIEW;
             c.by = by;
             c.created = LocalDate.now().toString();

@@ -129,8 +129,112 @@ class ChoiceRuleTest {
         CandidateFeatures pass = new CandidateFeatures("B pass", "katago");
         pass.visits = 900;
         rec.candidates.add(pass);
-        assertTrue(ChoiceRule.chooseSolver(rec).isEnd());
+        assertTrue(ChoiceRule.chooseSolver(rec, params()).isEnd());
         rec.candidates.add(0, new CandidateFeatures("B L1", "katago"));
-        assertEquals("B L1", ChoiceRule.chooseSolver(rec).move);
+        assertEquals("B L1", ChoiceRule.chooseSolver(rec, params()).move);
+    }
+
+    private static CandidateFeatures solverCand(String move, String source, Double afterLead) {
+        CandidateFeatures c = new CandidateFeatures(move, source);
+        c.prior = 0.1;
+        c.visits = 100;
+        c.afterLead = afterLead;
+        c.stakeDist = 1;
+        return c;
+    }
+
+    private static DecisionRecord solver(CandidateFeatures... cands) {
+        DecisionRecord rec = new DecisionRecord();
+        rec.toMove = "B";
+        rec.role = DecisionRecord.SOLVER;
+        rec.candidates.addAll(List.of(cands));
+        return rec;
+    }
+
+    @Test
+    void everySolverMoveThatWorksIsKept() {
+        DecisionRecord rec = solver(solverCand("B L1", "katago", 2.4), solverCand("B J1", "katago", -12.0),
+                solverCand("B K1", "human", 1.8), solverCand("B M1", "katago", 0.5));
+        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(rec, params());
+        assertEquals("B L1", choice.move);
+        assertEquals(List.of("B K1"), choice.also); // M1 is 1.9 behind L1, past the 1.5 tolerance
+        assertEquals(List.of("B L1", "B K1", "B M1"),
+                ChoiceRule.chooseSolver(rec, params("alt_score_tolerance", "2.0")).moves());
+    }
+
+    @Test
+    void aWorkingMoveLeadsWhenKatagosTopMoveFails() {
+        DecisionRecord rec = solver(solverCand("B J1", "katago", -12.0), solverCand("B L1", "katago", 2.4));
+        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(rec, params());
+        assertEquals("B L1", choice.move);
+        assertTrue(choice.also.isEmpty());
+    }
+
+    @Test
+    void aBarelySearchedMoveCannotPushOutTheRealAnswer() {
+        // gp-721 after B L1 W F1: katago's search put 985 visits on G1 and 2 on R3, but the
+        // analysis after R3 wandered into a line that flattered it
+        CandidateFeatures g1 = solverCand("B G1", "katago", 0.82);
+        g1.visits = 985;
+        CandidateFeatures r3 = solverCand("B R3", "katago", 5.99);
+        r3.visits = 2;
+        r3.stakeDist = 5;
+        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(solver(g1, r3), params());
+        assertEquals("B G1", choice.move);
+        assertTrue(choice.also.isEmpty()); // R3 is far from the stakes: a tenuki, not an answer
+        // even near the fight, R3 does not set the bar: it works alongside G1 rather than replacing it
+        r3.stakeDist = 2;
+        assertEquals(List.of("B G1", "B R3"), ChoiceRule.chooseSolver(solver(g1, r3), params()).moves());
+    }
+
+    @Test
+    void solverMovesAreCapped() {
+        DecisionRecord rec = solver(solverCand("B A1", "katago", 2.0), solverCand("B B1", "katago", 2.0),
+                solverCand("B C1", "katago", 2.0), solverCand("B D1", "katago", 2.0), solverCand("B E1", "human", 2.0));
+        assertEquals(4, ChoiceRule.chooseSolver(rec, params()).moves().size());
+        assertEquals(2, ChoiceRule.chooseSolver(rec, params("max_solver_moves", "2")).moves().size());
+    }
+
+    @Test
+    void withoutEvaluatedAlternativesTheTopMoveStandsAlone() {
+        DecisionRecord rec = solver(solverCand("B L1", "katago", null), solverCand("B J1", "katago", null));
+        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(rec, params());
+        assertEquals("B L1", choice.move);
+        assertTrue(choice.also.isEmpty());
+    }
+
+    @Test
+    void solverMoveNearTheToleranceLineIsFragile() {
+        // the line is 2.4 - 1.5 = 0.9; K1 at 1.1 is within half a point of it
+        assertTrue(ChoiceRule.isFragile(solver(solverCand("B L1", "katago", 2.4),
+                solverCand("B K1", "katago", 1.1)), params(), STAKES));
+        assertFalse(ChoiceRule.isFragile(solver(solverCand("B L1", "katago", 2.4),
+                solverCand("B K1", "katago", -8.0)), params(), STAKES));
+    }
+
+    @Test
+    void aThreatThatManyMovesAnswerIsNoRealTry() {
+        // gp-721 after B L1: after N1 four or more answers hold, after F1 only G1 does
+        DecisionRecord rec = gp721();
+        rec.candidate("W F1").answers = 1;
+        rec.candidate("W J1").answers = 1;
+        rec.candidate("W N1").answers = 5;
+        assertEquals("W F1", ChoiceRule.chooseOpponent(rec, params(), STAKES).move);
+        assertEquals("W N1", ChoiceRule.chooseOpponent(rec, params("max_answers", "0"), STAKES).move);
+        // when every threat is answered by anything, the line ends
+        rec.candidate("W F1").answers = 4;
+        ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(rec, params(), STAKES);
+        assertTrue(choice.isEnd());
+        assertTrue(choice.reason.startsWith("no testing threat remains"));
+    }
+
+    @Test
+    void extraOpponentBranchesFollowTheCriterion() {
+        ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(gp721(), params("opponent_branches", "2"), STAKES);
+        assertEquals("W N1", choice.move);
+        assertEquals(List.of("W F1"), choice.also); // J1 threatens too little to count
+        // order takes threatening moves in katago's order, skipping J1
+        assertEquals(List.of("W F1", "W N1"), ChoiceRule.chooseOpponent(gp721(),
+                params("opponent_branches", "2", "response_criterion", "order"), STAKES).moves());
     }
 }

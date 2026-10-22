@@ -39,3 +39,8 @@ target/
 # autoprob scan progress and benchmark run output
 zpos
 *.stderr
+
+# redo run records, review output and case replay results (cases/ is committed)
+redo_runs/
+redo_out/
+cases_results/

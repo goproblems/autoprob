@@ -112,4 +112,6 @@ How it works:
 
 The `redo.*` settings in config.properties control visits, threat thresholds, and ending behavior.
 
+Full details are in [docs/redo.md](docs/redo.md). Every run is recorded to `redo_runs/`, and generated lines can be reviewed in a local web page and turned into a library of test cases for replay and tuning: see [docs/cases.md](docs/cases.md).
+
 Tip: wrap long batch runs in `caffeinate -i` so the machine cannot idle-sleep mid-run (a sleeping Mac freezes katago while wall clock timeouts keep counting, which looks exactly like an engine stall). `tools/kata_latency_bench.py` measures raw engine latency for your setup if runs seem slow.

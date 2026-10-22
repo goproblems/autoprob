@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Redo Review</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top">
+  <div class="title">Redo review</div>
+  <div id="runInfo" class="muted"></div>
+  <button id="helpBtn" class="ghost" title="Keyboard shortcuts (?)">?</button>
+</header>
+<div id="layout">
+  <nav id="problems" aria-label="Problems"></nav>
+  <main id="main">
+    <div id="empty" class="muted">Loading…</div>
+    <section id="boardPane" hidden>
+      <div id="lineTabs" role="tablist"></div>
+      <div id="board"></div>
+      <div id="boardBar">
+        <span id="stepLabel"></span>
+        <span class="spacer"></span>
+        <label><input type="checkbox" id="showStakes"> stakes</label>
+        <label><input type="checkbox" id="fullBoard"> full board</label>
+      </div>
+      <div id="notes"></div>
+    </section>
+    <section id="side" hidden>
+      <div id="lineHead"></div>
+      <ol id="moves"></ol>
+      <div id="decision"></div>
+    </section>
+  </main>
+</div>
+<dialog id="help">
+  <h2>Keyboard</h2>
+  <table>
+    <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>previous / next decision (or move, on a reference line)</td></tr>
+    <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>previous / next problem</td></tr>
+    <tr><td><kbd>g</kbd></td><td>the chosen move is right</td></tr>
+    <tr><td><kbd>b</kbd></td><td>the chosen move is wrong</td></tr>
+    <tr><td><kbd>e</kbd></td><td>the line should end here instead</td></tr>
+    <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>toggle a candidate as also right (or click the board)</td></tr>
+    <tr><td><kbd>x</kbd></td><td>clear the verdict on the chosen move</td></tr>
+    <tr><td><kbd>d</kbd></td><td>delete this decision's case</td></tr>
+    <tr><td><kbd>A</kbd></td><td>accept the whole generated line</td></tr>
+    <tr><td><kbd>r</kbd></td><td>cycle generated / reference lines</td></tr>
+    <tr><td><kbd>s</kbd> <kbd>f</kbd></td><td>toggle stakes / full board</td></tr>
+  </table>
+  <p class="muted">Every change is saved to <code>cases/&lt;problem&gt;.json</code> immediately.</p>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>

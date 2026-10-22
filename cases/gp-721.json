@@ -1,0 +1,669 @@
+{
+  "problem": "gp-721",
+  "problemFile": "sample_problems/gp-721.sgf",
+  "problemSha": "658414e89b5a1d7b55ee95495c53132c6921ca2c",
+  "acceptedLines": [],
+  "decisions": [
+    {
+      "at": [],
+      "toMove": "B",
+      "role": "solver",
+      "expect": {
+        "choose": [
+          "B L1"
+        ],
+        "avoid": []
+      },
+      "source": "author",
+      "tags": [],
+      "by": "author",
+      "created": "2026-10-21",
+      "isolation": {
+        "solver": "B",
+        "komi": 12.5,
+        "targetLead": 2.5,
+        "stakes": [
+          "G2",
+          "H3",
+          "H1",
+          "J4",
+          "J3",
+          "J2",
+          "K4",
+          "L4",
+          "L3",
+          "M3",
+          "M2"
+        ],
+        "rows": [
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          "...................",
+          "xxxxxxxxxxxxxxxxxxx",
+          "ooooooooooooooooooo",
+          "...................",
+          "...................",
+          "...................",
+          "...................",
+          ".......OOOOO.......",
+          ".......OXXXO.......",
+          ".....OOXX.XXO......",
+          "...O.OX.XO.XO.O....",
+          ".......X.O........."
+        ]
+      },
+      "observed": {
+        "run": "20261021-170828",
+        "commit": "a07cf72-dirty",
+        "model": "C:/Users/Adam/Downloads/weights/kata1-b28c512nbt-s7168446720-d4316919285.bin.gz",
+        "decision": {
+          "at": [],
+          "toMove": "B",
+          "role": "solver",
+          "candidates": [
+            {
+              "move": "B L1",
+              "source": "katago",
+              "prior": 0.0727609694,
+              "visits": 1959,
+              "scoreLead": 1.0790796
+            },
+            {
+              "move": "B J1",
+              "source": "katago",
+              "prior": 0.812653244,
+              "visits": 16,
+              "scoreLead": -30.8377295
+            },
+            {
+              "move": "B F1",
+              "source": "katago",
+              "prior": 0.0503165722,
+              "visits": 2,
+              "scoreLead": -31.0298177
+            },
+            {
+              "move": "B R3",
+              "source": "katago",
+              "prior": 0.0179464109,
+              "visits": 3,
+              "scoreLead": -18.1692783
+            },
+            {
+              "move": "B L2",
+              "source": "katago",
+              "prior": 0.0131753376,
+              "visits": 2,
+              "scoreLead": -28.3316467
+            }
+          ],
+          "chose": "B L1",
+          "reason": "katago's top move"
+        }
+      }
+    },
+    {
+      "at": [
+        "B L1"
+      ],
+      "toMove": "W",
+      "role": "opponent",
+      "expect": {
+        "choose": [
+          "W F1"
+        ],
+        "avoid": []
+      },
+      "source": "author",
+      "tags": [],
+      "by": "author",
+      "created": "2026-10-21",
+      "isolation": {
+        "solver": "B",
+        "komi": 12.5,
+        "targetLead": 2.5,
+        "stakes": [
+          "G2",
+          "H3",
+          "H1",
+          "J4",
+          "J3",
+          "J2",
+          "K4",
+          "L4",
+          "L3",
+          "M3",
+          "M2"
+        ],
+        "rows": [
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          "...................",
+          "xxxxxxxxxxxxxxxxxxx",
+          "ooooooooooooooooooo",
+          "...................",
+          "...................",
+          "...................",
+          "...................",
+          ".......OOOOO.......",
+          ".......OXXXO.......",
+          ".....OOXX.XXO......",
+          "...O.OX.XO.XO.O....",
+          ".......X.O........."
+        ]
+      },
+      "observed": {
+        "run": "20261021-170828",
+        "commit": "a07cf72-dirty",
+        "model": "C:/Users/Adam/Downloads/weights/kata1-b28c512nbt-s7168446720-d4316919285.bin.gz",
+        "decision": {
+          "at": [
+            "B L1"
+          ],
+          "toMove": "W",
+          "role": "opponent",
+          "candidates": [
+            {
+              "move": "W F1",
+              "source": "katago",
+              "prior": 0.903098941,
+              "visits": 810,
+              "humanPolicy": 0.834503829,
+              "answer": "G1",
+              "answerPrior": 0.437147379,
+              "humanAnswer": 0.329040259,
+              "stakeDist": 1,
+              "threat": 12,
+              "deltas": {
+                "D2": -0.001,
+                "F3": 0.0,
+                "F2": 0.0,
+                "F1": 0.0,
+                "G3": 0.0,
+                "G2": 1.989,
+                "H5": 0.0,
+                "H4": 0.0,
+                "H3": 1.989,
+                "H1": 1.992,
+                "J5": 0.0,
+                "J4": 1.987,
+                "J3": 1.987,
+                "J2": 1.987,
+                "K5": 0.0,
+                "K4": 1.986,
+                "K2": -0.001,
+                "K1": -0.002,
+                "L5": 0.0,
+                "L4": 1.986,
+                "L3": 1.984,
+                "L1": 1.992,
+                "M5": 0.0,
+                "M4": 0.0,
+                "M3": 1.986,
+                "M2": 1.984,
+                "N3": 0.001,
+                "N2": 0.0,
+                "P2": -0.001
+              }
+            },
+            {
+              "move": "W J1",
+              "source": "katago",
+              "prior": 0.0265193395,
+              "visits": 121,
+              "humanPolicy": 0.0934139416,
+              "answer": "R3",
+              "answerPrior": 0.0881506056,
+              "humanAnswer": 0.0590354688,
+              "stakeDist": 1,
+              "threat": 3,
+              "deltas": {
+                "D2": 0.001,
+                "F3": 0.0,
+                "F2": 0.0,
+                "G3": 0.0,
+                "G2": 0.605,
+                "H5": 0.0,
+                "H4": 0.0,
+                "H3": 0.71,
+                "H1": 0.668,
+                "J5": 0.0,
+                "J4": 0.709,
+                "J3": 0.697,
+                "J2": 0.705,
+                "J1": 1.161,
+                "K5": 0.0,
+                "K4": 0.699,
+                "K2": 1.197,
+                "K1": 1.187,
+                "L5": 0.0,
+                "L4": 0.698,
+                "L3": 0.694,
+                "L1": 0.693,
+                "M5": 0.0,
+                "M4": 0.0,
+                "M3": 0.686,
+                "M2": 0.696,
+                "N3": 0.004,
+                "N2": 0.005,
+                "P2": 0.044
+              }
+            },
+            {
+              "move": "W N1",
+              "source": "katago",
+              "prior": 0.0202149712,
+              "visits": 13,
+              "humanPolicy": 0.0941514671,
+              "answer": "G1",
+              "answerPrior": 0.286644161,
+              "humanAnswer": 0.10611856,
+              "stakeDist": 1,
+              "threat": 14,
+              "deltas": {
+                "D2": -0.001,
+                "F3": 0.0,
+                "F2": 0.0,
+                "G3": 0.0,
+                "G2": 1.993,
+                "H5": 0.0,
+                "H4": 0.0,
+                "H3": 1.994,
+                "H1": 1.993,
+                "J5": 0.0,
+                "J4": 1.993,
+                "J3": 1.993,
+                "J2": 1.991,
+                "K5": 0.0,
+                "K4": 1.993,
+                "K2": 1.996,
+                "K1": 1.991,
+                "L5": 0.0,
+                "L4": 1.993,
+                "L3": 1.993,
+                "L1": 1.995,
+                "M5": 0.0,
+                "M4": 0.0,
+                "M3": 1.993,
+                "M2": 1.991,
+                "N3": 0.0,
+                "N2": 0.0,
+                "N1": 0.0,
+                "P2": -0.001
+              }
+            }
+          ],
+          "chose": "W N1",
+          "reason": "chose response N1 (human 0.09, threat 14, human answer 0.11)"
+        }
+      }
+    },
+    {
+      "at": [
+        "B L1",
+        "W F1"
+      ],
+      "toMove": "B",
+      "role": "solver",
+      "expect": {
+        "choose": [
+          "B G1"
+        ],
+        "avoid": []
+      },
+      "source": "author",
+      "tags": [],
+      "by": "author",
+      "created": "2026-10-21",
+      "isolation": {
+        "solver": "B",
+        "komi": 12.5,
+        "targetLead": 2.5,
+        "stakes": [
+          "G2",
+          "H3",
+          "H1",
+          "J4",
+          "J3",
+          "J2",
+          "K4",
+          "L4",
+          "L3",
+          "M3",
+          "M2"
+        ],
+        "rows": [
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          "...................",
+          "xxxxxxxxxxxxxxxxxxx",
+          "ooooooooooooooooooo",
+          "...................",
+          "...................",
+          "...................",
+          "...................",
+          ".......OOOOO.......",
+          ".......OXXXO.......",
+          ".....OOXX.XXO......",
+          "...O.OX.XO.XO.O....",
+          ".......X.O........."
+        ]
+      }
+    },
+    {
+      "at": [
+        "B L1",
+        "W F1",
+        "B G1"
+      ],
+      "toMove": "W",
+      "role": "opponent",
+      "expect": {
+        "choose": [
+          "W J1"
+        ],
+        "avoid": []
+      },
+      "source": "author",
+      "tags": [],
+      "by": "author",
+      "created": "2026-10-21",
+      "isolation": {
+        "solver": "B",
+        "komi": 12.5,
+        "targetLead": 2.5,
+        "stakes": [
+          "G2",
+          "H3",
+          "H1",
+          "J4",
+          "J3",
+          "J2",
+          "K4",
+          "L4",
+          "L3",
+          "M3",
+          "M2"
+        ],
+        "rows": [
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          "...................",
+          "xxxxxxxxxxxxxxxxxxx",
+          "ooooooooooooooooooo",
+          "...................",
+          "...................",
+          "...................",
+          "...................",
+          ".......OOOOO.......",
+          ".......OXXXO.......",
+          ".....OOXX.XXO......",
+          "...O.OX.XO.XO.O....",
+          ".......X.O........."
+        ]
+      }
+    },
+    {
+      "at": [
+        "B L1",
+        "W F1",
+        "B G1",
+        "W J1"
+      ],
+      "toMove": "B",
+      "role": "solver",
+      "expect": {
+        "choose": [
+          "B H2"
+        ],
+        "avoid": []
+      },
+      "source": "author",
+      "tags": [],
+      "by": "author",
+      "created": "2026-10-21",
+      "isolation": {
+        "solver": "B",
+        "komi": 12.5,
+        "targetLead": 2.5,
+        "stakes": [
+          "G2",
+          "H3",
+          "H1",
+          "J4",
+          "J3",
+          "J2",
+          "K4",
+          "L4",
+          "L3",
+          "M3",
+          "M2"
+        ],
+        "rows": [
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          "...................",
+          "xxxxxxxxxxxxxxxxxxx",
+          "ooooooooooooooooooo",
+          "...................",
+          "...................",
+          "...................",
+          "...................",
+          ".......OOOOO.......",
+          ".......OXXXO.......",
+          ".....OOXX.XXO......",
+          "...O.OX.XO.XO.O....",
+          ".......X.O........."
+        ]
+      }
+    },
+    {
+      "at": [
+        "B L1",
+        "W F1",
+        "B G1",
+        "W J1",
+        "B H2"
+      ],
+      "toMove": "W",
+      "role": "opponent",
+      "expect": {
+        "choose": [
+          "W N1"
+        ],
+        "avoid": []
+      },
+      "source": "author",
+      "tags": [],
+      "by": "author",
+      "created": "2026-10-21",
+      "isolation": {
+        "solver": "B",
+        "komi": 12.5,
+        "targetLead": 2.5,
+        "stakes": [
+          "G2",
+          "H3",
+          "H1",
+          "J4",
+          "J3",
+          "J2",
+          "K4",
+          "L4",
+          "L3",
+          "M3",
+          "M2"
+        ],
+        "rows": [
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          "...................",
+          "xxxxxxxxxxxxxxxxxxx",
+          "ooooooooooooooooooo",
+          "...................",
+          "...................",
+          "...................",
+          "...................",
+          ".......OOOOO.......",
+          ".......OXXXO.......",
+          ".....OOXX.XXO......",
+          "...O.OX.XO.XO.O....",
+          ".......X.O........."
+        ]
+      }
+    },
+    {
+      "at": [
+        "B L1",
+        "W F1",
+        "B G1",
+        "W J1",
+        "B H2",
+        "W N1"
+      ],
+      "toMove": "B",
+      "role": "solver",
+      "expect": {
+        "choose": [
+          "B M1"
+        ],
+        "avoid": []
+      },
+      "source": "author",
+      "tags": [],
+      "by": "author",
+      "created": "2026-10-21",
+      "isolation": {
+        "solver": "B",
+        "komi": 12.5,
+        "targetLead": 2.5,
+        "stakes": [
+          "G2",
+          "H3",
+          "H1",
+          "J4",
+          "J3",
+          "J2",
+          "K4",
+          "L4",
+          "L3",
+          "M3",
+          "M2"
+        ],
+        "rows": [
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          "...................",
+          "xxxxxxxxxxxxxxxxxxx",
+          "ooooooooooooooooooo",
+          "...................",
+          "...................",
+          "...................",
+          "...................",
+          ".......OOOOO.......",
+          ".......OXXXO.......",
+          ".....OOXX.XXO......",
+          "...O.OX.XO.XO.O....",
+          ".......X.O........."
+        ]
+      }
+    },
+    {
+      "at": [
+        "B L1",
+        "W F1",
+        "B G1",
+        "W J1",
+        "B H2",
+        "W N1",
+        "B M1"
+      ],
+      "toMove": "W",
+      "role": "opponent",
+      "expect": {
+        "choose": [
+          "END"
+        ],
+        "avoid": []
+      },
+      "source": "author",
+      "tags": [],
+      "by": "author",
+      "created": "2026-10-21",
+      "isolation": {
+        "solver": "B",
+        "komi": 12.5,
+        "targetLead": 2.5,
+        "stakes": [
+          "G2",
+          "H3",
+          "H1",
+          "J4",
+          "J3",
+          "J2",
+          "K4",
+          "L4",
+          "L3",
+          "M3",
+          "M2"
+        ],
+        "rows": [
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          ".x.x.x.x.x.x.x.x.x.",
+          "x.x.x.x.x.x.x.x.x.x",
+          "...................",
+          "xxxxxxxxxxxxxxxxxxx",
+          "ooooooooooooooooooo",
+          "...................",
+          "...................",
+          "...................",
+          "...................",
+          ".......OOOOO.......",
+          ".......OXXXO.......",
+          ".....OOXX.XXO......",
+          "...O.OX.XO.XO.O....",
+          ".......X.O........."
+        ]
+      }
+    }
+  ]
+}

@@ -37,6 +37,11 @@ public class ProblemRedoer {
         public int inTreeDepth; // how long the generated line stays inside the original tree
         public boolean endsOnRight; // the deepest in-tree node reached is a RIGHT node
         public List<String> notes = new ArrayList<>();
+        public String path; // the problem sgf as given
+        public String sha;
+        public List<MovePath> refs = new ArrayList<>();
+        public IsolationRecord isolation; // the isolation the kept generation ran on
+        public List<DecisionRecord> decisions = new ArrayList<>();
 
         public int lengthDelta() {
             return generated.length() - bestRef.length();
@@ -73,23 +78,14 @@ public class ProblemRedoer {
             files.sort((a, b) -> a.getName().compareTo(b.getName()));
         }
 
+        RunRecorder recorder = Boolean.parseBoolean(props.getProperty("redo.record", "true"))
+                ? new RunRecorder(props) : null;
         KataBrain brain = new KataBrain(props);
         List<RedoResult> results = new ArrayList<>();
         int engineRestarts = 0;
         try {
             for (File file : files) {
-                System.out.println();
-                System.out.println("======================================================");
-                System.out.println("redoing problem: " + file.getName());
-                System.out.println("======================================================");
-                RedoResult result = new RedoResult();
-                result.file = file.getName();
-                try {
-                    redoFile(brain, file, result);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    result.error = e.getMessage();
-                }
+                RedoResult result = redo(brain, file);
                 // if katago died mid problem, restart it and retry this file once
                 if (!brain.isAlive() && engineRestarts < 3) {
                     engineRestarts++;
@@ -97,18 +93,12 @@ public class ProblemRedoer {
                             + ") and retrying " + file.getName());
                     brain.stopKataBrain();
                     brain = new KataBrain(props);
-                    RedoResult retry = new RedoResult();
-                    retry.file = file.getName();
-                    try {
-                        redoFile(brain, file, retry);
-                        result = retry;
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        retry.error = e.getMessage();
-                        result = retry;
-                    }
+                    result = redo(brain, file);
                 }
                 results.add(result);
+                if (recorder != null) {
+                    recorder.writeProblem(toRecord(result));
+                }
             }
         } finally {
             brain.stopKataBrain();
@@ -116,15 +106,71 @@ public class ProblemRedoer {
 
         printSummary(results);
         writeCsv(results);
+        if (recorder != null) {
+            recorder.finish(results);
+            System.out.println("run recorded in " + recorder.getDir().getPath());
+        }
+    }
+
+    // redo one problem file; errors are captured in the result rather than thrown
+    public RedoResult redo(KataBrain brain, File file) {
+        System.out.println();
+        System.out.println("======================================================");
+        System.out.println("redoing problem: " + file.getName());
+        System.out.println("======================================================");
+        RedoResult result = new RedoResult();
+        result.file = file.getName();
+        result.path = file.getPath().replace(File.separatorChar, '/');
+        try {
+            redoFile(brain, file, result);
+        } catch (Exception e) {
+            e.printStackTrace();
+            result.error = e.getMessage() == null ? e.toString() : e.getMessage();
+        }
+        return result;
+    }
+
+    public static ProblemRecord toRecord(RedoResult r) {
+        ProblemRecord rec = new ProblemRecord();
+        rec.problem = r.file.replaceAll("\\.sgf$", "");
+        rec.file = r.path;
+        rec.sha = r.sha;
+        rec.error = r.error;
+        rec.isolation = r.isolation;
+        rec.decisions = r.decisions;
+        rec.notes = r.notes;
+        for (MovePath ref : r.refs) {
+            rec.refs.add(ProblemRecord.moves(ref));
+        }
+        if (r.generated != null) {
+            rec.generated = ProblemRecord.moves(r.generated);
+        }
+        if (r.error == null && r.generated != null && r.bestRef != null) {
+            ProblemRecord.Metrics m = new ProblemRecord.Metrics();
+            m.firstMoveMatch = r.firstMoveMatch;
+            m.prefix = r.bestPrefix;
+            m.genLen = r.generated.length();
+            m.refLen = r.bestRef.length();
+            m.delta = r.lengthDelta();
+            m.exact = r.exact;
+            m.endedNaturally = r.endedNaturally;
+            m.inTreeDepth = r.inTreeDepth;
+            m.endsOnRight = r.endsOnRight;
+            rec.metrics = m;
+        }
+        return rec;
     }
 
     private void redoFile(KataBrain brain, File file, RedoResult result) throws Exception {
-        String sgf = Files.readString(file.toPath());
+        byte[] bytes = Files.readAllBytes(file.toPath());
+        result.sha = RunRecorder.sha1(bytes);
+        String sgf = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
         Parser parser = new Parser();
         Node root = parser.parse(sgf);
 
         // the human crafted reference: all paths ending in RIGHT
         List<MovePath> refPaths = MovePath.extractRightPaths(root);
+        result.refs = refPaths;
         result.refCount = refPaths.size();
         if (refPaths.isEmpty()) {
             throw new RuntimeException("no RIGHT paths in problem, cannot evaluate");
@@ -156,6 +202,7 @@ public class ProblemRedoer {
             generator.setForcedFirstMove(refPaths.get(0).moves.get(0).loc);
         }
         GenResult gen = generator.generateMainLine();
+        result.isolation = IsolationRecord.from(iso); // before recalibration can change it
 
         // if the score drifted, the isolation baseline missed the solution's value:
         // recalibrate stakes and komi from the discovered line and regenerate once
@@ -175,12 +222,14 @@ public class ProblemRedoer {
                 if (gen2.endNode != null) {
                     gen2.notes.add(0, "regenerated after recalibration");
                     gen = gen2;
+                    result.isolation = IsolationRecord.from(iso);
                 }
             } else {
                 System.out.println("end of line was on target, keeping the first generation");
             }
         }
         result.notes.addAll(gen.notes);
+        result.decisions = gen.decisions;
         result.endedNaturally = gen.endedNaturally;
         if (gen.endNode == null) {
             throw new RuntimeException("no path was generated");

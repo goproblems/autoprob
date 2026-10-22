@@ -19,7 +19,15 @@ The code lives in `src/main/java/autoprob/validate/`:
 | `ProblemIsolator` | Strips the original paths, fills the board, balances komi, finds the stones at stake |
 | `BalancedFortress` | The board fill used during isolation |
 | `SolutionPathGenerator` | Generates the main line move by move and decides when it ends |
+| `DecisionFeatureExtractor` | The engine half of each decision: candidates and their numbers |
+| `ChoiceRule`, `ChoiceParams` | The choice half: picks a move or END from those numbers, no engine calls |
+| `DecisionRecord`, `CandidateFeatures` | One recorded decision and its candidates |
+| `IsolationRecord` | A frozen copy of the isolated position (board, komi, stakes) |
+| `RunRecorder`, `ProblemRecord` | Writes each run to `redo_runs/` |
 | `MovePath` | Move sequence helpers: extracting RIGHT paths, common prefix |
+
+Reviewing generated lines and building a library of feedback from them is covered in
+[cases.md](cases.md).
 
 ## Running it
 
@@ -114,6 +122,11 @@ by hand.
 `SolutionPathGenerator` alternates solver and opponent moves. All analysis is restricted
 to moves within `redo.near_dist` of a real (non-filled) stone.
 
+Each step is a decision made in two halves: `DecisionFeatureExtractor` asks the engine for
+the candidates and the numbers below, then `ChoiceRule` picks one using only those numbers
+and the settings. Every decision is recorded with its candidates (see Output), which is
+what lets a decision be reviewed, replayed and re-chosen offline.
+
 **Solver move.** The solver plays KataGo's top move (`redo.visits_root` visits for the first
 move, `redo.visits` after). If KataGo's top move is a pass, the line ends. With
 `redo.force_first_move=true` the first move is pinned to the first reference path's first
@@ -145,7 +158,10 @@ Candidates must be on an empty, legal, local point; duplicates are dropped.
 Each candidate's **threat** is measured with a pass test: play the candidate, then compare
 the ownership of the position where the solver answers it against the position where the
 solver ignores it (passes). The threat is the number of non-filled stones whose ownership
-differs by more than `redo.threat_ownership_threshold`. A candidate is a real threat if
+differs by more than `redo.threat_ownership_threshold`. The per-stone differences are
+stored, so the count can be redone under another threshold. Every candidate is measured
+in every mode, even when the choice rule only needs the first one, so the record is
+complete. A candidate is a real threat if
 that count reaches `redo.threat_stones`. The same analysis also records how obvious the
 solver's correct answer is: its KataGo prior, and (for the `testing` criterion) its human
 policy.
@@ -158,7 +174,7 @@ Which threatening candidate extends the line depends on `redo.extend_mode` and
 | `primary` | (ignored) | Only the first candidate (KataGo's top move) may extend. If it is not a threat, the line ends. Paths end sooner. |
 | `scan` | `order` | The first candidate, in KataGo order, that is a threat extends. |
 | `scan` | `human` | Among *severe* threats, the one with the highest human policy. |
-| `scan` | `testing` (default) | Among severe threats, the one whose correct answer is **hardest for a human to find** (lowest human policy on the answer, compared in bands of 0.2), with ties broken by human policy of the response. |
+| `scan` | `testing` (default) | Among severe threats, the one whose correct answer is **hardest for a human to find** (lowest human policy on the answer, compared in bands of `redo.testing_band`, default 0.2), with ties broken by human policy of the response. |
 
 A threat is *severe* if it is at least `redo.severe_threat_ratio` times the largest threat
 among the candidates. The `testing` criterion reflects how good problems are written:
@@ -217,6 +233,11 @@ moves in a different order) is not credited.
 - **CSV** (`csvout.path`): columns `file, error, refpaths, firstmatch, prefix, genlen,
   reflen, delta, exact, natural, intree, endsright, generated`. A failed problem has only
   `file` and `error` filled in.
+- **Run record** in `redo_runs/<id>/` (`redo.record`): a `manifest.json` with the git
+  commit, engine, models and all `redo.*` settings, and per problem a `<problem>.json`
+  with the frozen isolation, every decision with its candidates, the generated and author
+  lines, and the scores. Problem files are written as each problem finishes. The review
+  page and case seeding read these; see [cases.md](cases.md).
 - **KataGo logs** in `analysis_logs/`, including every request and response (see below).
 
 ## Configuration
@@ -238,6 +259,7 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.extend_mode` | `scan` | `scan` or `primary`, see the table above |
 | `redo.response_criterion` | `testing` | `testing`, `human`, `order` (or `local`) |
 | `redo.severe_threat_ratio` | 0.6 | Fraction of the biggest threat that counts as severe |
+| `redo.testing_band` | 0.2 | Width of the human answer bands the `testing` criterion compares |
 | `redo.force_first_move` | false | Pin the first solver move to the reference |
 | `redo.recalibrate` | true | Rebuild stakes and komi and regenerate on score drift |
 | `redo.response_candidates` | 4 | KataGo moves considered as opponent responses |
@@ -250,6 +272,8 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.write_file` | true | Write `<name>_redo.sgf` |
 | `redo.output.dir` | `redo_out` | Output directory |
 | `redo.output.isolated` | true in `config.properties` (false if unset) | Write `<name>_isolated.sgf` |
+| `redo.record` | true | Write the run record to `redo_runs/<id>/` |
+| `redo.runs.dir` | `redo_runs` | Where run records go |
 
 Engine settings that matter for redo runs:
 
@@ -297,11 +321,12 @@ python3 tools/kata_latency_bench.py tools/bench_request.json 36 mylabel
 - **Only the main line is generated.** The original's refutations, wrong branches and
   alternative RIGHT paths are not regenerated; the generated line is scored against the
   closest reference path.
-- **`redo.threat_region_dist` is not applied.** `SolutionPathGenerator` computes the threat
-  region around the stakes but `calcPassDelta` never consults it, so ownership changes
-  anywhere on the board (outside the fortress fill) count toward a threat. The intent, per
-  the commit that added it, was to stop the opponent grabbing neutral space between the
-  problem and the walls from registering as threats.
+- **`redo.threat_region_dist` is not applied.** Ownership changes anywhere on the board
+  (outside the fortress fill) count toward a threat. The intent, per the commit that added
+  the setting, was to stop the opponent grabbing neutral space between the problem and the
+  walls from registering as threats. `ChoiceParams` can apply it, but live generation
+  leaves it off so behavior is unchanged; `cases-tune tune.threat_region_dist=-1,2` measures
+  what turning it on would do to the case library first.
 - **19x19 only.** Board size is assumed throughout.
 - **Komi clamp.** If the fortress fill is badly imbalanced, komi hits KataGo's ±150 limit
   and the game is no longer balanced; a warning is printed.

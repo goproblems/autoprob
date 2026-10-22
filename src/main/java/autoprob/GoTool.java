@@ -74,6 +74,16 @@ public class GoTool {
             runJosekiNodeRecalculateCommand(props);
         } else if (command.equals("redo")) {
             runRedoCommand(props);
+        } else if (command.equals("cases")) {
+            new autoprob.validate.cases.CaseReplayer(props).run();
+        } else if (command.equals("cases-seed")) {
+            new autoprob.validate.cases.CaseSeeder(props).run();
+        } else if (command.equals("cases-export")) {
+            new autoprob.validate.cases.CaseExporter(props).run();
+        } else if (command.equals("cases-tune")) {
+            new autoprob.validate.cases.CaseTuner(props).run();
+        } else if (command.equals("review")) {
+            new autoprob.validate.review.ReviewServer(props).run();
         } else {
             throw new RuntimeException("unknown command: " + command);
         }

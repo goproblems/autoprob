@@ -3,15 +3,30 @@
 // review page for a redo run: browse each problem's generated solution tree next to the
 // author's, see the candidates behind every decision, and judge them. judgments are
 // saved straight to the case library by the server.
+//
+// a judgment is about the selected move: whether it belongs in the tree at the position
+// it was played from. it is stored in the case for that earlier position, so the table
+// and the numbered board markers show the choices that were available there.
 
-const TAGS = ['ended-early', 'ended-late', 'wrong-resistance', 'missing-move', 'unnatural-move', 'missed-tesuji',
-  'wrong-solver-move', 'isolation-broken'];
+const TAG_HELP = {
+  'ended-early': 'The line stopped while the opponent still had a real try',
+  'ended-late': 'The line kept going after the problem was settled',
+  'wrong-resistance': 'This response is not the one that belongs in the main line',
+  'missing-move': 'A move that works, or a resistance that matters, is missing from the tree',
+  'unnatural-move': 'A move no human would consider',
+  'missed-tesuji': 'The solver missed the key move',
+  'wrong-solver-move': 'This solver move is wrong or inferior',
+  'isolation-broken': 'The isolated position misrepresents the problem (stakes, komi, fortress)',
+};
+const TAGS = Object.keys(TAG_HELP);
 const COLS = 'ABCDEFGHJKLMNOPQRST';
 const END = 'END';
 const LOW_PRIOR = 0.02; // below this katago prior a candidate is drawn dotted unless the tree plays it
 
-// tree colors: goproblems green where the trees agree
-const BOTH = '#65a30d', GEN = '#3b82f6', AUTHOR = '#d97706';
+// tree colors: goproblems green where the trees agree, light green where only the
+// author has a move (on the board too)
+const BOTH = '#65a30d', GEN = '#3b82f6', AUTHOR = '#a3e635';
+const RIGHT_MARK = '#22c55e', WRONG_MARK = '#ef4444';
 
 const state = {
   run: null,
@@ -67,6 +82,21 @@ const decisionAt = (key) => record().decisions.find((d) => keyOf(d.at) === key);
 const genLines = () => (record().generatedLines && record().generatedLines.length
   ? record().generatedLines : (record().generated.length ? [record().generated] : []));
 const chosenMoves = (d) => [d.chose, ...(d.alternatives || [])];
+const isSolverMove = (move) => move[0] === record().isolation.solver;
+
+// the position the selected move was played from: what a judgment is about. at the start
+// position, the choice of first move
+function judgedKey() {
+  const node = state.tree.index[state.sel];
+  return node.parent ? node.parent.key : 'root';
+}
+
+// right / wrong / null for a move at a position, from the case there
+function verdictOf(key, move) {
+  const c = caseAt(key);
+  if (!c) return null;
+  return c.expect.choose.includes(move) ? 'right' : c.expect.avoid.includes(move) ? 'wrong' : null;
+}
 
 // mirrors DecisionCase.passes: no chosen move may be avoided; a solver turn needs every
 // right move in the tree, an opponent turn one of the acceptable resistances
@@ -101,7 +131,6 @@ function buildTree() {
   };
   genLines().forEach((l) => add(l, 'gen'));
   record().refs.forEach((l) => add(l, 'author'));
-  // preorder: the order the arrow keys walk
   const order = [];
   const walk = (n) => { order.push(n); n.children.forEach(walk); };
   walk(root);
@@ -131,7 +160,22 @@ async function init() {
   const wanted = decodeURIComponent(location.hash.slice(1));
   const first = state.run.problems.find((p) => p.problem === wanted) || state.run.problems[0];
   if (first) await openProblem(first.problem);
-  else $('empty').textContent = 'This run has no problems.';
+  else $('empty').textContent = state.run.manifest.finished ? 'This run has no problems.'
+    : 'No problems have finished yet. They appear here as they do.';
+  if (!state.run.manifest.finished) state.poll = setInterval(refreshRun, 30000);
+}
+
+// while a run is still going, pick up problems as they finish
+async function refreshRun() {
+  try {
+    state.run = await api('/api/run');
+  } catch (e) {
+    return; // the server may be restarting; try again next time
+  }
+  renderTop();
+  renderProblems();
+  if (!state.name && state.run.problems.length) await openProblem(state.run.problems[0].problem);
+  if (state.run.manifest.finished) clearInterval(state.poll);
 }
 
 async function openProblem(name) {
@@ -162,6 +206,7 @@ function renderTop() {
   const model = (m.model || '').split(/[\\/]/).pop();
   const parts = ['run ' + m.id, 'commit ' + m.commit, model];
   if (s) parts.push(`first move ${s.firstMoveMatch}/${s.evaluated} · exact ${s.exact}/${s.evaluated}`);
+  else parts.push(`not finished: ${m.problems.length} problem${m.problems.length === 1 ? '' : 's'} so far`);
   parts.push('reviewing as ' + state.run.by);
   $('runInfo').textContent = parts.join('  ·  ');
 }
@@ -172,13 +217,14 @@ function renderProblems() {
   for (const p of state.run.problems) {
     const b = document.createElement('button');
     b.className = 'prob' + (p.problem === state.name ? ' sel' : '');
+    b.title = `Open ${p.problem} (p / n for the previous / next problem)`;
     const m = p.metrics, t = p.tree;
     const badges = [];
     if (!p.error) {
-      badges.push(`<span class="badge ${p.judged === p.decisions ? 'good' : ''}" title="decisions with a case">${p.judged}/${p.decisions}</span>`);
-      if (p.failing) badges.push(`<span class="badge bad" title="decisions this run gets wrong">${p.failing} wrong</span>`);
+      badges.push(`<span class="badge ${p.judged === p.decisions ? 'good' : ''}" title="choices in the generated tree you have judged, of all its choices">${p.judged}/${p.decisions}</span>`);
+      if (p.failing) badges.push(`<span class="badge bad" title="choices where this run goes against your judgments">${p.failing} wrong</span>`);
       if (t && t.missingSolverMoves.length) badges.push(`<span class="badge bad" title="author's working moves missing from the tree">${t.missingSolverMoves.length} missing</span>`);
-      if (p.accepted) badges.push('<span class="badge good" title="tree accepted">accepted</span>');
+      if (p.accepted) badges.push('<span class="badge good" title="you accepted the whole generated tree">accepted</span>');
     }
     let meta = '';
     if (p.error) meta = 'error: ' + esc(p.error);
@@ -230,8 +276,10 @@ function renderBoard() {
   const node = state.tree.index[state.sel];
   const rows = boards[state.sel];
   const iso = record().isolation;
-  const d = decisionAt(state.sel);
-  const c = caseAt(state.sel);
+  // the choice the selected move was played from
+  const jk = judgedKey();
+  const d = decisionAt(jk);
+  const c = caseAt(jk);
 
   // crop to the problem: every real stone at any position of either tree. this stays
   // fixed for the whole problem so the board does not resize between positions;
@@ -246,29 +294,35 @@ function renderBoard() {
     x0 = Math.max(0, x0 - 2); y0 = Math.max(0, y0 - 2); x1 = Math.min(18, x1 + 2); y1 = Math.min(18, y1 + 2);
   }
 
-  const cell = 34, margin = 26;
-  const w = (x1 - x0) * cell + 2 * margin, h = (y1 - y0) * cell + 2 * margin;
-  const X = (x) => margin + (x - x0) * cell, Y = (y) => margin + (y - y0) * cell;
+  // the coordinates get their own strip on the top and left, and the outermost points sit
+  // more than a stone's radius inside the board, so stones never cover the labels
+  const cell = 34, label = 16, inset = cell * 0.6;
+  const w = (x1 - x0) * cell + label + 2 * inset, h = (y1 - y0) * cell + label + 2 * inset;
+  const X = (x) => label + inset + (x - x0) * cell, Y = (y) => label + inset + (y - y0) * cell;
   const inView = (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
   const parts = [];
   parts.push(`<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="board">`);
   parts.push(`<rect width="${w}" height="${h}" rx="6" fill="var(--wood)"/>`);
-  const ext = cell * 0.45;
+  // where the crop cuts the board, lines run a little past the edge to show it goes on,
+  // stopping short of the coordinate labels
+  const ext = cell * 0.25;
   for (let x = x0; x <= x1; x++) {
     const top = Y(y0) - (y0 > 0 ? ext : 0), bottom = Y(y1) + (y1 < 18 ? ext : 0);
     parts.push(`<line x1="${X(x)}" y1="${top}" x2="${X(x)}" y2="${bottom}" stroke="var(--grid)" stroke-width="1"/>`);
-    parts.push(`<text x="${X(x)}" y="${margin * 0.45}" font-size="11" text-anchor="middle" fill="var(--grid)">${COLS[x]}</text>`);
+    parts.push(`<text x="${X(x)}" y="${label * 0.8}" font-size="11" text-anchor="middle" fill="var(--grid)">${COLS[x]}</text>`);
   }
   for (let y = y0; y <= y1; y++) {
     const left = X(x0) - (x0 > 0 ? ext : 0), right = X(x1) + (x1 < 18 ? ext : 0);
     parts.push(`<line x1="${left}" y1="${Y(y)}" x2="${right}" y2="${Y(y)}" stroke="var(--grid)" stroke-width="1"/>`);
-    parts.push(`<text x="${margin * 0.4}" y="${Y(y) + 4}" font-size="11" text-anchor="middle" fill="var(--grid)">${19 - y}</text>`);
+    parts.push(`<text x="${label * 0.6}" y="${Y(y) + 4}" font-size="11" text-anchor="middle" fill="var(--grid)">${19 - y}</text>`);
   }
   for (const sx of [3, 9, 15]) for (const sy of [3, 9, 15]) {
     if (inView(sx, sy)) parts.push(`<circle cx="${X(sx)}" cy="${Y(sy)}" r="2.6" fill="var(--grid)"/>`);
   }
 
+  // the selected move's marker takes the color of your verdict on it
   const lastXY = node && node.move ? gtpXY(pt(node.move)) : null;
+  const verdict = node && node.move ? verdictOf(jk, node.move) : null;
   const stakes = new Set(iso.stakes);
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
@@ -280,7 +334,8 @@ function renderBoard() {
         stroke="${black ? '#000' : '#444'}" stroke-width="1" opacity="${filled ? 0.32 : 1}"/>`);
       const mark = black ? '#f7f7f4' : '#151515';
       if (lastXY && lastXY[0] === x && lastXY[1] === y) {
-        parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.18}" fill="none" stroke="${mark}" stroke-width="2"/>`);
+        const color = verdict === 'right' ? RIGHT_MARK : verdict === 'wrong' ? WRONG_MARK : mark;
+        parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.18}" fill="none" stroke="${color}" stroke-width="${verdict ? 3 : 2}"/>`);
       } else if (state.stakes && stakes.has(COLS[x] + (19 - y))) {
         const r = cell * 0.2;
         parts.push(`<polygon points="${X(x)},${Y(y) - r} ${X(x) - r},${Y(y) + r * 0.75} ${X(x) + r},${Y(y) + r * 0.75}" fill="none" stroke="${mark}" stroke-width="1.6"/>`);
@@ -288,18 +343,18 @@ function renderBoard() {
     }
   }
 
-  // the decision's candidates, numbered as in the table; moves the tree plays get a
-  // thick ring, expected moves are colored
+  // the other choices at the position the selected move was played from, numbered as in
+  // the table; moves the tree plays get a thick ring, judged moves are colored
+  const played = d ? chosenMoves(d) : [];
   if (d) {
     const expect = c ? c.expect : { choose: [], avoid: [] };
-    const chosen = chosenMoves(d);
     const labeled = new Set();
     d.candidates.forEach((cand, i) => {
       if (pt(cand.move) === 'pass') return;
       const [x, y] = gtpXY(pt(cand.move));
       if (!inView(x, y) || rows[y][x] !== '.') return;
       labeled.add(cand.move);
-      const inTree = chosen.includes(cand.move);
+      const inTree = played.includes(cand.move);
       const color = expect.choose.includes(cand.move) ? 'var(--good)' : expect.avoid.includes(cand.move) ? 'var(--bad)'
         : inTree ? 'var(--accent)' : '#3a2a12';
       // a katago move it barely considered, and the tree does not play: not interesting
@@ -310,35 +365,38 @@ function renderBoard() {
     for (const m of expect.choose) {
       if (m === END || labeled.has(m)) continue;
       const [x, y] = gtpXY(pt(m));
-      if (!inView(x, y)) continue;
+      if (!inView(x, y) || rows[y][x] !== '.') continue;
       parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.36}" fill="none" stroke="var(--good)" stroke-width="3"/>`);
     }
     for (const m of expect.avoid) {
       if (m === END || labeled.has(m)) continue;
       const [x, y] = gtpXY(pt(m));
-      if (!inView(x, y)) continue;
+      if (!inView(x, y) || rows[y][x] !== '.') continue;
       const r = cell * 0.25;
       parts.push(`<path d="M${X(x) - r} ${Y(y) - r}L${X(x) + r} ${Y(y) + r}M${X(x) + r} ${Y(y) - r}L${X(x) - r} ${Y(y) + r}" stroke="var(--bad)" stroke-width="3"/>`);
     }
   }
+
+  // the author's moves at that position that the generated tree does not play: a light
+  // green ring, with a star where there is no candidate number inside
+  const numbered = new Set(d ? d.candidates.map((cand) => cand.move) : []);
+  for (const m of authorMoves(jk)) {
+    if (m === END || played.includes(m)) continue;
+    const [x, y] = gtpXY(pt(m));
+    if (!inView(x, y) || rows[y][x] !== '.') continue;
+    parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.46}" fill="none" stroke="#3f6212" stroke-width="5.5" opacity="0.35"/>`);
+    parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.46}" fill="none" stroke="${AUTHOR}" stroke-width="3.5"/>`);
+    if (!numbered.has(m)) {
+      parts.push(`<text x="${X(x)}" y="${Y(y) + 6}" font-size="17" text-anchor="middle" fill="#3f6212">★</text>`);
+    }
+  }
   parts.push('</svg>');
-  const holder = $('board');
-  holder.innerHTML = parts.join('');
-  holder.querySelector('svg').onclick = (ev) => {
-    if (!d) return;
-    const svg = ev.currentTarget;
-    const p = svg.createSVGPoint();
-    p.x = ev.clientX; p.y = ev.clientY;
-    const loc = p.matrixTransform(svg.getScreenCTM().inverse());
-    const x = Math.round((loc.x - margin) / cell) + x0, y = Math.round((loc.y - margin) / cell) + y0;
-    if (!inView(x, y) || rows[y][x] !== '.') return;
-    cycleMove(d.toMove + ' ' + COLS[x] + (19 - y));
-  };
+  $('board').innerHTML = parts.join('');
 
   const moveNo = node ? node.depth : 0;
   $('stepLabel').textContent = moveNo === 0 ? 'start position' : `after move ${moveNo}: ${lbl(node.move)}`;
-  // whose turn it is here: the decision says, or else the opposite of the last move
-  const toMove = d ? d.toMove : node && node.move ? (node.move[0] === 'B' ? 'W' : 'B') : iso.solver;
+  // whose turn it is now: the opposite of the last move, or the solver at the start
+  const toMove = node && node.move ? (node.move[0] === 'B' ? 'W' : 'B') : iso.solver;
   const icon = $('toMove');
   icon.className = 'to-move ' + toMove;
   icon.title = colorName(toMove) + ' to move';
@@ -401,8 +459,6 @@ function renderTree() {
 
   for (const n of order) {
     const x = X(n), y = Y(n.row);
-    const d = decisionAt(n.key);
-    const c = caseAt(n.key);
     const tip = [];
     parts.push(`<g class="tnode" data-key="${esc(n.key)}">`);
     if (n.key === state.sel) {
@@ -423,13 +479,16 @@ function renderTree() {
       parts.push(`<circle cx="${x}" cy="${y}" r="${R}" fill="${black ? 'rgb(41,41,41)' : 'rgb(242,242,242)'}"
         stroke="${black ? '#000' : 'rgb(131,131,131)'}" stroke-width="0.8" opacity="${n.gen ? 1 : 0.55}"/>`);
       tip.unshift(`${n.depth}. ${pt(n.move)}` + (n.gen && n.author ? '' : n.gen ? ' (generated only)' : ' (author only)'));
+      // your verdict on this move: a green dot for right, red for wrong
+      const v = verdictOf(n.parent.key, n.move);
+      if (v) {
+        parts.push(`<circle cx="${x}" cy="${y}" r="3.4" fill="${v === 'right' ? RIGHT_MARK : WRONG_MARK}" stroke="${black ? '#fff' : '#000'}" stroke-width="0.6"/>`);
+        tip.push(v === 'right' ? 'marked right' : 'marked wrong');
+      }
     }
-    // a case on the decision made here: green dot when this run passes it, red when not
-    if (c && d) {
-      const ok = passes(c, d);
-      parts.push(`<circle cx="${x}" cy="${y}" r="3.2" fill="${ok ? '#22c55e' : '#ef4444'}" stroke="${n.move && n.move[0] === 'B' ? '#fff' : '#000'}" stroke-width="0.6"/>`);
-      tip.push(ok ? 'case passes' : 'case fails');
-    }
+    // whether the line should end after this move
+    const ending = verdictOf(n.key, END);
+    if (ending) tip.push(ending === 'right' ? 'marked: the line ends here' : 'marked: the line should continue');
     parts.push(`<title>${esc(tip.join(' · '))}</title>`);
     parts.push(`<circle cx="${x}" cy="${y}" r="${R + 4}" fill="transparent"/>`);
     parts.push('</g>');
@@ -446,9 +505,12 @@ function renderSide() {
   const lines = genLines();
   const accepted = lines.length > 0 && lines.every((l) =>
     (caseFile().acceptedLines || []).some((a) => a.join(' ') === l.join(' ')));
-  let head = `<b>Correct tree</b> · generated ${lines.length} line${lines.length === 1 ? '' : 's'}, author ${rec.refs.length}`;
+  let head = `<div class="head-row"><span><b>Correct tree</b> · generated ${lines.length} line${lines.length === 1 ? '' : 's'}, author ${rec.refs.length}`;
   if (t) head += `, ${t.reproduced} reproduced`;
   if (accepted) head += ' · <span class="badge good">accepted</span>';
+  head += `</span><button data-act="accept" title="${accepted
+    ? 'Stop treating the generated lines as acceptable (A)'
+    : 'Mark every choice in the generated tree that you have not judged as right as generated, and keep its lines as acceptable (A)'}">${accepted ? 'Unaccept tree' : 'Accept tree'} <kbd>A</kbd></button></div>`;
   if (t) {
     const gaps = [];
     if (t.missingSolverMoves.length) gaps.push(`<span class="bad-text">author's working moves missing: ${t.missingSolverMoves.map(esc).join('; ')}</span>`);
@@ -460,209 +522,239 @@ function renderSide() {
     if (gaps.length) head += `<ul class="gaps">${gaps.map((g) => `<li>${g}</li>`).join('')}</ul>`;
   }
   $('lineHead').innerHTML = head;
+  $('lineHead').querySelector('[data-act="accept"]').onclick = () => acceptTree();
   renderDecision();
 }
 
 function renderDecision() {
   const el = $('decision');
   const node = state.tree.index[state.sel];
-  const d = decisionAt(state.sel);
-  const author = authorMoves(state.sel);
-  const authorText = author.length ? 'Author here: ' + author.map(lbl).join(', ') : 'Off the author\'s correct tree';
-  if (!d) {
-    el.innerHTML = `<h3>${node.move ? `${node.depth}. ${esc(pt(node.move))}` : 'Start'}</h3>
-      <div class="reason">The generator never reached this position.<br>${esc(authorText)}</div>`;
-    return;
-  }
-  const c = caseAt(state.sel);
+  const move = node.move;
+  const iso = record().isolation;
+  const jk = judgedKey();
+  const d = decisionAt(jk);
+  const c = caseAt(jk);
   const expect = c ? c.expect : { choose: [], avoid: [] };
-  const chosen = chosenMoves(d);
-  const solver = d.role === 'solver';
-  const choseText = d.chose === END ? 'end the line here'
-    : solver ? 'play ' + chosen.map(pt).join(', ') : 'answer ' + chosen.map(pt).join(', ');
+  const parts = [];
 
-  let status;
-  if (!c) {
-    status = '<div class="status none">No case yet. <kbd>g</kbd> right, <kbd>b</kbd> wrong, or mark moves in the table.</div>';
+  if (move) {
+    // the selected move and your verdict on it
+    const where = node.gen && node.author ? 'in both trees' : node.gen ? 'generated tree only' : 'author only';
+    const solverMove = isSolverMove(move);
+    const v = verdictOf(jk, move);
+    const rightMeans = solverMove ? 'it works, so it must be in the tree' : 'it is a good resistance for the tree to play';
+    parts.push(`<h3>${node.depth}. ${colorName(move[0])} ${esc(pt(move))} <span class="badge">${where}</span></h3>`);
+    parts.push(`<div class="verdict ${v || 'none'}">${v === 'right' ? 'You marked this move right'
+      : v === 'wrong' ? 'You marked this move wrong' : 'This move is not judged yet'}</div>`);
+    parts.push(`<div class="actions">
+      <button class="good ${v === 'right' ? 'on' : ''}" data-act="right" title="Mark this move right: ${rightMeans} (g)">Right <kbd>g</kbd></button>
+      <button class="bad ${v === 'wrong' ? 'on' : ''}" data-act="wrong" title="Mark this move wrong: it must not be in the tree (b)">Wrong <kbd>b</kbd></button>
+      <button data-act="clear" title="Remove your verdict on this move (x)">Clear <kbd>x</kbd></button>
+    </div>`);
+
+    // tags and note for this move
+    const n = (c && c.moves && c.moves[move]) || { tags: [], note: '' };
+    const tags = [...new Set([...TAGS, ...(n.tags || [])])].map((tg) =>
+      `<button class="tag ${(n.tags || []).includes(tg) ? 'on' : ''}" data-tag="${esc(tg)}" title="${esc(TAG_HELP[tg] || 'your own tag')}: click to add or remove it on this move">${esc(tg)}</button>`).join('');
+    parts.push(`<div class="section-label">Tags on this move</div>
+      <div class="tags">${tags}<input id="tagInput" placeholder="new tag…" aria-label="new tag" title="Type a new tag and press Enter to add it to this move"></div>
+      <div class="section-label">Note on this move</div>
+      <textarea id="noteInput" placeholder="why, in a sentence" title="Saved when you leave the box">${esc(n.note || '')}</textarea>`);
+
+    // after a solver move: should the line end here?
+    if (solverMove) {
+      const dn = decisionAt(node.key);
+      const ending = verdictOf(node.key, END);
+      const gen = dn ? (dn.chose === END ? 'The generated line ends here.'
+        : `The generated tree goes on: ${colorName(dn.toMove)} answers ${chosenMoves(dn).map(pt).join(', ')}.`)
+        : node.gen ? 'The generated line was cut short here.' : 'The generator never reached this position.';
+      const authorNext = node.children.filter((ch) => ch.author).map((ch) => pt(ch.move));
+      const auth = node.authorEnd ? ' The author ends the line here.'
+        : authorNext.length ? ` The author goes on with ${authorNext.join(', ')}.` : '';
+      parts.push(`<div class="section-label">After this move</div>
+        <div class="reason">${esc(gen + auth)}</div>
+        <div class="actions">
+          <button class="good ${ending === 'right' ? 'on' : ''}" data-act="end" title="The line should end after this move: the opponent has no real try left. Any response the tree plays here is marked wrong (e)">Line ends here <kbd>e</kbd></button>
+          <button class="bad ${ending === 'wrong' ? 'on' : ''}" data-act="continue" title="The line should not end after this move: the opponent still has a real try (c)">Line continues <kbd>c</kbd></button>
+        </div>`);
+    }
   } else {
-    const ok = passes(c, d);
-    const exp = [expect.choose.length ? (solver ? 'must be in the tree: ' : 'right: ') + expect.choose.map(lbl).join(', ') : '',
-      expect.avoid.length ? 'wrong: ' + expect.avoid.map(lbl).join(', ') : ''].filter(Boolean).join(' · ');
-    status = `<div class="status ${ok ? 'pass' : 'fail'}">${ok ? 'This run gets it right' : 'This run gets it wrong'}
-      · ${esc(exp)} <span class="muted">(${esc(c.source)}${c.by && c.by !== c.source ? ', ' + esc(c.by) : ''})</span></div>`;
+    parts.push(`<h3>Start position · ${colorName(iso.solver)} to play</h3>
+      <div class="reason">Select a move in the tree to judge it.</div>`);
   }
 
-  const isRight = chosen.every((m) => expect.choose.includes(m));
-  const isWrong = expect.avoid.includes(d.chose);
-  const endHereOn = !solver && d.chose !== END && isWrong && expect.choose.includes(END);
-  const actions = [
-    `<button class="good ${isRight ? 'on' : ''}" data-act="good" title="${solver ? 'every move the tree plays here works' : 'the chosen response is right'}">Right <kbd>g</kbd></button>`,
-    `<button class="bad ${isWrong && !endHereOn ? 'on' : ''}" data-act="bad">${d.chose === END ? 'Should continue' : 'Wrong'} <kbd>b</kbd></button>`,
-    !solver && d.chose !== END ? `<button class="bad ${endHereOn ? 'on' : ''}" data-act="end">Should end here <kbd>e</kbd></button>` : '',
-    `<button data-act="clear">Clear <kbd>x</kbd></button>`,
-    c ? `<button data-act="delete">Delete case <kbd>d</kbd></button>` : '',
-    `<button data-act="accept" title="mark every unjudged decision right and keep the generated lines as acceptable">Accept tree <kbd>A</kbd></button>`,
-  ].join('');
-
-  const star = (m) => (author.includes(m) ? ' <span class="muted" title="the author plays this">★</span>' : '');
-  const head = solver
-    ? '<th></th><th class="l">#</th><th class="l">move</th><th class="l">from</th><th>prior</th><th>visits</th><th>human</th><th>lead after</th><th>in tree</th>'
-    : '<th></th><th class="l">#</th><th class="l">move</th><th class="l">from</th><th>prior</th><th>visits</th><th>human</th><th>threat</th><th class="l">answer</th><th>ans prior</th><th>human ans</th><th title="solver answers that hold the result">answers</th><th>stake</th>';
-  const rows = d.candidates.map((cand, i) => {
-    const mark = expect.choose.includes(cand.move) ? '<td class="mark good">✓</td>'
-      : expect.avoid.includes(cand.move) ? '<td class="mark bad">✗</td>' : '<td class="mark"></td>';
-    const cls = chosen.includes(cand.move) ? 'chosen' : '';
-    const cells = solver
-      ? `<td class="l">${esc(pt(cand.move))}${star(cand.move)}</td><td class="l dim">${esc(cand.source)}</td>
-         <td>${fmt(cand.prior)}</td><td>${fmt(cand.visits)}</td><td>${fmt(cand.humanPolicy)}</td>
-         <td>${cand.error ? 'err' : cand.afterLead === undefined || cand.afterLead === null ? '<span class="dim">–</span>' : fmt(cand.afterLead, 1)}</td>
-         <td>${chosen.includes(cand.move) ? (cand.move === d.chose ? 'main' : 'yes') : ''}</td>`
-      : `<td class="l">${esc(pt(cand.move))}${star(cand.move)}</td>
-         <td class="l dim">${esc(cand.source)}</td><td>${fmt(cand.prior)}</td><td>${fmt(cand.visits)}</td>
-         <td>${fmt(cand.humanPolicy)}</td><td>${cand.error ? 'err' : fmt(cand.threat)}</td><td class="l">${esc(cand.answer || '')}</td>
-         <td>${fmt(cand.answerPrior)}</td><td>${fmt(cand.humanAnswer)}</td><td>${fmt(cand.answers)}</td><td>${fmt(cand.stakeDist)}</td>`;
-    return `<tr class="${cls}" data-move="${esc(cand.move)}">${mark}<td class="l dim">${i + 1}</td>${cells}</tr>`;
-  });
-  if (!solver) {
-    const mark = expect.choose.includes(END) ? '<td class="mark good">✓</td>'
-      : expect.avoid.includes(END) ? '<td class="mark bad">✗</td>' : '<td class="mark"></td>';
-    rows.push(`<tr class="${d.chose === END ? 'chosen' : ''}" data-move="${END}">${mark}<td class="l dim">0</td>
-      <td class="l" colspan="12">end the line${star(END)}</td></tr>`);
+  // the choices at the position the selected move was played from
+  const author = authorMoves(jk);
+  const played = d ? chosenMoves(d) : [];
+  const missing = author.filter((m) => !played.includes(m));
+  const authorText = (author.length ? 'Author: ' + author.map(lbl).join(', ') : 'Off the author\'s correct tree')
+    + (d && missing.length ? ` (not in the generated tree: ${missing.map(lbl).join(', ')})` : '');
+  parts.push(`<div class="section-label">${move ? `Choices where ${esc(pt(move))} was played` : 'First move choices'}</div>`);
+  if (!d) {
+    parts.push(`<div class="reason">The generator never reached this position, so there are no candidates to show.<br>${esc(authorText)}</div>`);
+  } else {
+    const solver = d.role === 'solver';
+    const choseText = d.chose === END ? 'end the line' : (solver ? 'play ' : 'answer ') + played.map(pt).join(', ');
+    parts.push(`<div class="reason">The generator chose to ${esc(choseText)}: ${esc(d.reason || '')}<br>${esc(authorText)}</div>`);
+    if (c) {
+      const ok = passes(c, d);
+      parts.push(`<div class="status ${ok ? 'pass' : 'fail'}" title="${solver
+        ? 'At a solver turn every move you marked right must be in the tree, and none you marked wrong'
+        : 'At an opponent turn the tree must play one of the moves you marked right, and none you marked wrong'}">${ok
+        ? 'The generator\'s choice here agrees with your judgments' : 'The generator\'s choice here goes against your judgments'}
+        <span class="muted">(${esc(c.source)}${c.by && c.by !== c.source ? ', ' + esc(c.by) : ''})</span></div>`);
+    }
+    const star = (m) => (author.includes(m) ? ' <span class="muted" title="the author plays this">★</span>' : '');
+    const headRow = solver
+      ? '<th></th><th class="l">#</th><th class="l">move</th><th class="l">from</th><th>prior</th><th>visits</th><th>human</th><th title="the solver\'s score lead after this move">lead after</th><th>in tree</th>'
+      : '<th></th><th class="l">#</th><th class="l">move</th><th class="l">from</th><th>prior</th><th>visits</th><th>human</th><th title="stones that change fate if this move is ignored">threat</th><th class="l">answer</th><th>ans prior</th><th>human ans</th><th title="solver answers that hold the result">answers</th><th title="distance to the stones at stake">stake</th>';
+    const rows = d.candidates.map((cand, i) => {
+      const mark = expect.choose.includes(cand.move) ? '<td class="mark good">✓</td>'
+        : expect.avoid.includes(cand.move) ? '<td class="mark bad">✗</td>' : '<td class="mark"></td>';
+      const cls = [played.includes(cand.move) ? 'chosen' : '', cand.move === move ? 'this' : ''].join(' ');
+      const cells = solver
+        ? `<td class="l">${esc(pt(cand.move))}${star(cand.move)}${cand.move === move ? ' <span class="muted">(this move)</span>' : ''}</td><td class="l dim">${esc(cand.source)}</td>
+           <td>${fmt(cand.prior)}</td><td>${fmt(cand.visits)}</td><td>${fmt(cand.humanPolicy)}</td>
+           <td>${cand.error ? 'err' : cand.afterLead === undefined || cand.afterLead === null ? '<span class="dim">–</span>' : fmt(cand.afterLead, 1)}</td>
+           <td>${played.includes(cand.move) ? (cand.move === d.chose ? 'main' : 'yes') : ''}</td>`
+        : `<td class="l">${esc(pt(cand.move))}${star(cand.move)}${cand.move === move ? ' <span class="muted">(this move)</span>' : ''}</td>
+           <td class="l dim">${esc(cand.source)}</td><td>${fmt(cand.prior)}</td><td>${fmt(cand.visits)}</td>
+           <td>${fmt(cand.humanPolicy)}</td><td>${cand.error ? 'err' : fmt(cand.threat)}</td><td class="l">${esc(cand.answer || '')}</td>
+           <td>${fmt(cand.answerPrior)}</td><td>${fmt(cand.humanAnswer)}</td><td>${fmt(cand.answers)}</td><td>${fmt(cand.stakeDist)}</td>`;
+      return `<tr class="${cls}">${mark}<td class="l dim">${i + 1}</td>${cells}</tr>`;
+    });
+    if (!solver) {
+      const mark = expect.choose.includes(END) ? '<td class="mark good">✓</td>'
+        : expect.avoid.includes(END) ? '<td class="mark bad">✗</td>' : '<td class="mark"></td>';
+      rows.push(`<tr class="${d.chose === END ? 'chosen' : ''}">${mark}<td class="l dim"></td>
+        <td class="l" colspan="12">end the line${star(END)}</td></tr>`);
+    }
+    parts.push(`<table class="cands"><thead><tr>${headRow}</tr></thead><tbody>${rows.join('')}</tbody></table>`);
+    parts.push(`<div class="muted" style="font-size:12px">${solver
+      ? 'Every move that works must be in the tree.'
+      : 'The tree should play a resistance you marked right.'} ✓ / ✗ show your verdicts, ★ the author's moves. Select a move in the tree to judge it.</div>`);
   }
-  const help = solver
-    ? 'Every move that works must be in the tree. Click a row (or press its number, or click the board) to cycle it: works ✓, fails ✗, unjudged. ★ marks the author\'s moves.'
-    : 'Click a row (or press its number, or click the board) to cycle it: acceptable ✓, wrong ✗, unjudged. ★ marks the author\'s moves.';
-
-  const tags = [...new Set([...TAGS, ...((c && c.tags) || [])])].map((tg) =>
-    `<button class="tag ${c && c.tags.includes(tg) ? 'on' : ''}" data-tag="${esc(tg)}">${esc(tg)}</button>`).join('');
-
-  el.innerHTML = `
-    <h3>${node.move ? `After ${node.depth}. ${esc(pt(node.move))} · ` : ''}${colorName(d.toMove)} to play · ${esc(d.role)}</h3>
-    <div class="reason">Chose to ${esc(choseText)}: ${esc(d.reason || '')}<br>${esc(authorText)}</div>
-    ${status}
-    <div class="actions">${actions}</div>
-    <table class="cands"><thead><tr>${head}</tr></thead><tbody>${rows.join('')}</tbody></table>
-    <div class="muted" style="font-size:12px">${help}</div>
-    <div class="section-label">Tags</div>
-    <div class="tags">${tags}<input id="tagInput" placeholder="new tag…" aria-label="new tag"></div>
-    <div class="section-label">Note</div>
-    <textarea id="noteInput" placeholder="why, in a sentence">${esc((c && c.note) || '')}</textarea>`;
+  el.innerHTML = parts.join('');
 
   el.querySelectorAll('[data-act]').forEach((b) => { b.onclick = () => act(b.dataset.act); });
-  el.querySelectorAll('tr[data-move]').forEach((tr) => { tr.onclick = () => cycleMove(tr.dataset.move); });
   el.querySelectorAll('[data-tag]').forEach((b) => { b.onclick = () => toggleTag(b.dataset.tag); });
   const tagInput = $('tagInput');
-  tagInput.onkeydown = (ev) => {
-    if (ev.key === 'Enter' && tagInput.value.trim()) { toggleTag(tagInput.value.trim().toLowerCase().replace(/\s+/g, '-')); }
-    ev.stopPropagation();
-  };
+  if (tagInput) {
+    tagInput.onkeydown = (ev) => {
+      if (ev.key === 'Enter' && tagInput.value.trim()) toggleTag(tagInput.value.trim().toLowerCase().replace(/\s+/g, '-'));
+      ev.stopPropagation();
+    };
+  }
   const note = $('noteInput');
-  note.onchange = () => save({ note: note.value });
-  note.onkeydown = (ev) => { ev.stopPropagation(); if (ev.key === 'Escape') note.blur(); };
+  if (note) {
+    note.onchange = () => editMoveNote((n) => { n.note = note.value; });
+    note.onkeydown = (ev) => { ev.stopPropagation(); if (ev.key === 'Escape') note.blur(); };
+  }
 }
 
 // ---------- actions ----------
 
-function currentEdit() {
-  const d = decisionAt(state.sel);
-  const c = caseAt(state.sel);
-  return {
-    d,
-    expect: c ? { choose: [...c.expect.choose], avoid: [...c.expect.avoid] } : { choose: [], avoid: [] },
-    tags: c ? [...c.tags] : [],
-    note: c ? c.note || '' : '',
-    exists: !!c,
-  };
-}
-
 const without = (list, m) => list.filter((x) => x !== m);
 
-async function act(kind) {
-  if (kind === 'accept') return acceptTree();
-  const e = currentEdit();
-  if (!e.d) return;
-  const chose = e.d.chose;
-  const chosen = chosenMoves(e.d);
-  if (kind === 'delete') {
-    if (!e.exists) return;
-    state.data.cases = await api(`/api/case-delete?name=${encodeURIComponent(state.name)}&key=${encodeURIComponent(state.sel)}`, { method: 'POST' });
-    return afterSave('case deleted');
-  }
-  if (kind === 'good') {
-    // right: everything the tree plays here (for the solver, every move kept as working)
-    const on = chosen.every((m) => e.expect.choose.includes(m));
-    for (const m of chosen) {
-      e.expect.choose = without(e.expect.choose, m);
-      e.expect.avoid = without(e.expect.avoid, m);
-      if (!on) e.expect.choose.push(m);
-    }
-  } else if (kind === 'bad') {
-    const on = e.expect.avoid.includes(chose);
-    e.expect.choose = without(e.expect.choose, chose);
-    e.expect.avoid = without(e.expect.avoid, chose);
-    if (!on) e.expect.avoid.push(chose);
-  } else if (kind === 'end') {
-    // ending replaces the opponent's response; a solver decision cannot end the line
-    if (chose === END || e.d.role !== 'opponent') return;
-    e.expect.choose = without(e.expect.choose, chose);
-    if (!e.expect.avoid.includes(chose)) e.expect.avoid.push(chose);
-    e.expect.avoid = without(e.expect.avoid, END);
-    if (!e.expect.choose.includes(END)) e.expect.choose.push(END);
-  } else if (kind === 'clear') {
-    for (const m of chosen) {
-      e.expect.choose = without(e.expect.choose, m);
-      e.expect.avoid = without(e.expect.avoid, m);
-    }
-  }
-  await saveEdit(e);
-}
-
-// cycle a move: unjudged -> right -> wrong -> unjudged
-async function cycleMove(move) {
-  const e = currentEdit();
-  if (!e.d) return;
-  if (e.expect.choose.includes(move)) {
-    e.expect.choose = without(e.expect.choose, move);
-    e.expect.avoid.push(move);
-  } else if (e.expect.avoid.includes(move)) {
-    e.expect.avoid = without(e.expect.avoid, move);
-  } else {
-    e.expect.choose.push(move);
-  }
-  await saveEdit(e);
-}
-
-async function toggleTag(tag) {
-  const e = currentEdit();
-  if (!e.d) return;
-  e.tags = e.tags.includes(tag) ? without(e.tags, tag) : [...e.tags, tag];
-  await saveEdit(e);
-}
-
-async function save(fields) {
-  const e = currentEdit();
-  if (!e.d) return;
-  Object.assign(e, fields);
-  await saveEdit(e);
-}
-
-async function saveEdit(e) {
-  const empty = !e.expect.choose.length && !e.expect.avoid.length && !e.tags.length && !e.note.trim();
+// change the case at a position. mutate edits { expect, tags, note, moves }; a case left
+// with nothing in it is deleted
+async function editCase(key, mutate) {
+  const node = state.tree.index[key];
+  const c = caseAt(key);
+  const e = {
+    expect: c ? { choose: [...c.expect.choose], avoid: [...c.expect.avoid] } : { choose: [], avoid: [] },
+    tags: c ? [...(c.tags || [])] : [],
+    note: c ? c.note || '' : '',
+    moves: c && c.moves ? JSON.parse(JSON.stringify(c.moves)) : {},
+  };
+  mutate(e);
+  const notesEmpty = Object.values(e.moves).every((n) => !(n.tags && n.tags.length) && !(n.note && n.note.trim()));
+  const empty = !e.expect.choose.length && !e.expect.avoid.length && !e.tags.length && !e.note.trim() && notesEmpty;
   try {
     if (empty) {
-      if (!e.exists) return render();
-      state.data.cases = await api(`/api/case-delete?name=${encodeURIComponent(state.name)}&key=${encodeURIComponent(keyOf(e.d.at))}`, { method: 'POST' });
-      return afterSave('case removed');
+      if (!c) return render();
+      state.data.cases = await api(`/api/case-delete?name=${encodeURIComponent(state.name)}&key=${encodeURIComponent(key)}`, { method: 'POST' });
+      return afterSave('cleared');
     }
     state.data.cases = await api('/api/case?name=' + encodeURIComponent(state.name), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ at: e.d.at, expect: e.expect, tags: e.tags, note: e.note }),
+      body: JSON.stringify({ at: node.at, expect: e.expect, tags: e.tags, note: e.note, moves: e.moves }),
     });
     afterSave('saved');
   } catch (err) {
     toast('save failed: ' + err.message);
   }
+}
+
+// mark a move right or wrong at a position, or clear it (verdict null)
+function setVerdict(key, move, verdict) {
+  return editCase(key, (e) => {
+    e.expect.choose = without(e.expect.choose, move);
+    e.expect.avoid = without(e.expect.avoid, move);
+    if (verdict === 'right') e.expect.choose.push(move);
+    if (verdict === 'wrong') e.expect.avoid.push(move);
+  });
+}
+
+// right / wrong / clear the selected move; pressing right on a right move clears it
+function judgeSelected(verdict) {
+  const node = state.tree.index[state.sel];
+  if (!node.move) return toast('select a move in the tree to judge it');
+  const current = verdictOf(node.parent.key, node.move);
+  return setVerdict(node.parent.key, node.move, verdict && current === verdict ? null : verdict);
+}
+
+// whether the line should end right after the selected solver move
+function judgeEnd(kind) {
+  const node = state.tree.index[state.sel];
+  if (!node.move || !isSolverMove(node.move)) return toast('select a solver move to judge whether the line ends after it');
+  const current = verdictOf(node.key, END);
+  const target = kind === 'end' ? 'right' : 'wrong';
+  const dn = decisionAt(node.key);
+  return editCase(node.key, (e) => {
+    e.expect.choose = without(e.expect.choose, END);
+    e.expect.avoid = without(e.expect.avoid, END);
+    if (current === target) return; // pressed again: clear
+    if (kind === 'end') {
+      e.expect.choose.push(END);
+      // ending here makes any response the tree plays here wrong
+      if (dn) {
+        for (const m of chosenMoves(dn)) {
+          if (m === END) continue;
+          e.expect.choose = without(e.expect.choose, m);
+          if (!e.expect.avoid.includes(m)) e.expect.avoid.push(m);
+        }
+      }
+    } else {
+      e.expect.avoid.push(END);
+    }
+  });
+}
+
+// edit the tags and note on the selected move
+function editMoveNote(mutate) {
+  const node = state.tree.index[state.sel];
+  if (!node.move) return;
+  return editCase(node.parent.key, (e) => {
+    const n = e.moves[node.move] || { tags: [], note: '' };
+    n.tags = n.tags || [];
+    mutate(n);
+    e.moves[node.move] = n;
+  });
+}
+
+function toggleTag(tag) {
+  return editMoveNote((n) => { n.tags = n.tags.includes(tag) ? without(n.tags, tag) : [...n.tags, tag]; });
+}
+
+function act(kind) {
+  if (kind === 'right') return judgeSelected('right');
+  if (kind === 'wrong') return judgeSelected('wrong');
+  if (kind === 'clear') return judgeSelected(null);
+  if (kind === 'end') return judgeEnd('end');
+  if (kind === 'continue') return judgeEnd('continue');
+  if (kind === 'accept') return acceptTree();
 }
 
 async function acceptTree() {
@@ -713,21 +805,16 @@ document.addEventListener('keydown', (ev) => {
   else if (k === 'Home') select('root');
   else if (k === 'n' && pi < problems.length - 1) openProblem(problems[pi + 1].problem);
   else if (k === 'p' && pi > 0) openProblem(problems[pi - 1].problem);
-  else if (k === 'g') act('good');
-  else if (k === 'b') act('bad');
-  else if (k === 'e') act('end');
+  else if (k === 'g') act('right');
+  else if (k === 'b') act('wrong');
   else if (k === 'x') act('clear');
-  else if (k === 'd') act('delete');
+  else if (k === 'e') act('end');
+  else if (k === 'c') act('continue');
   else if (k === 'A') act('accept');
   else if (k === 's') { state.stakes = !state.stakes; renderBoard(); }
   else if (k === 'f') { state.full = !state.full; renderBoard(); }
   else if (k === '?') $('help').showModal();
-  else if (/^[0-9]$/.test(k)) {
-    const d = decisionAt(state.sel);
-    if (!d) return;
-    if (k === '0') { if (d.role === 'opponent') cycleMove(END); }
-    else if (d.candidates[+k - 1]) cycleMove(d.candidates[+k - 1].move);
-  } else return;
+  else return;
   ev.preventDefault();
 });
 

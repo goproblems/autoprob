@@ -63,6 +63,11 @@ public class CaseStore {
     }
 
     public void save(CaseFile cf) throws IOException {
+        // a problem with no cases and no accepted lines left needs no file
+        if (cf.decisions.isEmpty() && cf.acceptedLines.isEmpty()) {
+            Files.deleteIfExists(file(cf.problem).toPath());
+            return;
+        }
         if (!dir.exists() && !dir.mkdirs()) {
             throw new IOException("cannot create case directory: " + dir);
         }

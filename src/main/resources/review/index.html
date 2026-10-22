@@ -21,8 +21,8 @@
       <div id="boardBar">
         <span class="step"><span id="toMove" class="to-move" role="img"></span><span id="stepLabel"></span></span>
         <span class="spacer"></span>
-        <label><input type="checkbox" id="showStakes"> stakes</label>
-        <label><input type="checkbox" id="fullBoard"> full board</label>
+        <label title="Mark the stones whose fate depends on solving (s)"><input type="checkbox" id="showStakes"> stakes</label>
+        <label title="Show the whole board instead of the problem area (f)"><input type="checkbox" id="fullBoard"> full board</label>
       </div>
       <div id="notes"></div>
       <div class="tree-head">
@@ -30,9 +30,9 @@
         <span class="legend">
           <span><i class="sw" style="background:#65a30d"></i>both</span>
           <span><i class="sw" style="background:#3b82f6"></i>generated only</span>
-          <span><i class="sw dashed"></i>author only</span>
+          <span><i class="sw dashed"></i>author only (<i class="ring"></i> on the board)</span>
           <span><i class="halo"></i>line ends</span>
-          <span><i class="dot" style="background:#22c55e"></i><i class="dot" style="background:#ef4444"></i>case passes / fails</span>
+          <span><i class="dot" style="background:#22c55e"></i><i class="dot" style="background:#ef4444"></i>marked right / wrong</span>
         </span>
       </div>
       <div id="tree"></div>
@@ -50,17 +50,15 @@
     <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>choose which branch <kbd>→</kbd> follows from here (drawn thick)</td></tr>
     <tr><td><kbd>Home</kbd></td><td>start position</td></tr>
     <tr><td><kbd>p</kbd> <kbd>n</kbd></td><td>previous / next problem</td></tr>
-    <tr><td><kbd>g</kbd></td><td>what the tree plays here is right</td></tr>
-    <tr><td><kbd>b</kbd></td><td>the main move is wrong (at an end: the line should continue)</td></tr>
-    <tr><td><kbd>e</kbd></td><td>the line should end here instead of this response</td></tr>
-    <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>cycle a candidate: right, wrong, unjudged (or click the board); <kbd>0</kbd> the end</td></tr>
-    <tr><td><kbd>x</kbd></td><td>clear the verdict on what the tree plays here</td></tr>
-    <tr><td><kbd>d</kbd></td><td>delete this decision's case</td></tr>
+    <tr><td><kbd>g</kbd></td><td>mark the selected move right</td></tr>
+    <tr><td><kbd>b</kbd></td><td>mark the selected move wrong</td></tr>
+    <tr><td><kbd>x</kbd></td><td>clear your verdict on the selected move</td></tr>
+    <tr><td><kbd>e</kbd> <kbd>c</kbd></td><td>after the selected solver move, the line should end / continue</td></tr>
     <tr><td><kbd>A</kbd></td><td>accept the whole generated tree</td></tr>
     <tr><td><kbd>s</kbd> <kbd>f</kbd></td><td>toggle stakes / full board</td></tr>
   </table>
-  <p class="muted">Every change is saved to <code>cases/&lt;problem&gt;.json</code> immediately.</p>
-  <form method="dialog"><button>Close</button></form>
+  <p class="muted">A verdict is about the selected move: whether it belongs in the tree at the position it was played from. Every change is saved to <code>cases/&lt;problem&gt;.json</code> immediately.</p>
+  <form method="dialog"><button title="Close the shortcut list">Close</button></form>
 </dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 <script src="app.js"></script>

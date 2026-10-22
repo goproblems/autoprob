@@ -1,7 +1,10 @@
 package autoprob.validate.cases;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import autoprob.validate.DecisionRecord;
 import autoprob.validate.IsolationRecord;
@@ -19,8 +22,10 @@ public class DecisionCase {
     public String role;   // solver or opponent
     public Expect expect = new Expect();
     public String source; // author (from the problem's RIGHT paths) or review (judged by a person)
-    public List<String> tags = new ArrayList<>();
+    public List<String> tags = new ArrayList<>(); // about the position as a whole
     public String note;
+    // a reviewer's tags and note on single moves from this position, keyed by move (or END)
+    public Map<String, MoveNote> moves;
     public String by;
     public String created;
     public IsolationRecord isolation;
@@ -30,6 +35,11 @@ public class DecisionCase {
     public static class Expect {
         public List<String> choose = new ArrayList<>();
         public List<String> avoid = new ArrayList<>();
+    }
+
+    public static class MoveNote {
+        public List<String> tags = new ArrayList<>();
+        public String note;
     }
 
     // what the generator saw and picked when the case was recorded
@@ -42,6 +52,17 @@ public class DecisionCase {
 
     public String key() {
         return DecisionRecord.key(at);
+    }
+
+    // every tag on the case, on the position and on its moves
+    public List<String> allTags() {
+        Set<String> out = new LinkedHashSet<>(tags);
+        if (moves != null) {
+            for (MoveNote n : moves.values()) {
+                if (n != null && n.tags != null) out.addAll(n.tags);
+            }
+        }
+        return new ArrayList<>(out);
     }
 
     // whether a decision meets this case. no move the decision puts in the tree may be in

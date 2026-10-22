@@ -30,13 +30,16 @@ import autoprob.validate.cases.DecisionCase;
 // cmd=review: a local web page for judging a redo run's decisions. each judgment is
 // saved straight into the case library (cases/<problem>.json), with the frozen
 // isolation and the candidates the generator saw, so it becomes a replayable test case.
+// works on a run that is still going or was stopped: it shows the problems finished so far.
 //
 // run=<id|dir|latest> picks the run, review.port the port (default 8765), review.by
 // the name stored on judgments (default the login name). no engine needed.
 public class ReviewServer {
     private final Properties props;
     private final File runDir;
-    private final RunRecorder.Manifest manifest;
+    // the run's manifest, re-read on each request so problems that finish while a run is
+    // still going show up without restarting the server
+    private RunRecorder.Manifest manifest;
     private final CaseStore store;
     private final String by;
 
@@ -46,6 +49,7 @@ public class ReviewServer {
         DecisionCase.Expect expect;
         List<String> tags;
         String note;
+        Map<String, DecisionCase.MoveNote> moves;
     }
 
     public ReviewServer(Properties props) throws IOException {
@@ -71,7 +75,7 @@ public class ReviewServer {
         server.createContext("/api/unaccept-line", ex -> handle(ex, () -> acceptLine(query(ex).get("name"), false)));
         server.createContext("/", this::serveStatic);
         server.start();
-        System.out.println("reviewing run " + manifest.id + " (" + manifest.problems.size() + " problems), saving cases to "
+        System.out.println("reviewing run " + manifest.id + " (" + manifest.problems.size() + " problems so far), saving cases to "
                 + store.getDir().getPath());
         System.out.println("open http://localhost:" + port + "/  (ctrl-c to stop)");
     }
@@ -102,6 +106,7 @@ public class ReviewServer {
 
     // the run and, per problem, its scores and how much of it has been judged
     private Object runSummary() throws Exception {
+        manifest = RunRecorder.readManifest(runDir);
         List<Map<String, Object>> problems = new ArrayList<>();
         for (String name : manifest.problems) {
             ProblemRecord rec = RunRecorder.readProblem(runDir, name);
@@ -172,7 +177,13 @@ public class ReviewServer {
         for (DecisionRecord d : rec.decisions) {
             if (d.key().equals(key)) decision = d;
         }
-        if (decision == null) throw new IllegalArgumentException("no decision at " + key + " in this run");
+        // a position only the author's tree reaches has no generator decision, but a
+        // judgment there still makes a case: replay will make the decision fresh
+        if (decision == null && !inEitherTree(rec, update.at)) {
+            throw new IllegalArgumentException("position " + key + " is in neither tree");
+        }
+        String toMove = decision != null ? decision.toMove : update.at.isEmpty() ? rec.isolation.solver
+                : update.at.get(update.at.size() - 1).startsWith("B") ? "W" : "B";
 
         CaseFile cf = caseFile(rec);
         DecisionCase c = cf.find(key);
@@ -182,18 +193,46 @@ public class ReviewServer {
             c.created = LocalDate.now().toString();
             cf.decisions.add(c);
         }
-        c.toMove = decision.toMove;
-        c.role = decision.role;
+        c.toMove = toMove;
+        c.role = toMove.equals(rec.isolation.solver) ? DecisionRecord.SOLVER : DecisionRecord.OPPONENT;
         c.expect = update.expect == null ? new DecisionCase.Expect() : update.expect;
         c.tags = update.tags == null ? new ArrayList<>() : update.tags;
         c.note = update.note == null || update.note.isBlank() ? null : update.note;
+        c.moves = cleanMoves(update.moves);
         c.source = DecisionCase.REVIEW;
         c.by = by;
         // the judgment was made looking at this run's decision, so keep its context
         c.isolation = rec.isolation;
-        c.observed = observed(decision);
+        c.observed = decision == null ? null : observed(decision);
         store.save(cf);
         return cf;
+    }
+
+    // per move tags and notes, without the empty ones; null when nothing is left
+    private static Map<String, DecisionCase.MoveNote> cleanMoves(Map<String, DecisionCase.MoveNote> moves) {
+        if (moves == null) return null;
+        Map<String, DecisionCase.MoveNote> out = new LinkedHashMap<>();
+        for (Map.Entry<String, DecisionCase.MoveNote> e : moves.entrySet()) {
+            DecisionCase.MoveNote n = e.getValue();
+            if (n == null) continue;
+            boolean noTags = n.tags == null || n.tags.isEmpty();
+            boolean noNote = n.note == null || n.note.isBlank();
+            if (noTags && noNote) continue;
+            if (noNote) n.note = null;
+            if (noTags) n.tags = new ArrayList<>();
+            out.put(e.getKey(), n);
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    // whether a position lies on a line of the generated or the author's tree
+    private static boolean inEitherTree(ProblemRecord rec, List<String> at) {
+        List<List<String>> lines = new ArrayList<>(lines(rec));
+        lines.addAll(rec.refs);
+        for (List<String> line : lines) {
+            if (line.size() >= at.size() && line.subList(0, at.size()).equals(at)) return true;
+        }
+        return false;
     }
 
     private Object deleteCase(String name, String key) throws Exception {
@@ -259,7 +298,8 @@ public class ReviewServer {
         return cf;
     }
 
-    private String check(String name) {
+    private String check(String name) throws IOException {
+        if (name != null && !manifest.problems.contains(name)) manifest = RunRecorder.readManifest(runDir);
         if (name == null || !manifest.problems.contains(name)) {
             throw new IllegalArgumentException("no problem " + name + " in run " + manifest.id);
         }

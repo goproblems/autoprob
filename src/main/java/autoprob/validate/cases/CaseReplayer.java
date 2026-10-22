@@ -156,7 +156,7 @@ public class CaseReplayer {
         r.at = c.at;
         r.role = c.role;
         r.source = c.source;
-        r.tags = c.tags;
+        r.tags = c.allTags();
         r.expect = c.describeExpect();
         try {
             ProblemIsolator.IsolatedProblem iso = c.isolation.toIsolated();

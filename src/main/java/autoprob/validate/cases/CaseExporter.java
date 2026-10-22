@@ -39,7 +39,7 @@ public class CaseExporter {
                 DecisionCase c = item.c;
                 List<Point> stakes = stakes(c);
                 String prefix = csv(item.file.problem) + "," + csv(c.key()) + "," + c.at.size() + "," + c.role
-                        + "," + c.source + "," + csv(String.join(" ", c.tags)) + "," + csv(String.join(" ", c.expect.choose))
+                        + "," + c.source + "," + csv(String.join(" ", c.allTags())) + "," + csv(String.join(" ", c.expect.choose))
                         + "," + csv(String.join(" ", c.expect.avoid)) + "," + c.passes(d);
                 int maxThreat = 0;
                 for (CandidateFeatures cand : d.candidates) {

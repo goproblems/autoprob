@@ -78,8 +78,8 @@ A case file holds every case for one problem:
       "role": "opponent",
       "expect": { "choose": ["W F1"], "avoid": ["W N1"] },
       "source": "review",
-      "tags": ["wrong-resistance"],
-      "note": "F1 is the real test here",
+      "tags": [],
+      "moves": { "W N1": { "tags": ["wrong-resistance"], "note": "F1 is the real test here" } },
       "by": "adam",
       "created": "2026-10-21",
       "isolation": { "solver": "B", "komi": 12.5, "targetLead": 2.5, "stakes": ["G2", "…"], "rows": ["…"] },
@@ -99,6 +99,8 @@ A case file holds every case for one problem:
   avoid means the line must continue.
 - `source`: `author` for cases seeded from the problem's RIGHT paths, `review` for cases a
   person judged.
+- `moves`: a reviewer's tags and note on single moves from this position, keyed by move
+  (`tags` and `note` on the case itself are about the position as a whole).
 - `isolation`: the isolated board, komi and stakes, frozen. Replays rebuild exactly this
   position, so a failure points at the decision logic rather than an isolation change.
 - `observed`: the decision the generator made when the case was recorded, with all its
@@ -158,10 +160,9 @@ bash gotool.sh cmd=review run=latest
 ```
 
 Open http://localhost:8765/. For each problem the page shows a board, the **correct tree**
-under it, and for the selected position the decision made there: the candidates the
-generator weighed, numbered on the board, with the author's moves starred. The panel also
-lists where the generated tree and the author's differ (missing or extra working moves and
-resistances, and where one ends before the other).
+under it, and a panel for the selected move. The panel also lists where the generated tree
+and the author's differ (missing or extra working moves and resistances, and where one
+ends before the other).
 
 The correct tree is drawn like the goproblems.com tree: depth runs right, branches stack
 downward, and a branch drops straight down from its parent before slanting in. It merges
@@ -171,39 +172,62 @@ both trees:
 |---|---|
 | green line | the move is in both trees |
 | light blue line | only the generated tree has it |
-| dashed amber line, faded stone | only the author has it: the generator missed it |
+| dashed light green line, faded stone | only the author has it: the generator missed it |
 | halo (same colors) | a line ends here |
-| green / red dot | a case on this position passes / fails in this run |
-| blue square | the selected position |
-| thick lines | the current line: from the start to the selected position, then on through the chosen branches |
+| green / red dot | you marked this move right / wrong |
+| blue square | the selected move |
+| thick lines | the current line: from the start to the selected move, then on through the chosen branches |
 
-Clicking a node selects that position. On a solver turn the table shows each candidate's
-lead after the move and whether the tree plays it (main or alternative); on an opponent
-turn the threat numbers.
+**A judgment is about the selected move**: whether it belongs in the tree at the position
+it was played from. Select a stone in the tree and mark it right (`g`) or wrong (`b`). What
+right means depends on whose move it is:
+
+- a **solver** move marked right works, so it must be in the tree (a working move left
+  out marks a correct answer wrong on the site); marked wrong, it must not be.
+- an **opponent** move marked right is a good resistance for the tree to play; the tree
+  passes if it plays one of the resistances you marked right and none you marked wrong.
+
+Tags and a note can be added to the selected move. For a solver move, **After this move**
+says whether the line ends there, in the generated tree and in the author's, and two
+buttons judge it: the line should end here (`e`, which also marks wrong any response the
+tree plays there) or should continue (`c`).
+
+The table, and the numbered markers on the board, show the other choices at the position
+the selected move was played from (at the start position, the first moves): the
+candidates the generator weighed, with your verdicts, the author's moves starred and the
+selected move highlighted. They are for reference: verdicts are set only with the buttons
+or their keys, on moves selected in the tree. On the board, a light green ring marks the author's moves
+there that the generated tree does not play (with a star when the move is not one of the
+numbered candidates). On a solver turn the table shows each candidate's lead after the
+move and whether the tree plays it (main or alternative); on an opponent turn the threat
+numbers.
+
+Every button has a tooltip.
 
 | Key | Action |
 |---|---|
 | `←` `→` | back / forward along the current line |
-| `↑` `↓` | choose which branch `→` follows from the selected position |
+| `↑` `↓` | choose which branch `→` follows from the selected move |
 | `Home` | start position |
 | `p` `n` | previous / next problem |
-| `g` | what the tree plays here is right (every working move it kept, or its resistance) |
-| `b` | the main move is wrong (at an end: the line should continue) |
-| `e` | the line should end here instead of this response |
-| `1`–`9`, click | cycle a candidate (or any board point): right, wrong, unjudged; `0` the end |
-| `x` | clear the verdict on what the tree plays here |
-| `d` | delete this decision's case |
+| `g` `b` | mark the selected move right / wrong (press again to clear) |
+| `x` | clear your verdict on the selected move |
+| `e` `c` | after the selected solver move, the line should end / continue |
 | `A` | accept the whole generated tree |
 | `s` `f` | stakes, full board |
 
-At a solver turn, marking a move right means "this move works and must be in the tree": if
-the generator left out a working move, mark it right and the case fails until generation
-includes it.
+Each change is written to `cases/<problem>.json` immediately, as the case for the position
+the move was played from, with the run's isolation and the generator's decision there.
+Moves only the author's tree reaches can be judged too; their case has no recorded
+decision, and replay makes it fresh. Judging a position that has an author case turns it
+into a review case and keeps the author's expected moves. Accepting the tree marks every
+choice in it that has no case yet as right as generated and adds its lines to
+`acceptedLines`.
 
-Each change is written to `cases/<problem>.json` immediately, with the run's isolation
-and the decision's numbers. Judging a position that has an author case turns it into a
-review case and keeps the author's expected moves. Accepting the tree marks every decision
-in it that has no case yet as right as generated and adds its lines to `acceptedLines`.
+The page works on a run that is still going or was stopped: it shows the problems that
+have finished, and while the run is not finished it checks for new ones every 30 seconds.
+Start it with the run's id (printed as `recording run to redo_runs/<id>` when the run
+starts) to review while a long run goes on.
 
 Settings: `review.port` (default 8765), `review.by` (the name stored on judgments,
 default the login name), `review.host` (default loopback, or all interfaces under WSL so

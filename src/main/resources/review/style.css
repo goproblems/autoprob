@@ -150,6 +150,11 @@ kbd {
 #notes div { color: var(--warn); }
 
 #lineHead { font-size: 13px; margin-bottom: 10px; }
+#lineHead .head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.verdict { border-radius: 6px; padding: 6px 10px; margin: 6px 0; font-size: 13px; }
+.verdict.none { background: var(--bg); color: var(--muted); }
+.verdict.right { background: var(--good-soft); color: var(--good); }
+.verdict.wrong { background: var(--bad-soft); color: var(--bad); }
 #lineHead .gaps { margin: 6px 0 0; padding-left: 18px; color: var(--muted); }
 #lineHead .gaps li { margin: 2px 0; }
 .bad-text { color: var(--bad); }
@@ -164,7 +169,8 @@ kbd {
 .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 4px; }
 .legend .sw { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
-.legend .sw.dashed { background: repeating-linear-gradient(90deg, #d97706 0 5px, transparent 5px 9px); }
+.legend .sw.dashed { background: repeating-linear-gradient(90deg, #a3e635 0 5px, transparent 5px 9px); }
+.legend .ring { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 2.5px solid #a3e635; }
 .legend .halo { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #65a30d; }
 .legend .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
 #tree {
@@ -195,9 +201,8 @@ table.cands th {
 }
 table.cands td { text-align: right; padding: 3px 4px; border-bottom: 1px solid var(--line); }
 table.cands td.l, table.cands th.l { text-align: left; }
-table.cands tr { cursor: pointer; }
-table.cands tr:hover td { background: var(--bg); }
 table.cands tr.chosen td { background: var(--select); }
+table.cands tr.this td { background: var(--accent-soft); }
 table.cands td.mark { width: 22px; text-align: center; font-weight: 700; }
 td.mark.good { color: var(--good); }
 td.mark.bad { color: var(--bad); }

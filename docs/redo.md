@@ -40,6 +40,10 @@ java -cp autoprob.jar autoprob.GoTool config.properties cmd=redo path=sample_pro
 - `path` can be a single SGF or a directory; for a directory every `.sgf` in it is run in
   name order and a summary table is printed at the end.
 - `csvout.path=results.csv` writes one row per problem, useful for comparing tuning runs.
+- A long run can be stopped with Ctrl-C, pressed twice: the first press stops KataGo,
+  which the run would otherwise restart, the second stops the run. Every problem that
+  finished is already in the run record and can be reviewed; only the one in progress is
+  lost.
 - Any `config.properties` value can be overridden on the command line as `name=value`,
   which is the easiest way to point at a local KataGo, model and human model
   (`katago=`, `kata.model=`, `kata.human_model=`). Use forward slashes in Windows paths:

@@ -4,7 +4,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -18,7 +20,9 @@ import com.google.gson.GsonBuilder;
 
 // writes a redo run to redo_runs/<id>/: manifest.json describing the run (code version,
 // engine, settings, summary) and one <problem>.json per problem. problem files are
-// written as each problem finishes, so a run that dies part way is still usable.
+// written as each problem finishes, so a run that is stopped part way can still be
+// reviewed, and every file is replaced in one step so a stop mid-write cannot corrupt
+// it. finished stays empty until the whole run completes.
 public class RunRecorder {
     public static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
@@ -78,8 +82,8 @@ public class RunRecorder {
     }
 
     public void writeProblem(ProblemRecord rec) throws IOException {
+        writeAtomically(new File(dir, rec.problem + ".json"), GSON.toJson(rec));
         manifest.problems.add(rec.problem);
-        Files.writeString(new File(dir, rec.problem + ".json").toPath(), GSON.toJson(rec));
         writeManifest();
     }
 
@@ -99,7 +103,19 @@ public class RunRecorder {
     }
 
     private void writeManifest() throws IOException {
-        Files.writeString(new File(dir, "manifest.json").toPath(), GSON.toJson(manifest));
+        writeAtomically(new File(dir, "manifest.json"), GSON.toJson(manifest));
+    }
+
+    // write to a temp file, then swap it in, so readers never see a half written file
+    private static void writeAtomically(File target, String content) throws IOException {
+        File tmp = new File(target.getParentFile(), target.getName() + ".tmp");
+        Files.writeString(tmp.toPath(), content);
+        try {
+            Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     // the latest run directory under root, by name (ids sort by time)

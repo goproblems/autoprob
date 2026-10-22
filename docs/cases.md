@@ -170,11 +170,12 @@ both trees:
 | Mark | Meaning |
 |---|---|
 | green line | the move is in both trees |
-| blue line | only the generated tree has it |
+| light blue line | only the generated tree has it |
 | dashed amber line, faded stone | only the author has it: the generator missed it |
 | halo (same colors) | a line ends here |
 | green / red dot | a case on this position passes / fails in this run |
 | blue square | the selected position |
+| thick lines | the current line: from the start to the selected position, then on through the chosen branches |
 
 Clicking a node selects that position. On a solver turn the table shows each candidate's
 lead after the move and whether the tree plays it (main or alternative); on an opponent
@@ -182,9 +183,10 @@ turn the threat numbers.
 
 | Key | Action |
 |---|---|
-| `←` `→` | previous / next position in the tree (top to bottom, as drawn) |
+| `←` `→` | back / forward along the current line |
+| `↑` `↓` | choose which branch `→` follows from the selected position |
 | `Home` | start position |
-| `↑` `↓` | previous / next problem |
+| `p` `n` | previous / next problem |
 | `g` | what the tree plays here is right (every working move it kept, or its resistance) |
 | `b` | the main move is wrong (at an end: the line should continue) |
 | `e` | the line should end here instead of this response |

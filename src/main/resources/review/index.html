@@ -19,7 +19,7 @@
     <section id="boardPane" hidden>
       <div id="board"></div>
       <div id="boardBar">
-        <span id="stepLabel"></span>
+        <span class="step"><span id="toMove" class="to-move" role="img"></span><span id="stepLabel"></span></span>
         <span class="spacer"></span>
         <label><input type="checkbox" id="showStakes"> stakes</label>
         <label><input type="checkbox" id="fullBoard"> full board</label>
@@ -29,7 +29,7 @@
         <span class="section-label">Correct tree</span>
         <span class="legend">
           <span><i class="sw" style="background:#65a30d"></i>both</span>
-          <span><i class="sw" style="background:#2563eb"></i>generated only</span>
+          <span><i class="sw" style="background:#3b82f6"></i>generated only</span>
           <span><i class="sw dashed"></i>author only</span>
           <span><i class="halo"></i>line ends</span>
           <span><i class="dot" style="background:#22c55e"></i><i class="dot" style="background:#ef4444"></i>case passes / fails</span>
@@ -46,9 +46,10 @@
 <dialog id="help">
   <h2>Keyboard</h2>
   <table>
-    <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>previous / next position in the tree (click a node to jump)</td></tr>
+    <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>back / forward along the current line (click a node to jump)</td></tr>
+    <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>choose which branch <kbd>→</kbd> follows from here (drawn thick)</td></tr>
     <tr><td><kbd>Home</kbd></td><td>start position</td></tr>
-    <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>previous / next problem</td></tr>
+    <tr><td><kbd>p</kbd> <kbd>n</kbd></td><td>previous / next problem</td></tr>
     <tr><td><kbd>g</kbd></td><td>what the tree plays here is right</td></tr>
     <tr><td><kbd>b</kbd></td><td>the main move is wrong (at an end: the line should continue)</td></tr>
     <tr><td><kbd>e</kbd></td><td>the line should end here instead of this response</td></tr>

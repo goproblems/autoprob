@@ -142,6 +142,10 @@ kbd {
 #board svg { width: 100%; height: auto; display: block; }
 #boardBar { display: flex; gap: 14px; align-items: center; margin-top: 8px; font-size: 13px; }
 #boardBar .spacer { flex: 1; }
+#boardBar .step { display: inline-flex; align-items: center; gap: 6px; }
+.to-move { display: inline-block; width: 13px; height: 13px; border-radius: 50%; border: 1px solid; flex: none; }
+.to-move.B { background: #151515; border-color: #000; }
+.to-move.W { background: #f7f7f4; border-color: #444; }
 #notes { margin-top: 8px; font-size: 13px; }
 #notes div { color: var(--warn); }
 

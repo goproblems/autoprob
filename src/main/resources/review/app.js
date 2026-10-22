@@ -8,9 +8,10 @@ const TAGS = ['ended-early', 'ended-late', 'wrong-resistance', 'missing-move', '
   'wrong-solver-move', 'isolation-broken'];
 const COLS = 'ABCDEFGHJKLMNOPQRST';
 const END = 'END';
+const LOW_PRIOR = 0.02; // below this katago prior a candidate is drawn dotted unless the tree plays it
 
 // tree colors: goproblems green where the trees agree
-const BOTH = '#65a30d', GEN = '#2563eb', AUTHOR = '#d97706';
+const BOTH = '#65a30d', GEN = '#3b82f6', AUTHOR = '#d97706';
 
 const state = {
   run: null,
@@ -18,6 +19,7 @@ const state = {
   data: null,
   tree: null, // merged tree of the generated and author correct lines
   sel: 'root', // selected position: moves from the root, or "root"
+  choice: {},  // per position, the index of the child the right arrow goes to
   full: false,
   stakes: false,
 };
@@ -147,6 +149,7 @@ async function openProblem(name) {
   }
   state.tree = buildTree();
   state.sel = 'root';
+  state.choice = {};
   renderProblems();
   render();
 }
@@ -194,10 +197,31 @@ function render() {
 }
 
 function select(key) {
-  if (!state.tree.index[key]) return;
+  const node = state.tree.index[key];
+  if (!node) return;
   state.sel = key;
+  // keep the current line running through the selected position
+  for (let n = node; n.parent; n = n.parent) state.choice[n.parent.key] = n.parent.children.indexOf(n);
   render();
   const el = document.querySelector(`#tree [data-key="${CSS.escape(key)}"]`);
+  if (el) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+// the child the right arrow goes to: the one chosen with up / down, else the first
+function chosenChild(node) {
+  if (!node || !node.children.length) return null;
+  return node.children[Math.min(state.choice[node.key] ?? 0, node.children.length - 1)];
+}
+
+// choose the next or previous child of the selected position
+function chooseChild(step) {
+  const node = state.tree.index[state.sel];
+  if (!node || node.children.length < 2) return;
+  const i = Math.min(state.choice[node.key] ?? 0, node.children.length - 1);
+  state.choice[node.key] = Math.max(0, Math.min(node.children.length - 1, i + step));
+  renderTree();
+  const next = chosenChild(node);
+  const el = document.querySelector(`#tree [data-key="${CSS.escape(next.key)}"]`);
   if (el) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
@@ -278,7 +302,9 @@ function renderBoard() {
       const inTree = chosen.includes(cand.move);
       const color = expect.choose.includes(cand.move) ? 'var(--good)' : expect.avoid.includes(cand.move) ? 'var(--bad)'
         : inTree ? 'var(--accent)' : '#3a2a12';
-      parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.36}" fill="var(--wood)" stroke="${color}" stroke-width="${inTree ? 3 : 1.5}"/>`);
+      // a katago move it barely considered, and the tree does not play: not interesting
+      const dull = !inTree && !expect.choose.includes(cand.move) && cand.source === 'katago' && (cand.prior ?? 0) < LOW_PRIOR;
+      parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.36}" fill="var(--wood)" stroke="${color}" stroke-width="${inTree ? 3 : 1.5}"${dull ? ' stroke-dasharray="2 3"' : ''}/>`);
       parts.push(`<text x="${X(x)}" y="${Y(y) + 5}" font-size="14" font-weight="700" text-anchor="middle" fill="${color}">${i + 1}</text>`);
     });
     for (const m of expect.choose) {
@@ -311,6 +337,12 @@ function renderBoard() {
 
   const moveNo = node ? node.depth : 0;
   $('stepLabel').textContent = moveNo === 0 ? 'start position' : `after move ${moveNo}: ${lbl(node.move)}`;
+  // whose turn it is here: the decision says, or else the opposite of the last move
+  const toMove = d ? d.toMove : node && node.move ? (node.move[0] === 'B' ? 'W' : 'B') : iso.solver;
+  const icon = $('toMove');
+  icon.className = 'to-move ' + toMove;
+  icon.title = colorName(toMove) + ' to move';
+  icon.setAttribute('aria-label', icon.title);
   $('showStakes').checked = state.stakes;
   $('fullBoard').checked = state.full;
   $('notes').innerHTML = (record().notes || []).map((n) => `<div>${esc(n)}</div>`).join('');
@@ -345,13 +377,21 @@ function renderTree() {
   const status = (n) => (n.gen && n.author ? BOTH : n.gen ? GEN : AUTHOR);
   const parts = [`<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="tree" aria-label="correct tree">`];
 
-  // lines first, under the stones
-  for (const n of order) {
-    if (!n.parent) continue;
+  // the current line: from the start to the selected position, then on through the
+  // chosen children. it is drawn thick, everything else thin
+  const onLine = new Set();
+  for (let n = state.tree.index[state.sel]; n; n = n.parent) onLine.add(n.key);
+  for (let n = chosenChild(state.tree.index[state.sel]); n; n = chosenChild(n)) onLine.add(n.key);
+
+  // lines first, under the stones; the current line last so it sits on top
+  const edges = order.filter((n) => n.parent);
+  edges.sort((a, b) => onLine.has(a.key) - onLine.has(b.key));
+  for (const n of edges) {
     const color = status(n);
-    const dash = n.gen ? '' : ' stroke-dasharray="5 4"';
+    const thick = onLine.has(n.key);
+    const dash = n.gen ? '' : ` stroke-dasharray="${thick ? '6 5' : '4 4'}"`;
     const px = X(n.parent), py = Y(n.parent.row), x = X(n), y = Y(n.row);
-    const style = `stroke="${color}" stroke-width="3.2" stroke-linecap="round"${dash} fill="none"`;
+    const style = `stroke="${color}" stroke-width="${thick ? 4.6 : 2}" stroke-linecap="round"${dash} fill="none"`;
     if (n.row === n.parent.row) {
       parts.push(`<line x1="${px}" y1="${py}" x2="${x}" y2="${y}" ${style}/>`);
     } else {
@@ -665,13 +705,14 @@ document.addEventListener('keydown', (ev) => {
   const k = ev.key;
   const problems = state.run.problems;
   const pi = problems.findIndex((p) => p.problem === state.name);
-  const order = state.tree.order;
-  const ni = order.findIndex((n) => n.key === state.sel);
-  if (k === 'ArrowRight' && ni < order.length - 1) select(order[ni + 1].key);
-  else if (k === 'ArrowLeft' && ni > 0) select(order[ni - 1].key);
+  const node = state.tree.index[state.sel];
+  if (k === 'ArrowRight') { const next = chosenChild(node); if (next) select(next.key); }
+  else if (k === 'ArrowLeft') { if (node.parent) select(node.parent.key); }
+  else if (k === 'ArrowDown') chooseChild(1);
+  else if (k === 'ArrowUp') chooseChild(-1);
   else if (k === 'Home') select('root');
-  else if (k === 'ArrowDown' && pi < problems.length - 1) openProblem(problems[pi + 1].problem);
-  else if (k === 'ArrowUp' && pi > 0) openProblem(problems[pi - 1].problem);
+  else if (k === 'n' && pi < problems.length - 1) openProblem(problems[pi + 1].problem);
+  else if (k === 'p' && pi > 0) openProblem(problems[pi - 1].problem);
   else if (k === 'g') act('good');
   else if (k === 'b') act('bad');
   else if (k === 'e') act('end');

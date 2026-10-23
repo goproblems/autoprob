@@ -99,7 +99,9 @@ every case, still load and are rewritten in the new format the next time they ar
 - `expect.choose`: moves that are right here. At a **solver** turn every one of them must
   be in the tree, since each one works and a working move left out marks a correct answer
   wrong. At an **opponent** turn they are acceptable resistances, and the tree must play
-  one of them. `END` means the line should end here. Empty means "anything not in avoid".
+  one of them. `END` alone means the line should end here; `END` with other moves means
+  either way is fine: the line may end here, or go on with one of those moves (at a solver
+  turn, with all of them). Empty means "anything not in avoid".
 - `expect.avoid`: moves that are wrong here: the tree must not play any of them. `END` in
   avoid means the line must continue.
 - `source`: `author` for cases seeded from the problem's RIGHT paths, `review` for cases a
@@ -203,10 +205,13 @@ right means depends on whose move it is:
   passes if it plays one of the resistances you marked right and none you marked wrong.
 
 Tags and a note can be added to the selected move. **After this move** says whether the
-line ends there, in the generated tree and in the author's, and two buttons judge it: the
-line should end here (`e`, which also marks wrong any move the tree plays next) or should
-continue (`c`). A line usually ends on a solver move, when the opponent has no real try
-left, but it can end on an opponent move too, as when a ko is the result. The generator
+line ends there, in the generated tree and in the author's, and three buttons judge it:
+the line should end here (`e`, which also marks wrong any move the tree plays next), should
+continue (`c`), or either way is fine (`w`: ending here and going on as the tree does are
+both right). Sometimes how long a line runs is a matter of taste; marking such places
+either way keeps the tuner from counting an earlier or later ending as a mistake. A line
+usually ends on a solver move, when the opponent has no real try left, but it can end on
+an opponent move too, as when a ko is the result. The generator
 only ends a line after an opponent move when KataGo's best answer is a pass, so these
 judgments mostly record what it does not do yet.
 
@@ -241,7 +246,7 @@ Every button has a tooltip.
 | `p` `n` | previous / next problem |
 | `g` `b` | mark the selected move right / wrong (press again to clear) |
 | `x` | clear your verdict on the selected move |
-| `e` `c` | after the selected move, the line should end / continue |
+| `e` `c` `w` | after the selected move, the line should end / continue / either way is fine |
 | `A` | accept the whole generated tree |
 | `s` `f` | stakes, full board |
 

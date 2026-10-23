@@ -28,6 +28,24 @@ class DecisionCaseTest {
     }
 
     @Test
+    void eitherWayAcceptsEndingOrGoingOn() {
+        // after a solver move: the line may end, or go on with the accepted resistance
+        DecisionCase opponent = kase(DecisionRecord.OPPONENT, List.of("W G2", DecisionRecord.END), List.of());
+        assertTrue(opponent.passes(decision(DecisionRecord.OPPONENT, DecisionRecord.END)));
+        assertTrue(opponent.passes(decision(DecisionRecord.OPPONENT, "W G2")));
+        assertFalse(opponent.passes(decision(DecisionRecord.OPPONENT, "W H2")));
+        // after an opponent move: the line may end, or go on with every move that works
+        DecisionCase solver = kase(DecisionRecord.SOLVER, List.of("B C1", "B D1", DecisionRecord.END), List.of());
+        assertTrue(solver.passes(decision(DecisionRecord.SOLVER, DecisionRecord.END)));
+        assertTrue(solver.passes(decision(DecisionRecord.SOLVER, "B C1", "B D1")));
+        assertFalse(solver.passes(decision(DecisionRecord.SOLVER, "B C1")));
+        // END alone still means the line must end
+        DecisionCase mustEnd = kase(DecisionRecord.SOLVER, List.of(DecisionRecord.END), List.of());
+        assertFalse(mustEnd.passes(decision(DecisionRecord.SOLVER, "B C1")));
+        assertTrue(mustEnd.passes(decision(DecisionRecord.SOLVER, DecisionRecord.END)));
+    }
+
+    @Test
     void solverCasesNeedEveryWorkingMoveInTheTree() {
         DecisionCase c = kase(DecisionRecord.SOLVER, List.of("B D1", "B E1"), List.of());
         assertFalse(c.passes(decision(DecisionRecord.SOLVER, "B D1")));

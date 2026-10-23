@@ -100,12 +100,29 @@ function verdictOf(key, move) {
 }
 
 // mirrors DecisionCase.passes: no chosen move may be avoided; a solver turn needs every
-// right move in the tree, an opponent turn one of the acceptable resistances
+// right move in the tree, an opponent turn one of the acceptable resistances. END with
+// other moves is either way: ending here is right too
 function passes(c, d) {
   const moves = chosenMoves(d);
   if (moves.some((m) => c.expect.avoid.includes(m))) return false;
-  if (d.role === 'solver') return c.expect.choose.every((m) => moves.includes(m));
+  if (d.role === 'solver') {
+    const choose = c.expect.choose;
+    if (choose.includes(END) && choose.length > 1) {
+      return moves.includes(END) || choose.every((m) => m === END || moves.includes(m));
+    }
+    return choose.every((m) => moves.includes(m));
+  }
   return c.expect.choose.length === 0 || moves.some((m) => c.expect.choose.includes(m));
+}
+
+// your verdict on whether the line ends after the move that reached key: end, continue,
+// either (ending and going on are both fine), or null
+function endingState(key) {
+  const c = caseAt(key);
+  if (!c) return null;
+  if (c.expect.avoid.includes(END)) return 'continue';
+  if (!c.expect.choose.includes(END)) return null;
+  return c.expect.choose.some((m) => m !== END) ? 'either' : 'end';
 }
 
 // the generated and author correct trees merged into one. each node is a position:
@@ -513,8 +530,9 @@ function renderTree() {
       }
     }
     // whether the line should end after this move
-    const ending = verdictOf(n.key, END);
-    if (ending) tip.push(ending === 'right' ? 'marked: the line ends here' : 'marked: the line should continue');
+    const ending = endingState(n.key);
+    if (ending) tip.push({ end: 'marked: the line ends here', continue: 'marked: the line should continue',
+      either: 'marked: ending here or going on are both fine' }[ending]);
     parts.push(`<title>${esc(tip.join(' · '))}</title>`);
     parts.push(`<circle cx="${x}" cy="${y}" r="${R + 4}" fill="transparent"/>`);
     parts.push('</g>');
@@ -590,7 +608,7 @@ function renderDecision() {
     // should the line end after this move? usually it ends on a solver move, when the
     // opponent has no real try left, but it can end on an opponent move too, as in a ko
     const dn = decisionAt(node.key);
-    const ending = verdictOf(node.key, END);
+    const ending = endingState(node.key);
     const gen = dn ? (dn.chose === END ? `The generated line ends here (${dn.reason || 'no reason recorded'}).`
       : `The generated tree goes on: ${colorName(dn.toMove)} ${solverMove ? 'answers' : 'plays'} ${chosenMoves(dn).map(pt).join(', ')}.`)
       : node.gen ? 'The generated line was cut short here.' : 'The generator never reached this position.';
@@ -602,8 +620,9 @@ function renderDecision() {
     parts.push(`<div class="section-label">After this move</div>
       <div class="reason">${esc(gen + auth)}</div>
       <div class="actions">
-        <button class="good ${ending === 'right' ? 'on' : ''}" data-act="end" title="The line should end after this move: ${endsBecause}. Any move the tree plays next is marked wrong (e)">Line ends here <kbd>e</kbd></button>
-        <button class="bad ${ending === 'wrong' ? 'on' : ''}" data-act="continue" title="The line should not end after this move: ${goesOnBecause} (c)">Line continues <kbd>c</kbd></button>
+        <button class="good ${ending === 'end' ? 'on' : ''}" data-act="end" title="The line should end after this move: ${endsBecause}. Any move the tree plays next is marked wrong (e)">Line ends here <kbd>e</kbd></button>
+        <button class="bad ${ending === 'continue' ? 'on' : ''}" data-act="continue" title="The line should not end after this move: ${goesOnBecause} (c)">Line continues <kbd>c</kbd></button>
+        <button class="${ending === 'either' ? 'on' : ''}" data-act="either" title="Ending after this move and going on as the tree does are both fine (w)">Either way <kbd>w</kbd></button>
       </div>`);
   } else {
     parts.push(`<h3>Start position · ${colorName(iso.solver)} to play</h3>
@@ -736,23 +755,30 @@ function judgeSelected(verdict) {
 function judgeEnd(kind) {
   const node = state.tree.index[state.sel];
   if (!node.move) return toast('select a move to judge whether the line ends after it');
-  const current = verdictOf(node.key, END);
-  const target = kind === 'end' ? 'right' : 'wrong';
+  const current = endingState(node.key);
+  // what the tree plays next: the generator's moves here, else the moves either tree has
   const dn = decisionAt(node.key);
+  const next = dn ? chosenMoves(dn).filter((m) => m !== END) : node.children.map((ch) => ch.move);
+  if (kind === 'either' && current !== 'either' && !next.length) {
+    return toast('neither tree goes on from here, so there is nothing to accept either way');
+  }
   return editCase(node.key, (e) => {
     e.expect.choose = without(e.expect.choose, END);
     e.expect.avoid = without(e.expect.avoid, END);
-    if (current === target) return; // pressed again: clear
+    if (current === kind) return; // pressed again: clear
     if (kind === 'end') {
-      e.expect.choose.push(END);
-      // ending here makes any move the tree plays next wrong
-      if (dn) {
-        for (const m of chosenMoves(dn)) {
-          if (m === END) continue;
-          e.expect.choose = without(e.expect.choose, m);
-          if (!e.expect.avoid.includes(m)) e.expect.avoid.push(m);
-        }
+      // nothing goes on from here: no move is right, and the tree's next moves are wrong
+      e.expect.choose = [END];
+      for (const m of next) {
+        if (!e.expect.avoid.includes(m)) e.expect.avoid.push(m);
       }
+    } else if (kind === 'either') {
+      // ending here is right, and so is going on as the tree does
+      for (const m of next) {
+        e.expect.avoid = without(e.expect.avoid, m);
+        if (!e.expect.choose.includes(m)) e.expect.choose.push(m);
+      }
+      e.expect.choose.push(END);
     } else {
       e.expect.avoid.push(END);
     }
@@ -781,6 +807,7 @@ function act(kind) {
   if (kind === 'clear') return judgeSelected(null);
   if (kind === 'end') return judgeEnd('end');
   if (kind === 'continue') return judgeEnd('continue');
+  if (kind === 'either') return judgeEnd('either');
   if (kind === 'accept') return acceptTree();
 }
 
@@ -837,6 +864,7 @@ document.addEventListener('keydown', (ev) => {
   else if (k === 'x') act('clear');
   else if (k === 'e') act('end');
   else if (k === 'c') act('continue');
+  else if (k === 'w') act('either');
   else if (k === 'A') act('accept');
   else if (k === 's') { state.stakes = !state.stakes; renderBoard(); }
   else if (k === 'f') { state.full = !state.full; renderBoard(); }

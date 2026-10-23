@@ -1189,7 +1189,7 @@
       "toMove": "B",
       "role": "opponent",
       "expect": {
-        "choose": ["B G2"],
+        "choose": ["B G2", "END"],
         "avoid": []
       },
       "source": "review",
@@ -1243,7 +1243,7 @@
       "toMove": "B",
       "role": "opponent",
       "expect": {
-        "choose": ["B F3"],
+        "choose": ["B F3", "END"],
         "avoid": []
       },
       "source": "review",
@@ -1307,7 +1307,7 @@
       "toMove": "B",
       "role": "opponent",
       "expect": {
-        "choose": ["B D1"],
+        "choose": ["B D1", "END"],
         "avoid": []
       },
       "source": "review",
@@ -1359,7 +1359,7 @@
       "toMove": "B",
       "role": "opponent",
       "expect": {
-        "choose": ["B F3"],
+        "choose": ["B F3", "END"],
         "avoid": []
       },
       "source": "review",
@@ -1487,7 +1487,7 @@
       "toMove": "B",
       "role": "opponent",
       "expect": {
-        "choose": ["B G4"],
+        "choose": ["B G4", "END"],
         "avoid": []
       },
       "source": "review",
@@ -1539,7 +1539,7 @@
       "toMove": "B",
       "role": "opponent",
       "expect": {
-        "choose": ["B F3"],
+        "choose": ["B F3", "END"],
         "avoid": []
       },
       "source": "review",
@@ -1667,7 +1667,7 @@
       "toMove": "B",
       "role": "opponent",
       "expect": {
-        "choose": ["B G4"],
+        "choose": ["B G4", "END"],
         "avoid": []
       },
       "source": "review",
@@ -1719,7 +1719,7 @@
       "toMove": "B",
       "role": "opponent",
       "expect": {
-        "choose": ["B F3"],
+        "choose": ["B F3", "END"],
         "avoid": []
       },
       "source": "review",
@@ -1795,7 +1795,7 @@
       "toMove": "B",
       "role": "opponent",
       "expect": {
-        "choose": ["B G2"],
+        "choose": ["B G2", "END"],
         "avoid": []
       },
       "source": "review",

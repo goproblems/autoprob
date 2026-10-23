@@ -164,6 +164,12 @@ public class ChoiceRule {
                     ? "no testing threat remains (" + easy + " threat" + (easy == 1 ? "" : "s") + " any of several answers handle)"
                     : "no opponent threat remains");
         }
+        // the line also ends when every real try left is routine. authors stop once the
+        // result is clear rather than play out replies everyone finds
+        if (p.endOnObvious && threatening.stream().allMatch(c -> obviousAnswer(c, p))) {
+            return new Choice(DecisionRecord.END, "only routine tries remain (obvious answers to "
+                    + String.join(", ", threatening.stream().map(CandidateFeatures::point).toList()) + ")");
+        }
         double severeFloor = maxThreat * p.severeThreatRatio;
         List<CandidateFeatures> severe = new ArrayList<>();
         for (CandidateFeatures c : threatening) {
@@ -334,6 +340,14 @@ public class ChoiceRule {
     // counts. older records only have the best answer's policy
     static double answerChance(CandidateFeatures c) {
         return c.humanAnswers != null ? c.humanAnswers : humanAnswer(c);
+    }
+
+    // katago is sure of the answer and a human finds one that holds. unknown (records from
+    // before human answers) is not obvious
+    static boolean obviousAnswer(CandidateFeatures c, ChoiceParams p) {
+        Double chance = c.humanAnswers != null ? c.humanAnswers : c.humanAnswer;
+        return c.answerPrior != null && chance != null
+                && c.answerPrior >= p.routineAnswerPrior && chance >= p.routineHumanAnswer;
     }
 
     // the testing criterion's measure, lower is a better main line resistance: easy to get

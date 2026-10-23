@@ -69,12 +69,22 @@ public class DecisionCase {
     // avoid. at a solver turn every move in choose must be in the tree: each one works,
     // and a working move left out marks a correct answer wrong. at an opponent turn
     // choose lists acceptable resistances, and one of them must be chosen.
+    // END in choose alongside other moves means either way is fine: the line may end here
+    // (at a solver turn, or go on with every one of those moves).
     public boolean passes(DecisionRecord d) {
         List<String> moves = d.chosenMoves();
         for (String m : moves) {
             if (expect.avoid.contains(m)) return false;
         }
-        if (DecisionRecord.SOLVER.equals(role)) return moves.containsAll(expect.choose);
+        if (DecisionRecord.SOLVER.equals(role)) {
+            if (expect.choose.contains(DecisionRecord.END) && expect.choose.size() > 1) {
+                if (moves.contains(DecisionRecord.END)) return true;
+                List<String> rest = new ArrayList<>(expect.choose);
+                rest.remove(DecisionRecord.END);
+                return moves.containsAll(rest);
+            }
+            return moves.containsAll(expect.choose);
+        }
         if (expect.choose.isEmpty()) return true;
         for (String m : moves) {
             if (expect.choose.contains(m)) return true;

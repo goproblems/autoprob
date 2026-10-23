@@ -78,6 +78,23 @@ class ChoiceRuleTest {
     }
 
     @Test
+    void endsWhenEveryTryLeftHasAnObviousAnswer() {
+        // gp-10330 deep in the main line: R2 and S1 both threaten, but katago is sure of each
+        // answer and a human finds it
+        CandidateFeatures r2 = cand("W R2", "katago", 0.4, 400, 0.08, 0.96, 12, 0);
+        CandidateFeatures s1 = cand("W S1", "katago", 0.3, 300, 0.06, 0.95, 12, 0);
+        r2.answerPrior = 1.0;
+        s1.answerPrior = 1.0;
+        ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(opponent(r2, s1), params(), STAKES);
+        assertTrue(choice.isEnd());
+        assertTrue(choice.reason.startsWith("only routine tries remain"), choice.reason);
+        assertEquals("W R2", ChoiceRule.chooseOpponent(opponent(r2, s1), params("end_on_obvious", "false"), STAKES).move);
+        // one try whose answer a human misses keeps the line going
+        s1.humanAnswer = 0.4;
+        assertEquals("W S1", ChoiceRule.chooseOpponent(opponent(r2, s1), params(), STAKES).move);
+    }
+
+    @Test
     void anyAnswerThatHoldsCountsTowardTheAnswerChance() {
         // after M18 four answers hold: together a human finds one about as often as Q18
         // after P17, so the two tie and naturalness decides even without its weight

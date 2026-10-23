@@ -69,7 +69,8 @@ A case file holds every case for one problem:
 {
   "problem": "gp-721",
   "problemFile": "sample_problems/gp-721.sgf",
-  "problemSha": "6584…",
+  "problemSha": "0afc…",
+  "isolation": { "solver": "B", "komi": 12.5, "targetLead": 2.5, "stakes": ["G2", "…"], "rows": ["…"] },
   "acceptedLines": [],
   "decisions": [
     {
@@ -82,12 +83,16 @@ A case file holds every case for one problem:
       "moves": { "W N1": { "tags": ["wrong-resistance"], "note": "F1 is the real test here" } },
       "by": "adam",
       "created": "2026-10-21",
-      "isolation": { "solver": "B", "komi": 12.5, "targetLead": 2.5, "stakes": ["G2", "…"], "rows": ["…"] },
       "observed": { "run": "20261021-170828", "commit": "a07cf72", "model": "…", "decision": { "…": "…" } }
     }
   ]
 }
 ```
+
+Files are written compactly: lists and objects of plain values stay on one line (except
+the board rows, one per line), numbers are rounded to 3 decimals, and ownership changes of
+0 are left out of the candidates' `deltas`. Files in the older format, with an isolation in
+every case, still load and are rewritten in the new format the next time they are saved.
 
 **Decision cases** are the main unit: a position and what should happen there.
 
@@ -102,7 +107,9 @@ A case file holds every case for one problem:
 - `moves`: a reviewer's tags and note on single moves from this position, keyed by move
   (`tags` and `note` on the case itself are about the position as a whole).
 - `isolation`: the isolated board, komi and stakes, frozen. Replays rebuild exactly this
-  position, so a failure points at the decision logic rather than an isolation change.
+  position, so a failure points at the decision logic rather than an isolation change. It
+  is stored once for the file; a case recorded on a run that isolated the problem
+  differently keeps its own.
 - `observed`: the decision the generator made when the case was recorded, with all its
   candidate numbers.
 
@@ -195,10 +202,13 @@ right means depends on whose move it is:
 - an **opponent** move marked right is a good resistance for the tree to play; the tree
   passes if it plays one of the resistances you marked right and none you marked wrong.
 
-Tags and a note can be added to the selected move. For a solver move, **After this move**
-says whether the line ends there, in the generated tree and in the author's, and two
-buttons judge it: the line should end here (`e`, which also marks wrong any response the
-tree plays there) or should continue (`c`).
+Tags and a note can be added to the selected move. **After this move** says whether the
+line ends there, in the generated tree and in the author's, and two buttons judge it: the
+line should end here (`e`, which also marks wrong any move the tree plays next) or should
+continue (`c`). A line usually ends on a solver move, when the opponent has no real try
+left, but it can end on an opponent move too, as when a ko is the result. The generator
+only ends a line after an opponent move when KataGo's best answer is a pass, so these
+judgments mostly record what it does not do yet.
 
 The table shows the other choices at the position the selected move was played from (at
 the start position, the first moves): the candidates the generator weighed, with your
@@ -231,7 +241,7 @@ Every button has a tooltip.
 | `p` `n` | previous / next problem |
 | `g` `b` | mark the selected move right / wrong (press again to clear) |
 | `x` | clear your verdict on the selected move |
-| `e` `c` | after the selected solver move, the line should end / continue |
+| `e` `c` | after the selected move, the line should end / continue |
 | `A` | accept the whole generated tree |
 | `s` `f` | stakes, full board |
 
@@ -296,7 +306,9 @@ or the generator reaches their position in a reviewed run.
 label (`choose`, `avoid` or blank), whether the tree plays it (`algo_chose`), and its
 numbers, including `after_lead` for solver candidates.
 Opponent decisions also get an `END` row whose threat column is the largest threat among
-the candidates, since "should the line end here" mostly comes down to that number.
+the candidates, since "should the line end here" mostly comes down to that number. Solver
+decisions get one (with no threat) when the case judges the ending or the tree ended
+there: a line that should end after an opponent move, as in a ko.
 
 **Tune** re-chooses every decision case under each combination of the given
 `tune.<setting>` values and reports pass counts, with the cases each setting fixes and

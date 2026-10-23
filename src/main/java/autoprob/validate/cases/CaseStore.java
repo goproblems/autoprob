@@ -14,7 +14,8 @@ import java.util.Set;
 import autoprob.validate.RunRecorder;
 
 // reads and writes the case library: one json file per problem in cases/ (or cases.dir).
-// files are written with a stable decision order so git diffs stay small.
+// files are written compactly (see CaseJson) with a stable decision order so git diffs
+// stay small. files in the older format, with an isolation in every case, read the same.
 public class CaseStore {
     private final File dir;
 
@@ -33,7 +34,16 @@ public class CaseStore {
     public CaseFile load(String problem) throws IOException {
         File f = file(problem);
         if (!f.exists()) return null;
-        return RunRecorder.GSON.fromJson(Files.readString(f.toPath()), CaseFile.class);
+        return read(f);
+    }
+
+    private static CaseFile read(File f) throws IOException {
+        CaseFile cf = RunRecorder.GSON.fromJson(Files.readString(f.toPath()), CaseFile.class);
+        // a case keeps its own isolation only where it differs from the file's
+        for (DecisionCase c : cf.decisions) {
+            if (c.isolation == null) c.isolation = cf.isolation;
+        }
+        return cf;
     }
 
     public CaseFile loadOrCreate(String problem) throws IOException {
@@ -56,7 +66,7 @@ public class CaseStore {
         if (files == null) return out;
         Arrays.sort(files, Comparator.comparing(File::getName));
         for (File f : files) {
-            CaseFile cf = RunRecorder.GSON.fromJson(Files.readString(f.toPath()), CaseFile.class);
+            CaseFile cf = read(f);
             if (only.isEmpty() || only.contains(cf.problem)) out.add(cf);
         }
         return out;
@@ -72,7 +82,8 @@ public class CaseStore {
             throw new IOException("cannot create case directory: " + dir);
         }
         cf.decisions.sort(Comparator.comparingInt((DecisionCase c) -> c.at.size()).thenComparing(DecisionCase::key));
-        Files.writeString(file(cf.problem).toPath(), RunRecorder.GSON.toJson(cf) + "\n");
+        // a case file holds a reviewer's work: never leave it half written
+        RunRecorder.writeAtomically(file(cf.problem), CaseJson.write(cf) + "\n");
     }
 
     private File file(String problem) {

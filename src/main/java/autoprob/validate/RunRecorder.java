@@ -107,7 +107,7 @@ public class RunRecorder {
     }
 
     // write to a temp file, then swap it in, so readers never see a half written file
-    private static void writeAtomically(File target, String content) throws IOException {
+    public static void writeAtomically(File target, String content) throws IOException {
         File tmp = new File(target.getParentFile(), target.getName() + ".tmp");
         Files.writeString(tmp.toPath(), content);
         try {

@@ -587,23 +587,24 @@ function renderDecision() {
       <div class="section-label">Note on this move</div>
       <textarea id="noteInput" placeholder="why, in a sentence" title="Saved when you leave the box">${esc(n.note || '')}</textarea>`);
 
-    // after a solver move: should the line end here?
-    if (solverMove) {
-      const dn = decisionAt(node.key);
-      const ending = verdictOf(node.key, END);
-      const gen = dn ? (dn.chose === END ? 'The generated line ends here.'
-        : `The generated tree goes on: ${colorName(dn.toMove)} answers ${chosenMoves(dn).map(pt).join(', ')}.`)
-        : node.gen ? 'The generated line was cut short here.' : 'The generator never reached this position.';
-      const authorNext = node.children.filter((ch) => ch.author).map((ch) => pt(ch.move));
-      const auth = node.authorEnd ? ' The author ends the line here.'
-        : authorNext.length ? ` The author goes on with ${authorNext.join(', ')}.` : '';
-      parts.push(`<div class="section-label">After this move</div>
-        <div class="reason">${esc(gen + auth)}</div>
-        <div class="actions">
-          <button class="good ${ending === 'right' ? 'on' : ''}" data-act="end" title="The line should end after this move: the opponent has no real try left. Any response the tree plays here is marked wrong (e)">Line ends here <kbd>e</kbd></button>
-          <button class="bad ${ending === 'wrong' ? 'on' : ''}" data-act="continue" title="The line should not end after this move: the opponent still has a real try (c)">Line continues <kbd>c</kbd></button>
-        </div>`);
-    }
+    // should the line end after this move? usually it ends on a solver move, when the
+    // opponent has no real try left, but it can end on an opponent move too, as in a ko
+    const dn = decisionAt(node.key);
+    const ending = verdictOf(node.key, END);
+    const gen = dn ? (dn.chose === END ? `The generated line ends here (${dn.reason || 'no reason recorded'}).`
+      : `The generated tree goes on: ${colorName(dn.toMove)} ${solverMove ? 'answers' : 'plays'} ${chosenMoves(dn).map(pt).join(', ')}.`)
+      : node.gen ? 'The generated line was cut short here.' : 'The generator never reached this position.';
+    const authorNext = node.children.filter((ch) => ch.author).map((ch) => pt(ch.move));
+    const auth = node.authorEnd ? ' The author ends the line here.'
+      : authorNext.length ? ` The author goes on with ${authorNext.join(', ')}.` : '';
+    const endsBecause = solverMove ? 'the opponent has no real try left' : 'the problem is settled, as when a ko is the result';
+    const goesOnBecause = solverMove ? 'the opponent still has a real try' : 'the solver still has to answer';
+    parts.push(`<div class="section-label">After this move</div>
+      <div class="reason">${esc(gen + auth)}</div>
+      <div class="actions">
+        <button class="good ${ending === 'right' ? 'on' : ''}" data-act="end" title="The line should end after this move: ${endsBecause}. Any move the tree plays next is marked wrong (e)">Line ends here <kbd>e</kbd></button>
+        <button class="bad ${ending === 'wrong' ? 'on' : ''}" data-act="continue" title="The line should not end after this move: ${goesOnBecause} (c)">Line continues <kbd>c</kbd></button>
+      </div>`);
   } else {
     parts.push(`<h3>Start position · ${colorName(iso.solver)} to play</h3>
       <div class="reason">Select a move in the tree to judge it.</div>`);
@@ -734,7 +735,7 @@ function judgeSelected(verdict) {
 // whether the line should end right after the selected solver move
 function judgeEnd(kind) {
   const node = state.tree.index[state.sel];
-  if (!node.move || !isSolverMove(node.move)) return toast('select a solver move to judge whether the line ends after it');
+  if (!node.move) return toast('select a move to judge whether the line ends after it');
   const current = verdictOf(node.key, END);
   const target = kind === 'end' ? 'right' : 'wrong';
   const dn = decisionAt(node.key);
@@ -744,7 +745,7 @@ function judgeEnd(kind) {
     if (current === target) return; // pressed again: clear
     if (kind === 'end') {
       e.expect.choose.push(END);
-      // ending here makes any response the tree plays here wrong
+      // ending here makes any move the tree plays next wrong
       if (dn) {
         for (const m of chosenMoves(dn)) {
           if (m === END) continue;

@@ -15,7 +15,9 @@ import autoprob.validate.DecisionRecord;
 // case expects, for analysis in a spreadsheet or notebook. solver rows carry the lead
 // after the move, which decides whether it works. opponent decisions also get an END
 // row carrying the decision's largest threat, since "should the line end here" is
-// mostly a question about that number.
+// mostly a question about that number. solver decisions get an END row (no threat) when
+// the case judges the ending or the tree ended there: a line can end after an opponent
+// move, as in a ko.
 public class CaseExporter {
     private static final String HEADER = "problem,position,depth,role,source,tags,expect_choose,expect_avoid,"
             + "passes,candidate,cand_source,label,algo_chose,prior,visits,score_lead,after_lead,human_policy,threat,"
@@ -55,9 +57,13 @@ public class CaseExporter {
                             + "," + num(cand.answers) + "," + num(cand.stakeDist) + "," + item.from);
                     rows++;
                 }
-                if (c.role.equals(DecisionRecord.OPPONENT)) {
+                boolean opponent = c.role.equals(DecisionRecord.OPPONENT);
+                boolean endJudged = c.expect.choose.contains(DecisionRecord.END) || c.expect.avoid.contains(DecisionRecord.END)
+                        || DecisionRecord.END.equals(d.chose);
+                if (opponent || endJudged) {
                     w.println(prefix + "," + DecisionRecord.END + ",," + label(c, DecisionRecord.END) + ","
-                            + DecisionRecord.END.equals(d.chose) + ",,,,,," + maxThreat + ",,,,,," + item.from);
+                            + DecisionRecord.END.equals(d.chose) + ",,,,,," + (opponent ? String.valueOf(maxThreat) : "")
+                            + ",,,,,," + item.from);
                     rows++;
                 }
             }

@@ -3,6 +3,7 @@ package autoprob.validate;
 import java.awt.Point;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 
 import autoprob.KataBrain;
@@ -29,6 +30,9 @@ public class ProblemIsolator {
         public double targetLead; // black score the komi balance aims for with correct play
         public ArrayList<Point> stakes = new ArrayList<>(); // stones whose life depends on solving
         public ArrayList<String> warnings = new ArrayList<>();
+        // with ko threats on: the points of the threat pattern, where the solver may move
+        // even though they are far from the problem
+        public List<Point> threats = new ArrayList<>();
 
         public boolean isFilled(int x, int y) {
             return filledStones.board[x][y].stone != Intersection.EMPTY;
@@ -54,9 +58,18 @@ public class ProblemIsolator {
         problem.addXtraTag("PL", iso.solverColor == Intersection.BLACK ? "B" : "W");
         iso.problem = problem;
 
-        // fill the rest of the board with balanced static stones
+        // fill the rest of the board: balanced static stones, or with ko threats for the
+        // solver, katrain's tsumego frame (its threat only works inside its own fill), so a
+        // ko the solver starts counts as won by the solver
         int gap = Integer.parseInt(props.getProperty("redo.gap", "4"));
-        new BalancedFortress().build(problem.board, gap, iso.filledStones);
+        if (Boolean.parseBoolean(props.getProperty("redo.ko_threats", "false"))) {
+            iso.threats = new TsumegoFrame().build(problem.board, gap, iso.solverColor, 7.5, true, iso.filledStones);
+            System.out.println("tsumego frame with ko threats for " + Intersection.color2name(iso.solverColor)
+                    + (iso.threats.isEmpty() ? ": WARNING, no room for the threat pattern" : ""));
+            if (iso.threats.isEmpty()) iso.warnings.add("no room for the ko threat pattern");
+        } else {
+            new BalancedFortress().build(problem.board, gap, iso.filledStones);
+        }
 
         balanceKomi(iso);
         calcStakes(iso);

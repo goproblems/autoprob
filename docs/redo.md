@@ -103,6 +103,19 @@ a score close enough to zero that komi can compensate (KataGo only accepts komi 
 [-150, 150]); a warning is printed if the estimated imbalance exceeds 100 points. All
 filled stones are tracked so they can be excluded from every later stone count.
 
+**Ko threats** (`redo.ko_threats`, off by default). The fortress has no ko threats for
+either side, so KataGo counts any ko as lost by whoever needs a threat, and a problem whose
+answer is a ko looks no better than one where the solver fails outright. With ko threats
+on, the board is filled with KaTrain's tsumego frame instead (`TsumegoFrame`, ported from
+KaTrain, which took it from lizgoban): an attacker border around the problem, the rest split
+between defender and attacker with checkerboard eyes, and lizgoban's edge pattern in a far
+corner that gives the side to play a run of forcing ataris to use as ko threats. A ko the
+solver starts then counts as won by the solver, as a problem's ko answer intends. The
+solver may move on the threat pattern at the first move of every analysis, so it can
+answer a ko capture with a threat. The threats are modest: a ko worth more than they are
+can still be lost. `missing-variations` turns this on for problems whose own line goes
+through a ko ([missing-variations.md](missing-variations.md)).
+
 **Komi balance.** The isolated root is analyzed (`redo.balance_visits`) and komi is set so
 that with correct play the solver leads by `redo.komi_margin` points. Solving then decides
 the game, and any slack move loses it. Komi is rounded to the nearest 0.5.
@@ -346,6 +359,7 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.pass_visits` | 1000 | Visits for each half of a threat pass test |
 | `redo.balance_visits` | 1500 | Visits for the initial komi balance |
 | `redo.gap` | 4 | Empty lines between the problem stones and the fortress walls |
+| `redo.ko_threats` | false | Fill the board with KaTrain's tsumego frame, with ko threats for the solver, instead of the fortress |
 | `redo.komi_margin` | 2.5 | Solver's target lead after correct play |
 | `redo.stake_threshold` | 1.3 | Ownership change (0 to 2) for a stone to count as at stake |
 | `redo.threat_stones` | 4 | Stones that must change fate for a response to be a real threat |

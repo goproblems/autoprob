@@ -51,8 +51,10 @@ public class DecisionFeatureExtractor {
         solverCandidates = Integer.parseInt(props.getProperty("redo.solver_candidates", "6"));
     }
 
+    // moves near the problem, and on a ko threat pattern if the board has one: the solver
+    // must be able to answer a ko capture with a threat
     public KataAnalysisResult analyzeNear(Node node, int v) throws Exception {
-        return na.analyzeNode(brain, node, v, nearDist, true, iso.filledStones);
+        return na.analyzeNode(brain, node, v, nearDist, true, iso.filledStones, iso.threats);
     }
 
     // solver to move: katago's top moves, plus moves a human would naturally try. with

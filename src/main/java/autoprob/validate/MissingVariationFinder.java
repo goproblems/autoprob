@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -57,6 +58,7 @@ public class MissingVariationFinder {
     private final int verifyVisits;
     private final double tolerance;
     private final boolean allowKo;
+    private final boolean skipKo;
     private KataBrain brain;
 
     // a position on the author's correct lines where the solver is to play, and the moves
@@ -79,6 +81,7 @@ public class MissingVariationFinder {
         String status; // found, clean, skipped or error
         String reason;
         int positions; // positions on the author's lines checked
+        int koSkipped; // of those, passed over because the author's line goes through a ko
         long seconds;
         Finding finding;
     }
@@ -128,6 +131,9 @@ public class MissingVariationFinder {
         // the isolated board has no ko threats, so a move that only works through a ko can
         // look as good as an unconditional one. dropped unless the author's line needs a ko too
         this.allowKo = Boolean.parseBoolean(props.getProperty("missing.allow_ko", "false"));
+        // a problem whose own line goes through a ko is checked on a board with ko threats for
+        // the solver (katrain's tsumego frame), or with skip_ko its ko positions are passed over
+        this.skipKo = Boolean.parseBoolean(props.getProperty("missing.skip_ko", "false"));
     }
 
     public void run() throws Exception {
@@ -312,7 +318,8 @@ public class MissingVariationFinder {
         }
         o.seconds = (System.currentTimeMillis() - start) / 1000;
         System.out.println(name + ": " + o.status + (o.reason != null ? " (" + o.reason + ")" : "")
-                + ", " + o.positions + " position" + (o.positions == 1 ? "" : "s") + " checked in " + o.seconds + " s");
+                + ", " + o.positions + " position" + (o.positions == 1 ? "" : "s") + " checked"
+                + (o.koSkipped > 0 ? " (" + o.koSkipped + " not judged for a ko)" : "") + " in " + o.seconds + " s");
         return o;
     }
 
@@ -327,10 +334,35 @@ public class MissingVariationFinder {
             o.reason = "no correct line";
             return null;
         }
-        ProblemIsolator.IsolatedProblem iso = new ProblemIsolator(props, brain).isolate(root);
+        // the isolated board has no ko threats, so it cannot judge a ko the way a game would:
+        // a problem whose own line goes through one gets a board with threats for the solver
+        Properties isolation = props;
+        List<List<String>> authorLines = new ArrayList<>();
+        for (MovePath ref : refs) authorLines.add(ProblemRecord.moves(ref));
+        if (!skipKo && koIn(root, authorLines) != null) {
+            isolation = new Properties();
+            isolation.putAll(props);
+            isolation.setProperty("redo.ko_threats", "true");
+            System.out.println("the problem's line goes through a ko, so the board gets ko threats for the solver");
+        }
+        ProblemIsolator.IsolatedProblem iso = new ProblemIsolator(isolation, brain).isolate(root);
         DecisionFeatureExtractor extractor = new DecisionFeatureExtractor(props, brain, iso, params);
         for (Position pos : authorPositions(refs, IsolationRecord.colorLetter(iso.solverColor))) {
             o.positions++;
+            if (skipKo) {
+                Node at;
+                try {
+                    at = Positions.play(iso, pos.at());
+                } catch (IllegalArgumentException e) {
+                    at = null; // findAt reports it
+                }
+                if (at != null && koIn(at, pos.lines()) != null) {
+                    System.out.println("  " + (pos.at().isEmpty() ? "at the start" : "after " + String.join(" ", pos.at()))
+                            + ": ko, not judged (the problem's line goes through a ko)");
+                    o.koSkipped++;
+                    continue;
+                }
+            }
             Finding f = findAt(name, sgf, root, iso, extractor, pos);
             if (f != null) {
                 f.difficulty = difficulty;
@@ -379,9 +411,12 @@ public class MissingVariationFinder {
             return null;
         }
         CandidateFeatures top = rec.candidates.get(0);
+        Set<String> threatPoints = new HashSet<>();
+        for (Point t : iso.threats) threatPoints.add(Intersection.toGTPloc(t.x, t.y, 19));
         List<CandidateFeatures> missing = new ArrayList<>();
         for (CandidateFeatures c : rec.candidates) {
             if (pos.correct().contains(c.move) || c.point().equals("pass")) continue;
+            if (threatPoints.contains(c.point())) continue; // a ko threat, not an answer to the problem
             if (c != top && !ChoiceRule.nearFight(c, params)) continue;
             if (!ChoiceRule.works(c, best, tolerance) || c.afterLead < authorLead - tolerance) continue;
             missing.add(c);
@@ -583,6 +618,10 @@ public class MissingVariationFinder {
                 }
             }
             sub.rows = Positions.rows(cur, iso);
+            if (!iso.threats.isEmpty()) {
+                sub.threats = new ArrayList<>();
+                for (Point t : iso.threats) sub.threats.add(Intersection.toGTPloc(t.x, t.y, 19));
+            }
             from = sub.toIsolated();
         } finally {
             if (first != null) node.removeChildNode(first);
@@ -591,11 +630,18 @@ public class MissingVariationFinder {
         SolutionPathGenerator generator = new SolutionPathGenerator(props, brain, from);
         if (forced != null) generator.setForcedFirstMove(Intersection.gtp2point(forced.substring(2)));
         generator.generate();
+        // a line that goes on into the ko threats is cut where the ko starts, the way a
+        // problem's own ko line ends
+        Set<String> threatPoints = new HashSet<>();
+        for (Point t : from.threats) threatPoints.add(Intersection.toGTPloc(t.x, t.y, 19));
         List<List<String>> lines = new ArrayList<>();
         for (MovePath line : MovePath.extractRightPaths(from.problem)) {
             List<String> full = new ArrayList<>(moves);
-            full.addAll(ProblemRecord.moves(line));
-            lines.add(full);
+            for (String m : ProblemRecord.moves(line)) {
+                if (threatPoints.contains(m.substring(2))) break;
+                full.add(m);
+            }
+            if (!lines.contains(full)) lines.add(full);
         }
         if (lines.isEmpty()) {
             List<String> only = new ArrayList<>(moves);
@@ -708,6 +754,7 @@ public class MissingVariationFinder {
         row.put("status", o.status);
         if (o.reason != null) row.put("reason", o.reason);
         row.put("positions", o.positions);
+        if (o.koSkipped > 0) row.put("koSkipped", o.koSkipped);
         row.put("seconds", o.seconds);
         if (o.finding != null) {
             row.put("at", String.join(" ", o.finding.at));

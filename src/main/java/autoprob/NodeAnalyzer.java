@@ -126,6 +126,12 @@ public class NodeAnalyzer {
 	}
 
 	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, double dist, boolean useDistance, Board ignoreStones) throws Exception {
+		return analyzeNode(brain, node, visits, dist, useDistance, ignoreStones, null);
+	}
+
+	// alsoAllow: further points the first move may be played at, such as a ko threat pattern
+	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, double dist, boolean useDistance,
+										  Board ignoreStones, java.util.List<Point> alsoAllow) throws Exception {
 		if (!useDistance) {
 			return analyzeNode(brain, node, visits, null);
 		}
@@ -151,6 +157,12 @@ public class NodeAnalyzer {
 					moves.add(Intersection.toGTPloc(x, y, 19));
 				}
 			}
+		if (alsoAllow != null) {
+			for (Point p : alsoAllow) {
+				String gtp = Intersection.toGTPloc(p.x, p.y, 19);
+				if (node.board.board[p.x][p.y].stone == 0 && !moves.contains(gtp)) moves.add(gtp);
+			}
+		}
 		return analyzeNode(brain, node, visits, moves);
 	}
 

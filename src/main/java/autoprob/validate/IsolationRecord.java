@@ -19,6 +19,7 @@ public class IsolationRecord {
     public double targetLead;
     public List<String> stakes = new ArrayList<>();
     public List<String> rows = new ArrayList<>();
+    public List<String> threats; // the ko threat pattern's points, when the board has one
 
     public static IsolationRecord from(ProblemIsolator.IsolatedProblem iso) {
         IsolationRecord rec = new IsolationRecord();
@@ -27,6 +28,10 @@ public class IsolationRecord {
         rec.targetLead = iso.targetLead;
         for (Point p : iso.stakes) {
             rec.stakes.add(Intersection.toGTPloc(p.x, p.y, 19));
+        }
+        if (!iso.threats.isEmpty()) {
+            rec.threats = new ArrayList<>();
+            for (Point p : iso.threats) rec.threats.add(Intersection.toGTPloc(p.x, p.y, 19));
         }
         for (int y = 0; y < 19; y++) {
             StringBuilder sb = new StringBuilder();
@@ -69,6 +74,9 @@ public class IsolationRecord {
         iso.problem = problem;
         for (String s : stakes) {
             iso.stakes.add(Intersection.gtp2point(s));
+        }
+        if (threats != null) {
+            for (String s : threats) iso.threats.add(Intersection.gtp2point(s));
         }
         return iso;
     }

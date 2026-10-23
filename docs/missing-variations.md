@@ -62,10 +62,29 @@ Every problem's outcome is appended to `missing_variations/log.jsonl`.
    position, with the move forced first, so the line answers and ends the way `redo`'s
    would; for each of the problem's own answers to it, the solver's way through is
    generated as well.
-8. The isolated board has no ko threats, so a move that only works through a ko can look
-   as good as an unconditional one. If the generated lines take a ko and the author's
-   lines from that position do not, the move is not counted (`missing.allow_ko=true` keeps
-   it, flagged). Otherwise the command stops there.
+8. A move whose generated lines take a ko when the author's lines from that position do
+   not is not counted: the solver would be trading an unconditional result for a ko
+   (`missing.allow_ko=true` keeps it, flagged). Otherwise the command stops there.
+
+### Kos
+
+The usual isolated board has no ko threats, so KataGo counts every ko as lost by whoever
+needs a threat. When the problem's own answer is a ko, that makes the answer look no
+better than a move that simply fails, and failing moves get reported. In gp-36582 the
+author's S17 ends in a ko for the whole corner, while Q18 lets Black live outright; on the
+plain board both came out as Black living, within a point of each other.
+
+So a problem whose own line goes through a ko is checked on a board with ko threats for the
+solver: KaTrain's tsumego frame with lizgoban's ko threat pattern (`redo.ko_threats`, see
+[redo.md](redo.md)). A ko the solver starts then counts as won by the solver, as the
+author's ko answer intends: in gp-36582 the corner dies after S17 and lives after Q18, 25
+points apart, and Q18 is no longer reported. A move on the threat pattern is never
+reported, and generated lines stop where they would go on into the threats, so they end at
+the ko the way the problem's do.
+
+`missing.skip_ko=true` instead passes over every position whose own line goes through a ko
+("ko, not judged"), which avoids relying on the threats at all; useful when scanning the
+site for findings to trust without a second look.
 
 ## What it shows
 
@@ -87,4 +106,5 @@ data. `missing.dir` moves all of this.
 The verdict is KataGo's, on the isolated position, so look at each finding before adding
 it to a problem. Moves that keep the result but are clearly inferior (a slower or less
 efficient way to the same result) can pass the tolerance; positions the isolation misreads
-are skipped rather than reported, so some missing variations go unnoticed.
+are skipped rather than reported, so some missing variations go unnoticed. The ko threats
+are modest, so a ko worth more than they are can still be counted as lost.

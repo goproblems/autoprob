@@ -242,16 +242,17 @@ testing severe threat by the same criterion also branches the tree.
 
 **Ending.** A line ends naturally when no candidate is a real threat ("no opponent threat
 remains"), when the solver's best move is a pass, or (with `redo.end_on_obvious`, the
-default) when every real try left is routine: KataGo's prior on the answer is at least
-`redo.routine_answer_prior` (0.9) and a human finds an answer that holds at least
-`redo.routine_human_answer` (0.8) of the time ("only routine tries remain"). Authors stop
-once the result is clear rather than play out replies everyone finds. On the reviewed
-cases this ends 3 of the 6 lines a reviewer said ran too long and none they accepted going
-on, apart from gp-5922's deep side branches, where they find either way fine. Across the
-20 sample problems it ends 39 lines: 36 off the author's tree, 2 where the author ends too,
-and one where the author goes on: gp-5849 after B T2, where the reviewer ended it too. A try two answers handle does not count as routine:
-that would end gp-721 right after B G1, before the author's W J1 B H2 W N1 B M1, and
-gp-28281 after its first move. It is truncated if it reaches
+default) when at least `redo.routine_min_tries` (2) real tries are left and every one is
+routine: KataGo's prior on the answer is at least `redo.routine_answer_prior` (0.9) and a
+human finds an answer that holds at least `redo.routine_human_answer` (0.8) of the time
+("only routine tries remain"). Authors stop once the result is clear rather than play out
+replies everyone finds, but they still show a single last resistance, even an obvious one:
+in a full run with no minimum, the 4 lines it ended on the author's tree with one try left
+all cut the author short (gp-39693 right after its first move, gp-721 before W N1 B M1,
+gp-8142 after W Q18, gp-5922), while the 3 with several tries left ended where the author
+does (gp-10330, gp-19150) or where a reviewer wanted (gp-5849 after B T2). A try two
+answers handle does not count as routine: that would end gp-721 right after B G1, before
+the author's W J1 B H2 W N1 B M1, and gp-28281 after its first move. It is truncated if it reaches
 `redo.max_moves` (counting both colors' moves), if the tree reaches
 `redo.max_tree_decisions` decisions, or if an analysis fails after a retry; a truncated
 main line is reported as not ended naturally. The last solver move of every line is marked
@@ -358,6 +359,7 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.end_on_obvious` | true | End the line when every real try left has an obvious answer |
 | `redo.routine_answer_prior` | 0.9 | An answer is obvious when KataGo's prior on it is at least this... |
 | `redo.routine_human_answer` | 0.8 | ...and a human finds an answer that holds at least this often |
+| `redo.routine_min_tries` | 2 | ...and at least this many real tries are left (a single last resistance is still shown) |
 | `redo.force_first_move` | false | Pin the first solver move to the reference |
 | `redo.recalibrate` | true | Rebuild stakes and komi and regenerate on score drift |
 | `redo.response_candidates` | 4 | KataGo moves considered as opponent responses |

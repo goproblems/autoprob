@@ -21,6 +21,9 @@ public class ChoiceParams {
     public boolean endOnObvious;
     public double routineAnswerPrior;
     public double routineHumanAnswer;
+    // ...and only when at least this many real tries are left: authors still show a single
+    // last resistance, even an obvious one
+    public int routineMinTries;
     public int threatRegionDist;     // only count threats near the stakes; -1 counts everywhere
 
     // solution tree branching
@@ -50,6 +53,7 @@ public class ChoiceParams {
         p.endOnObvious = Boolean.parseBoolean(props.getProperty("redo.end_on_obvious", "true"));
         p.routineAnswerPrior = Double.parseDouble(props.getProperty("redo.routine_answer_prior", "0.9"));
         p.routineHumanAnswer = Double.parseDouble(props.getProperty("redo.routine_human_answer", "0.8"));
+        p.routineMinTries = Integer.parseInt(props.getProperty("redo.routine_min_tries", "2"));
         // redo.threat_region_dist is not applied to live generation yet (see docs/redo.md
         // known gaps); the tuner can try it offline first
         p.threatRegionDist = -1;
@@ -78,6 +82,7 @@ public class ChoiceParams {
         p.endOnObvious = endOnObvious;
         p.routineAnswerPrior = routineAnswerPrior;
         p.routineHumanAnswer = routineHumanAnswer;
+        p.routineMinTries = routineMinTries;
         p.threatRegionDist = threatRegionDist;
         p.altScoreTolerance = altScoreTolerance;
         p.altRegionDist = altRegionDist;
@@ -105,6 +110,7 @@ public class ChoiceParams {
             case "end_on_obvious" -> endOnObvious = Boolean.parseBoolean(value);
             case "routine_answer_prior" -> routineAnswerPrior = Double.parseDouble(value);
             case "routine_human_answer" -> routineHumanAnswer = Double.parseDouble(value);
+            case "routine_min_tries" -> routineMinTries = Integer.parseInt(value);
             case "threat_region_dist" -> threatRegionDist = Integer.parseInt(value);
             case "alt_score_tolerance" -> altScoreTolerance = Double.parseDouble(value);
             case "alt_region_dist" -> altRegionDist = Integer.parseInt(value);

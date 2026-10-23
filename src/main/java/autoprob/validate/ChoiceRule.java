@@ -164,9 +164,11 @@ public class ChoiceRule {
                     ? "no testing threat remains (" + easy + " threat" + (easy == 1 ? "" : "s") + " any of several answers handle)"
                     : "no opponent threat remains");
         }
-        // the line also ends when every real try left is routine. authors stop once the
-        // result is clear rather than play out replies everyone finds
-        if (p.endOnObvious && threatening.stream().allMatch(c -> obviousAnswer(c, p))) {
+        // the line also ends when the real tries left are routine. authors stop once the
+        // result is clear rather than play out replies everyone finds, though they still
+        // show a single last resistance
+        if (p.endOnObvious && threatening.size() >= Math.max(1, p.routineMinTries)
+                && threatening.stream().allMatch(c -> obviousAnswer(c, p))) {
             return new Choice(DecisionRecord.END, "only routine tries remain (obvious answers to "
                     + String.join(", ", threatening.stream().map(CandidateFeatures::point).toList()) + ")");
         }

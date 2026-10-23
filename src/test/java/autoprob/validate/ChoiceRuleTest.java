@@ -89,6 +89,9 @@ class ChoiceRuleTest {
         assertTrue(choice.isEnd());
         assertTrue(choice.reason.startsWith("only routine tries remain"), choice.reason);
         assertEquals("W R2", ChoiceRule.chooseOpponent(opponent(r2, s1), params("end_on_obvious", "false"), STAKES).move);
+        // a single last try is still shown, however obvious its answer
+        assertEquals("W R2", ChoiceRule.chooseOpponent(opponent(r2), params(), STAKES).move);
+        assertTrue(ChoiceRule.chooseOpponent(opponent(r2), params("routine_min_tries", "1"), STAKES).isEnd());
         // one try whose answer a human misses keeps the line going
         s1.humanAnswer = 0.4;
         assertEquals("W S1", ChoiceRule.chooseOpponent(opponent(r2, s1), params(), STAKES).move);

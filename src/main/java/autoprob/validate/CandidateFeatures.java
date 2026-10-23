@@ -26,6 +26,10 @@ public class CandidateFeatures {
     public String answer;       // the solver's best answer after this move
     public Double answerPrior;  // katago prior of that answer: how obvious it is to the engine
     public Double humanAnswer;  // human policy of that answer: how obvious it is to a human
+    // human policy summed over every solver answer that holds (those answers counts), up
+    // to 1: how likely a human is to find some correct answer. a response several moves
+    // answer is easier than its best answer's policy suggests. older records lack it
+    public Double humanAnswers;
     // solver answers that hold the result after this move: katago moves its search took
     // seriously (a tenth of the top move's visits) scoring within alt_score_tolerance of the
     // best. one answer means the move tests the solver; many mean anything answers it

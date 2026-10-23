@@ -58,7 +58,33 @@ class ChoiceRuleTest {
 
     @Test
     void testingPicksTheResistanceWhoseAnswerIsHardestForAHuman() {
-        assertEquals("W N1", ChoiceRule.chooseOpponent(gp721(), params(), STAKES).move);
+        assertEquals("W N1", ChoiceRule.chooseOpponent(gp721(), params("naturalness_weight", "0"), STAKES).move);
+    }
+
+    // gp-8142 after W P18: M18 is a move no human would play whose best answer is obscure,
+    // P17 the natural resistance (and the author's)
+    private static DecisionRecord gp8142() {
+        return opponent(
+                cand("B M18", "katago", 0.025, 80, 0.0, 0.337, 16, 0),
+                cand("B P17", "human", 0.0, 0, 0.833, 0.707, 15, 0));
+    }
+
+    @Test
+    void testingWeighsHowNaturalTheResistanceIs() {
+        assertEquals("B P17", ChoiceRule.chooseOpponent(gp8142(), params(), STAKES).move);
+        assertEquals("B M18", ChoiceRule.chooseOpponent(gp8142(), params("naturalness_weight", "0"), STAKES).move);
+        // likewise gp-721's natural F1 over N1
+        assertEquals("W F1", ChoiceRule.chooseOpponent(gp721(), params(), STAKES).move);
+    }
+
+    @Test
+    void anyAnswerThatHoldsCountsTowardTheAnswerChance() {
+        // after M18 four answers hold: together a human finds one about as often as Q18
+        // after P17, so the two tie and naturalness decides even without its weight
+        DecisionRecord rec = gp8142();
+        rec.candidate("B M18").humanAnswers = 0.68;
+        rec.candidate("B P17").humanAnswers = 0.707;
+        assertEquals("B P17", ChoiceRule.chooseOpponent(rec, params("naturalness_weight", "0"), STAKES).move);
     }
 
     @Test
@@ -115,10 +141,11 @@ class ChoiceRuleTest {
         // through to human policy, so a few hundredths decide it
         DecisionRecord rec = opponent(cand("W F1", "katago", 0.6, 500, 0.6, 0.39, 12, 0),
                 cand("W J1", "katago", 0.2, 200, 0.1, 0.25, 12, 0));
-        assertTrue(ChoiceRule.isFragile(rec, params(), STAKES));
+        ChoiceParams answersOnly = params("naturalness_weight", "0");
+        assertTrue(ChoiceRule.isFragile(rec, answersOnly, STAKES));
         DecisionRecord clear = opponent(cand("W F1", "katago", 0.6, 500, 0.6, 0.9, 12, 0),
                 cand("W J1", "katago", 0.2, 200, 0.1, 0.1, 12, 0));
-        assertFalse(ChoiceRule.isFragile(clear, params(), STAKES));
+        assertFalse(ChoiceRule.isFragile(clear, answersOnly, STAKES));
     }
 
     @Test
@@ -219,8 +246,8 @@ class ChoiceRuleTest {
         rec.candidate("W F1").answers = 1;
         rec.candidate("W J1").answers = 1;
         rec.candidate("W N1").answers = 5;
-        assertEquals("W F1", ChoiceRule.chooseOpponent(rec, params(), STAKES).move);
-        assertEquals("W N1", ChoiceRule.chooseOpponent(rec, params("max_answers", "0"), STAKES).move);
+        assertEquals("W F1", ChoiceRule.chooseOpponent(rec, params("naturalness_weight", "0"), STAKES).move);
+        assertEquals("W N1", ChoiceRule.chooseOpponent(rec, params("max_answers", "0", "naturalness_weight", "0"), STAKES).move);
         // when every threat is answered by anything, the line ends
         rec.candidate("W F1").answers = 4;
         ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(rec, params(), STAKES);
@@ -231,8 +258,8 @@ class ChoiceRuleTest {
     @Test
     void extraOpponentBranchesFollowTheCriterion() {
         ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(gp721(), params("opponent_branches", "2"), STAKES);
-        assertEquals("W N1", choice.move);
-        assertEquals(List.of("W F1"), choice.also); // J1 threatens too little to count
+        assertEquals("W F1", choice.move);
+        assertEquals(List.of("W N1"), choice.also); // J1 threatens too little to count
         // order takes threatening moves in katago's order, skipping J1
         assertEquals(List.of("W F1", "W N1"), ChoiceRule.chooseOpponent(gp721(),
                 params("opponent_branches", "2", "response_criterion", "order"), STAKES).moves());

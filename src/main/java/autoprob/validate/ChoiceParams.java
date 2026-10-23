@@ -12,6 +12,9 @@ public class ChoiceParams {
     public double threatOwnershipThreshold;
     public double severeThreatRatio;
     public double testingBand;       // width of the human answer bands the testing criterion compares
+    // how much the testing criterion favors natural resistances: their human policy times
+    // this is taken off how easy they are to answer. 0 leaves naturalness a tie-break
+    public double naturalnessWeight;
     public int threatRegionDist;     // only count threats near the stakes; -1 counts everywhere
 
     // solution tree branching
@@ -37,6 +40,7 @@ public class ChoiceParams {
         p.threatOwnershipThreshold = Double.parseDouble(props.getProperty("redo.threat_ownership_threshold", "1.1"));
         p.severeThreatRatio = Double.parseDouble(props.getProperty("redo.severe_threat_ratio", "0.6"));
         p.testingBand = Double.parseDouble(props.getProperty("redo.testing_band", "0.2"));
+        p.naturalnessWeight = Double.parseDouble(props.getProperty("redo.naturalness_weight", "1"));
         // redo.threat_region_dist is not applied to live generation yet (see docs/redo.md
         // known gaps); the tuner can try it offline first
         p.threatRegionDist = -1;
@@ -61,6 +65,7 @@ public class ChoiceParams {
         p.threatOwnershipThreshold = threatOwnershipThreshold;
         p.severeThreatRatio = severeThreatRatio;
         p.testingBand = testingBand;
+        p.naturalnessWeight = naturalnessWeight;
         p.threatRegionDist = threatRegionDist;
         p.altScoreTolerance = altScoreTolerance;
         p.altRegionDist = altRegionDist;
@@ -84,6 +89,7 @@ public class ChoiceParams {
             case "threat_ownership_threshold" -> threatOwnershipThreshold = Double.parseDouble(value);
             case "severe_threat_ratio" -> severeThreatRatio = Double.parseDouble(value);
             case "testing_band" -> testingBand = Double.parseDouble(value);
+            case "naturalness_weight" -> naturalnessWeight = Double.parseDouble(value);
             case "threat_region_dist" -> threatRegionDist = Integer.parseInt(value);
             case "alt_score_tolerance" -> altScoreTolerance = Double.parseDouble(value);
             case "alt_region_dist" -> altRegionDist = Integer.parseInt(value);

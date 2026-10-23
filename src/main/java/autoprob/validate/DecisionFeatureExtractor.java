@@ -195,7 +195,8 @@ public class DecisionFeatureExtractor {
             measureThreat(node, c);
             System.out.println("  response candidate " + c.point() + " (" + describe(c) + "): threat " + c.threat
                     + ", answer prior " + fmt(c.answerPrior) + ", human answer " + fmt(c.humanAnswer)
-                    + ", answers " + c.answers + ", stake dist " + c.stakeDist);
+                    + " (any that holds " + fmt(c.humanAnswers) + "), answers " + c.answers
+                    + ", stake dist " + c.stakeDist);
         }
         return rec;
     }
@@ -241,21 +242,21 @@ public class DecisionFeatureExtractor {
             }
             c.answerPrior = 1.0;
             c.humanAnswer = 1.0;
-            c.answers = countAnswers(karMove);
+            c.humanAnswers = 1.0;
+            List<String> holding = holdingAnswers(karMove);
+            c.answers = holding.size();
             if (!karMove.moveInfos.isEmpty()) {
                 MoveInfo answer = karMove.moveInfos.get(0);
                 c.answer = answer.move;
                 c.answerPrior = answer.prior;
                 if (!answer.move.equals("pass")) {
-                    // how likely is a human to find the correct answer to this response?
-                    Point ap = Intersection.gtp2point(answer.move);
-                    c.humanAnswer = 0.0;
-                    for (KataAnalysisResult.Policy hp : blendedHumanPolicy(tike)) {
-                        if (hp.x == ap.x && hp.y == ap.y) {
-                            c.humanAnswer = hp.policy;
-                            break;
-                        }
-                    }
+                    // how likely is a human to find the correct answer to this response: the
+                    // best answer, and any answer that holds
+                    List<KataAnalysisResult.Policy> human = blendedHumanPolicy(tike);
+                    c.humanAnswer = humanPolicyAt(human, answer.move);
+                    double sum = 0;
+                    for (String m : holding) sum += humanPolicyAt(human, m);
+                    c.humanAnswers = Math.min(1.0, sum);
                 }
             }
             Node passNode = tike.addBasicMove(19, 19);
@@ -279,11 +280,12 @@ public class DecisionFeatureExtractor {
         }
     }
 
-    // how many solver answers hold the result: katago moves its search took seriously (a
+    // the solver answers that hold the result: katago moves its search took seriously (a
     // tenth of the top move's visits) scoring within alt_score_tolerance of the best of them.
-    // 0 when the solver's best answer is to pass.
-    private int countAnswers(KataAnalysisResult kar) {
-        if (kar.moveInfos.isEmpty() || kar.moveInfos.get(0).move.equals("pass")) return 0;
+    // none when the solver's best answer is to pass.
+    private List<String> holdingAnswers(KataAnalysisResult kar) {
+        List<String> out = new ArrayList<>();
+        if (kar.moveInfos.isEmpty() || kar.moveInfos.get(0).move.equals("pass")) return out;
         int sign = iso.solverColor == Intersection.BLACK ? 1 : -1;
         int top = kar.moveInfos.get(0).visits;
         double best = Double.NEGATIVE_INFINITY;
@@ -291,12 +293,19 @@ public class DecisionFeatureExtractor {
             if (mi.move.equals("pass") || mi.visits < 0.1 * top) continue;
             best = Math.max(best, sign * mi.scoreLead);
         }
-        int count = 0;
         for (MoveInfo mi : kar.moveInfos) {
             if (mi.move.equals("pass") || mi.visits < 0.1 * top) continue;
-            if (sign * mi.scoreLead >= best - params.altScoreTolerance) count++;
+            if (sign * mi.scoreLead >= best - params.altScoreTolerance) out.add(mi.move);
         }
-        return count;
+        return out;
+    }
+
+    private static double humanPolicyAt(List<KataAnalysisResult.Policy> policy, String gtp) {
+        Point p = Intersection.gtp2point(gtp);
+        for (KataAnalysisResult.Policy hp : policy) {
+            if (hp.x == p.x && hp.y == p.y) return hp.policy;
+        }
+        return 0.0;
     }
 
     private int distanceToStakes(Point p) {

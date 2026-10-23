@@ -184,7 +184,7 @@ public class ChoiceRule {
         List<String> also = new ArrayList<>();
         for (int i = 1; i < ranked.size(); i++) also.add(ranked.get(i).move);
         return new Choice(best.move, also, "chose response " + best.point() + " (human " + df.format(humanPolicy(best))
-                + ", threat " + countThreat(best, p, stakes) + ", human answer " + df.format(humanAnswer(best)) + ")"
+                + ", threat " + countThreat(best, p, stakes) + ", human answer " + df.format(answerChance(best)) + ")"
                 + (also.isEmpty() ? "" : ", also " + String.join(", ", also.stream().map(m -> m.substring(2)).toList())));
     }
 
@@ -226,19 +226,22 @@ public class ChoiceRule {
             if (!chooseOpponent(rec, q, stakes).moves().equals(base)) return true;
         }
         for (CandidateFeatures c : rec.candidates) {
-            Double humanAnswer = c.humanAnswer, humanPolicy = c.humanPolicy;
+            Double humanAnswer = c.humanAnswer, humanAnswers = c.humanAnswers, humanPolicy = c.humanPolicy;
             try {
                 for (double d : new double[]{-0.05, 0.05}) {
                     c.humanAnswer = humanAnswer == null ? null : Math.max(0, humanAnswer + d);
+                    c.humanAnswers = humanAnswers == null ? null : Math.max(0, humanAnswers + d);
                     if (!chooseOpponent(rec, p, stakes).moves().equals(base)) return true;
                 }
                 c.humanAnswer = humanAnswer;
+                c.humanAnswers = humanAnswers;
                 for (double d : new double[]{-0.03, 0.03}) {
                     c.humanPolicy = humanPolicy == null ? null : Math.max(0, humanPolicy + d);
                     if (!chooseOpponent(rec, p, stakes).moves().equals(base)) return true;
                 }
             } finally {
                 c.humanAnswer = humanAnswer;
+                c.humanAnswers = humanAnswers;
                 c.humanPolicy = humanPolicy;
             }
         }
@@ -275,11 +278,12 @@ public class ChoiceRule {
     private static boolean better(CandidateFeatures c, CandidateFeatures best, ChoiceParams p) {
         if (p.responseCriterion.equals("testing")) {
             // crafted problems answer the most testing resistance: the one whose
-            // correct refutation is hardest for a human to find. plain liberty
-            // fills with automatic answers are auxiliary. compare in coarse bands
-            // so near-equal difficulty falls through to human naturalness.
-            int cBand = (int) (humanAnswer(c) / p.testingBand);
-            int bestBand = (int) (humanAnswer(best) / p.testingBand);
+            // correct refutation is hardest for a human to find, among the ones a
+            // human would play. plain liberty fills with automatic answers are
+            // auxiliary. compare in coarse bands so near-equal scores fall through
+            // to human naturalness.
+            int cBand = (int) Math.floor(testingScore(c, p) / p.testingBand);
+            int bestBand = (int) Math.floor(testingScore(best, p) / p.testingBand);
             if (cBand != bestBand) {
                 return cBand < bestBand;
             }
@@ -324,5 +328,18 @@ public class ChoiceRule {
 
     private static double humanAnswer(CandidateFeatures c) {
         return c.humanAnswer == null ? 1.0 : c.humanAnswer;
+    }
+
+    // how likely a human is to answer this resistance correctly: any answer that holds
+    // counts. older records only have the best answer's policy
+    static double answerChance(CandidateFeatures c) {
+        return c.humanAnswers != null ? c.humanAnswers : humanAnswer(c);
+    }
+
+    // the testing criterion's measure, lower is a better main line resistance: easy to get
+    // wrong, less a credit for being a move a human would play. without that credit a
+    // move no human would play could take the main line just because its answer is obscure
+    static double testingScore(CandidateFeatures c, ChoiceParams p) {
+        return answerChance(c) - p.naturalnessWeight * humanPolicy(c);
     }
 }

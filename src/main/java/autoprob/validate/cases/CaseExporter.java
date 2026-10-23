@@ -21,7 +21,7 @@ import autoprob.validate.DecisionRecord;
 public class CaseExporter {
     private static final String HEADER = "problem,position,depth,role,source,tags,expect_choose,expect_avoid,"
             + "passes,candidate,cand_source,label,algo_chose,prior,visits,score_lead,after_lead,human_policy,threat,"
-            + "answer,answer_prior,human_answer,answers,stake_dist,features_from";
+            + "answer,answer_prior,human_answer,human_answers,answers,stake_dist,features_from";
 
     private final Properties props;
 
@@ -54,6 +54,7 @@ public class CaseExporter {
                             + "," + d.chosenMoves().contains(cand.move) + "," + num(cand.prior) + "," + num(cand.visits)
                             + "," + num(cand.scoreLead) + "," + num(cand.afterLead) + "," + num(cand.humanPolicy) + "," + num(threat)
                             + "," + csv(cand.answer) + "," + num(cand.answerPrior) + "," + num(cand.humanAnswer)
+                            + "," + num(cand.humanAnswers)
                             + "," + num(cand.answers) + "," + num(cand.stakeDist) + "," + item.from);
                     rows++;
                 }
@@ -63,7 +64,7 @@ public class CaseExporter {
                 if (opponent || endJudged) {
                     w.println(prefix + "," + DecisionRecord.END + ",," + label(c, DecisionRecord.END) + ","
                             + DecisionRecord.END.equals(d.chose) + ",,,,,," + (opponent ? String.valueOf(maxThreat) : "")
-                            + ",,,,,," + item.from);
+                            + ",,,,,,," + item.from);
                     rows++;
                 }
             }

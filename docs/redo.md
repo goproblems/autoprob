@@ -199,8 +199,11 @@ stored, so the count can be redone under another threshold. Every candidate is m
 in every mode, even when the choice rule only needs the first one, so the record is
 complete. A candidate is a real threat if
 that count reaches `redo.threat_stones`. The same analysis also records how obvious the
-solver's correct answer is: its KataGo prior, and (for the `testing` criterion) its human
-policy.
+solver's correct answer is: its KataGo prior and human policy, and (for the `testing`
+criterion) the human policy summed over every answer that holds (`humanAnswers`): how
+likely a human is to find some correct answer. A response several moves answer is easier
+than its best answer's policy alone suggests. Records from before it was added fall back to
+the best answer's policy.
 
 A threat must also be a **real try**: the same analysis counts the solver's **answers**,
 the moves KataGo's search took seriously (a tenth of the top move's visits) that score
@@ -220,12 +223,17 @@ Which threatening candidate extends the line depends on `redo.extend_mode` and
 | `primary` | (ignored) | Only the first candidate (KataGo's top move) may extend. If it is not a threat, the line ends. Paths end sooner. |
 | `scan` | `order` | The first candidate, in KataGo order, that is a threat extends. |
 | `scan` | `human` | Among *severe* threats, the one with the highest human policy. |
-| `scan` | `testing` (default) | Among severe threats, the one whose correct answer is **hardest for a human to find** (lowest human policy on the answer, compared in bands of `redo.testing_band`, default 0.2), with ties broken by human policy of the response. |
+| `scan` | `testing` (default) | Among severe threats, the one a human is **most likely to get wrong, among those a human would play**: the chance a human finds an answer that holds, less `redo.naturalness_weight` (default 1) times the response's own human policy. Lowest wins, compared in bands of `redo.testing_band` (default 0.2), with ties broken by human policy of the response. |
 
 A threat is *severe* if it is at least `redo.severe_threat_ratio` times the largest threat
 among the candidates. The `testing` criterion reflects how good problems are written:
 the main line shows the resistance that tests the solver, while plain liberty fills with
-automatic answers are left for side branches. (The code also accepts `local`, which prefers
+automatic answers are left for side branches. The naturalness credit keeps it to
+resistances a human would actually play: without it, in gp-8142 after W P18 the main line
+took B M18 (human policy 0.00) over the author's P17 (0.83), because M18's best answer
+looked obscure, though four answers hold after it. On the sample problems' recorded
+decisions a weight of 1 picks the author's resistance at 26 of 35 positions, against 23
+with no weight. (The code also accepts `local`, which prefers
 the response closest to the stakes; it is not listed in `config.properties`.)
 
 Authors often answer more than one resistance in the correct tree (13 positions in the 20
@@ -336,6 +344,7 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.response_criterion` | `testing` | `testing`, `human`, `order` (or `local`) |
 | `redo.severe_threat_ratio` | 0.6 | Fraction of the biggest threat that counts as severe |
 | `redo.testing_band` | 0.2 | Width of the human answer bands the `testing` criterion compares |
+| `redo.naturalness_weight` | 1 | How much the `testing` criterion favors natural resistances: their human policy times this comes off how easy they are to answer. 0 leaves naturalness a tie-break |
 | `redo.force_first_move` | false | Pin the first solver move to the reference |
 | `redo.recalibrate` | true | Rebuild stakes and komi and regenerate on score drift |
 | `redo.response_candidates` | 4 | KataGo moves considered as opponent responses |

@@ -44,6 +44,7 @@ public class ProblemRedoer {
         public List<String> notes = new ArrayList<>();
         public String path; // the problem sgf as given
         public String sha;
+        public String difficulty; // the DI root property, e.g. "3 dan"
         public List<MovePath> refs = new ArrayList<>();
         public IsolationRecord isolation; // the isolation the kept generation ran on
         public List<DecisionRecord> decisions = new ArrayList<>();
@@ -135,11 +136,19 @@ public class ProblemRedoer {
         return result;
     }
 
+    // the problem's rank as its DI root property gives it (goproblems.com's rating, e.g.
+    // "3 dan"); SGF has no standard difficulty property. null when there is none.
+    public static String difficulty(Node root) {
+        String di = root.getXtra("DI");
+        return di == null || di.isBlank() ? null : di.trim();
+    }
+
     public static ProblemRecord toRecord(RedoResult r) {
         ProblemRecord rec = new ProblemRecord();
         rec.problem = r.file.replaceAll("\\.sgf$", "");
         rec.file = r.path;
         rec.sha = r.sha;
+        rec.difficulty = r.difficulty;
         rec.error = r.error;
         rec.isolation = r.isolation;
         rec.decisions = r.decisions;
@@ -176,6 +185,7 @@ public class ProblemRedoer {
         String sgf = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
         Parser parser = new Parser();
         Node root = parser.parse(sgf);
+        result.difficulty = difficulty(root);
 
         // the human crafted reference: all paths ending in RIGHT
         List<MovePath> refPaths = MovePath.extractRightPaths(root);

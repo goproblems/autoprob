@@ -11,6 +11,7 @@ public class ProblemRecord {
     public String problem; // file name without .sgf
     public String file;    // path to the problem sgf as given to the run
     public String sha;     // sha-1 of the problem sgf, to notice edits
+    public String difficulty; // the problem's rank from its DI root property, e.g. "3 dan"
     public String error;
     public IsolationRecord isolation;
     public List<DecisionRecord> decisions = new ArrayList<>();

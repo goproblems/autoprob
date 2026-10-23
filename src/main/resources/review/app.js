@@ -6,7 +6,8 @@
 //
 // a judgment is about the selected move: whether it belongs in the tree at the position
 // it was played from. it is stored in the case for that earlier position, so the table
-// and the numbered board markers show the choices that were available there.
+// shows the choices that were available there. the board shows what can come next from
+// the position on it, and a click there plays a next move of either tree.
 
 const TAG_HELP = {
   'ended-early': 'The line stopped while the opponent still had a real try',
@@ -218,19 +219,33 @@ function renderProblems() {
     const b = document.createElement('button');
     b.className = 'prob' + (p.problem === state.name ? ' sel' : '');
     b.title = `Open ${p.problem} (p / n for the previous / next problem)`;
-    const m = p.metrics, t = p.tree;
-    const badges = [];
-    if (!p.error) {
-      badges.push(`<span class="badge ${p.judged === p.decisions ? 'good' : ''}" title="choices in the generated tree you have judged, of all its choices">${p.judged}/${p.decisions}</span>`);
-      if (p.failing) badges.push(`<span class="badge bad" title="choices where this run goes against your judgments">${p.failing} wrong</span>`);
-      if (t && t.missingSolverMoves.length) badges.push(`<span class="badge bad" title="author's working moves missing from the tree">${t.missingSolverMoves.length} missing</span>`);
-      if (p.accepted) badges.push('<span class="badge good" title="you accepted the whole generated tree">accepted</span>');
+    const t = p.tree;
+    const missing = t ? t.missingSolverMoves.length : 0;
+    const s = (n) => (n === 1 ? '' : 's');
+
+    // one status at a glance: needs a look, reviewed, partly reviewed, not started
+    let icon;
+    if (p.error) icon = ['bad', '×', 'the redo failed on this problem'];
+    else if (p.failing || missing) icon = ['bad', '!', 'needs a look: see the red notes' + (p.accepted ? ' (tree accepted)' : '')];
+    else if (p.accepted || (p.decisions && p.judged === p.decisions)) icon = ['good', '✓', p.accepted ? 'you accepted the generated tree' : 'every choice reviewed'];
+    else if (p.judged) icon = ['part', '◐', 'partly reviewed'];
+    else icon = ['todo', '○', 'not reviewed yet'];
+
+    // how the generated tree compares, and what needs attention, in words
+    const notes = [];
+    if (p.error) notes.push(`<span class="bad-text">${esc(p.error)}</span>`);
+    else if (t) {
+      const same = t.reproduced === t.authorLines && t.generatedLines === t.authorLines;
+      notes.push(same
+        ? `<span class="good-text" title="the generated tree has exactly the author's lines">same as author</span>`
+        : `<span title="lines in the generated tree, and in the author's correct tree">${t.generatedLines} line${s(t.generatedLines)}, author ${t.authorLines}</span>`);
+      if (missing) notes.push(`<span class="bad-text" title="${missing} working move${s(missing)} in the author's tree that the generated tree lacks: on the site these answers would be marked wrong">${missing} missing</span>`);
+      if (p.failing) notes.push(`<span class="bad-text" title="${p.failing} choice${s(p.failing)} where this run goes against your judgments">${p.failing} disagree${p.failing === 1 ? 's' : ''}</span>`);
     }
-    let meta = '';
-    if (p.error) meta = 'error: ' + esc(p.error);
-    else if (t) meta = `${t.generatedLines} lines vs author ${t.authorLines} · ${t.reproduced} reproduced`;
-    else if (m) meta = `prefix ${m.prefix} · ${m.genLen} vs ${m.refLen} moves${m.exact ? ' · exact' : ''}`;
-    b.innerHTML = `<div class="name">${esc(p.problem)} ${badges.join(' ')}</div><div class="meta">${meta}</div>`;
+    const level = p.difficulty ? `<span class="level" title="difficulty on goproblems.com">${esc(p.difficulty)}</span>` : '';
+    const progress = p.error ? '' : `<span class="progress" title="choices in the generated tree you have reviewed, of all its choices">${p.judged}/${p.decisions}</span>`;
+    b.innerHTML = `<div class="name"><span class="state ${icon[0]}" title="${icon[2]}">${icon[1]}</span>${esc(p.problem)}${level}${progress}</div>
+      <div class="meta">${notes.join(' · ')}</div>`;
     b.onclick = () => openProblem(p.problem);
     nav.appendChild(b);
   }
@@ -276,15 +291,10 @@ function renderBoard() {
   const node = state.tree.index[state.sel];
   const rows = boards[state.sel];
   const iso = record().isolation;
-  // the choice the selected move was played from
-  const jk = judgedKey();
-  const d = decisionAt(jk);
-  const c = caseAt(jk);
 
   // crop to the problem: every real stone at any position of either tree. this stays
   // fixed for the whole problem so the board does not resize between positions;
-  // candidates outside it are too far from the problem to matter and are only listed
-  // in the table
+  // candidates outside it are too far from the problem to matter and are not drawn
   let x0 = 18, y0 = 18, x1 = 0, y1 = 0;
   const grow = (x, y) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); };
   for (const b of Object.values(boards)) {
@@ -306,14 +316,16 @@ function renderBoard() {
   // where the crop cuts the board, lines run a little past the edge to show it goes on,
   // stopping short of the coordinate labels
   const ext = cell * 0.25;
+  // the board's own edge lines stay dark; the lines inside it are lighter
+  const lineTone = (i) => (i === 0 || i === 18 ? '' : ' stroke-opacity="0.5"');
   for (let x = x0; x <= x1; x++) {
     const top = Y(y0) - (y0 > 0 ? ext : 0), bottom = Y(y1) + (y1 < 18 ? ext : 0);
-    parts.push(`<line x1="${X(x)}" y1="${top}" x2="${X(x)}" y2="${bottom}" stroke="var(--grid)" stroke-width="1"/>`);
+    parts.push(`<line x1="${X(x)}" y1="${top}" x2="${X(x)}" y2="${bottom}" stroke="var(--grid)" stroke-width="1"${lineTone(x)}/>`);
     parts.push(`<text x="${X(x)}" y="${label * 0.8}" font-size="11" text-anchor="middle" fill="var(--grid)">${COLS[x]}</text>`);
   }
   for (let y = y0; y <= y1; y++) {
     const left = X(x0) - (x0 > 0 ? ext : 0), right = X(x1) + (x1 < 18 ? ext : 0);
-    parts.push(`<line x1="${left}" y1="${Y(y)}" x2="${right}" y2="${Y(y)}" stroke="var(--grid)" stroke-width="1"/>`);
+    parts.push(`<line x1="${left}" y1="${Y(y)}" x2="${right}" y2="${Y(y)}" stroke="var(--grid)" stroke-width="1"${lineTone(y)}/>`);
     parts.push(`<text x="${label * 0.6}" y="${Y(y) + 4}" font-size="11" text-anchor="middle" fill="var(--grid)">${19 - y}</text>`);
   }
   for (const sx of [3, 9, 15]) for (const sy of [3, 9, 15]) {
@@ -322,7 +334,7 @@ function renderBoard() {
 
   // the selected move's marker takes the color of your verdict on it
   const lastXY = node && node.move ? gtpXY(pt(node.move)) : null;
-  const verdict = node && node.move ? verdictOf(jk, node.move) : null;
+  const verdict = node && node.move ? verdictOf(judgedKey(), node.move) : null;
   const stakes = new Set(iso.stakes);
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
@@ -343,55 +355,69 @@ function renderBoard() {
     }
   }
 
-  // the other choices at the position the selected move was played from, numbered as in
-  // the table; moves the tree plays get a thick ring, judged moves are colored
-  const played = d ? chosenMoves(d) : [];
-  if (d) {
-    const expect = c ? c.expect : { choose: [], avoid: [] };
-    const labeled = new Set();
-    d.candidates.forEach((cand, i) => {
-      if (pt(cand.move) === 'pass') return;
-      const [x, y] = gtpXY(pt(cand.move));
-      if (!inView(x, y) || rows[y][x] !== '.') return;
-      labeled.add(cand.move);
-      const inTree = played.includes(cand.move);
-      const color = expect.choose.includes(cand.move) ? 'var(--good)' : expect.avoid.includes(cand.move) ? 'var(--bad)'
-        : inTree ? 'var(--accent)' : '#3a2a12';
-      // a katago move it barely considered, and the tree does not play: not interesting
-      const dull = !inTree && !expect.choose.includes(cand.move) && cand.source === 'katago' && (cand.prior ?? 0) < LOW_PRIOR;
-      parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.36}" fill="var(--wood)" stroke="${color}" stroke-width="${inTree ? 3 : 1.5}"${dull ? ' stroke-dasharray="2 3"' : ''}/>`);
-      parts.push(`<text x="${X(x)}" y="${Y(y) + 5}" font-size="14" font-weight="700" text-anchor="middle" fill="${color}">${i + 1}</text>`);
-    });
-    for (const m of expect.choose) {
-      if (m === END || labeled.has(m)) continue;
-      const [x, y] = gtpXY(pt(m));
-      if (!inView(x, y) || rows[y][x] !== '.') continue;
-      parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.36}" fill="none" stroke="var(--good)" stroke-width="3"/>`);
-    }
-    for (const m of expect.avoid) {
-      if (m === END || labeled.has(m)) continue;
-      const [x, y] = gtpXY(pt(m));
-      if (!inView(x, y) || rows[y][x] !== '.') continue;
-      const r = cell * 0.25;
-      parts.push(`<path d="M${X(x) - r} ${Y(y) - r}L${X(x) + r} ${Y(y) + r}M${X(x) + r} ${Y(y) - r}L${X(x) - r} ${Y(y) + r}" stroke="var(--bad)" stroke-width="3"/>`);
-    }
+  // what can come next from the position shown: the generator's candidates here, numbered
+  // in its order, and every next move of either tree, colored like the tree (dotted light
+  // green when only the author plays it, with a star when it is not a candidate). a
+  // candidate no tree plays is brown, dotted when katago barely considered it. a dot shows
+  // your verdict. hovering a tree move shows its stone, clicking plays it
+  const d = decisionAt(state.sel);
+  const c = caseAt(state.sel);
+  const expect = c ? c.expect : { choose: [], avoid: [] };
+  const kids = new Map((node ? node.children : []).map((ch) => [ch.move, ch]));
+  const marks = new Map(); // move -> its candidate number and features, if it is a candidate
+  if (d) d.candidates.forEach((cand, i) => { if (!marks.has(cand.move)) marks.set(cand.move, { n: i + 1, cand }); });
+  for (const m of [...kids.keys(), ...expect.choose, ...expect.avoid]) {
+    if (m !== END && !marks.has(m)) marks.set(m, {});
   }
-
-  // the author's moves at that position that the generated tree does not play: a light
-  // green ring, with a star where there is no candidate number inside
-  const numbered = new Set(d ? d.candidates.map((cand) => cand.move) : []);
-  for (const m of authorMoves(jk)) {
-    if (m === END || played.includes(m)) continue;
+  const markR = cell * 0.36;
+  for (const [m, { n, cand }] of marks) {
+    if (pt(m) === 'pass') continue;
     const [x, y] = gtpXY(pt(m));
     if (!inView(x, y) || rows[y][x] !== '.') continue;
-    parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.46}" fill="none" stroke="#3f6212" stroke-width="5.5" opacity="0.35"/>`);
-    parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.46}" fill="none" stroke="${AUTHOR}" stroke-width="3.5"/>`);
-    if (!numbered.has(m)) {
-      parts.push(`<text x="${X(x)}" y="${Y(y) + 6}" font-size="17" text-anchor="middle" fill="#3f6212">★</text>`);
+    const ch = kids.get(m);
+    const authorOnly = ch && !ch.gen;
+    const color = ch ? (ch.gen && ch.author ? BOTH : ch.gen ? GEN : AUTHOR) : '#3a2a12';
+    const dull = !ch && cand && cand.source === 'katago' && (cand.prior ?? 0) < LOW_PRIOR && !expect.choose.includes(m);
+    const dash = authorOnly || dull ? ' stroke-dasharray="2 3"' : '';
+    const v = expect.choose.includes(m) ? 'right' : expect.avoid.includes(m) ? 'wrong' : null;
+    // a human policy candidate has no katago prior
+    const odds = !cand ? '' : cand.prior != null ? ` (prior ${fmt(cand.prior)})`
+      : cand.humanPolicy != null ? ` (human policy ${fmt(cand.humanPolicy)})` : '';
+    const tip = [`${colorName(m[0])} ${pt(m)}`,
+      n ? `candidate ${n}${odds}` : d ? 'not one of the generator\'s candidates' : 'the generator never reached this position',
+      ch ? (ch.gen && ch.author ? 'in both trees' : ch.gen ? 'generated tree only' : 'author only') : 'in neither tree'];
+    if (v) tip.push('marked ' + v);
+    parts.push(ch ? `<g class="next" data-key="${esc(ch.key)}"><title>Play ${esc(tip.join(' · '))}</title>` : `<g><title>${esc(tip.join(' · '))}</title>`);
+    if (authorOnly) {
+      // a dark edge under the light green so it shows on the wood
+      parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${markR}" fill="var(--wood)" stroke="#3f6212" stroke-width="4.5" opacity="0.35"${dash}/>`);
     }
+    parts.push(`<circle cx="${X(x)}" cy="${Y(y)}" r="${markR}" fill="${authorOnly ? 'none' : 'var(--wood)'}" stroke="${color}" stroke-width="${ch ? 3 : 1.5}"${dash}/>`);
+    const text = n ?? (ch && ch.author ? '★' : '');
+    parts.push(`<text x="${X(x)}" y="${Y(y) + 5}" font-size="${n ? 14 : 16}" font-weight="700" text-anchor="middle" fill="${authorOnly ? '#3f6212' : color}">${text}</text>`);
+    if (ch) {
+      const black = m[0] === 'B';
+      parts.push(`<circle class="ghost" cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.47}" fill="${black ? '#151515' : '#f7f7f4'}" stroke="${black ? '#000' : '#444'}" stroke-width="1"/>
+        <circle cx="${X(x)}" cy="${Y(y)}" r="${cell * 0.5}" fill="transparent"/>`);
+    }
+    if (v) parts.push(`<circle cx="${X(x) + markR * 0.8}" cy="${Y(y) - markR * 0.8}" r="4" fill="${v === 'right' ? RIGHT_MARK : WRONG_MARK}" stroke="#fff" stroke-width="1"/>`);
+    parts.push('</g>');
   }
   parts.push('</svg>');
   $('board').innerHTML = parts.join('');
+  const svg = $('board').firstElementChild;
+  svg.onclick = (ev) => {
+    const next = ev.target.closest('.next');
+    if (next) {
+      select(next.dataset.key);
+      return;
+    }
+    // the point clicked, in board coordinates
+    const p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(svg.getScreenCTM().inverse());
+    const x = x0 + Math.round((p.x - label - inset) / cell), y = y0 + Math.round((p.y - label - inset) / cell);
+    if (!inView(x, y) || rows[y][x] !== '.') return;
+    toast(node && node.children.length ? `${COLS[x]}${19 - y} is not a next move in either tree` : 'The line ends here');
+  };
 
   const moveNo = node ? node.depth : 0;
   $('stepLabel').textContent = moveNo === 0 ? 'start position' : `after move ${moveNo}: ${lbl(node.move)}`;

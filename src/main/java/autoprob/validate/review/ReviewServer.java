@@ -19,9 +19,11 @@ import java.util.Properties;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import autoprob.go.parse.Parser;
 import autoprob.validate.DecisionRecord;
 import autoprob.validate.Positions;
 import autoprob.validate.ProblemRecord;
+import autoprob.validate.ProblemRedoer;
 import autoprob.validate.RunRecorder;
 import autoprob.validate.cases.CaseFile;
 import autoprob.validate.cases.CaseStore;
@@ -120,6 +122,7 @@ public class ReviewServer {
             }
             Map<String, Object> p = new LinkedHashMap<>();
             p.put("problem", name);
+            p.put("difficulty", difficulty(rec));
             p.put("error", rec.error);
             p.put("metrics", rec.metrics);
             p.put("decisions", rec.decisions.size());
@@ -142,6 +145,7 @@ public class ReviewServer {
         ProblemRecord rec = RunRecorder.readProblem(runDir, check(name));
         Map<String, Object> out = new LinkedHashMap<>();
         rec.generatedLines = lines(rec);
+        rec.difficulty = difficulty(rec);
         out.put("record", rec);
         if (rec.isolation != null) {
             Map<String, List<String>> boards = new LinkedHashMap<>();
@@ -167,6 +171,19 @@ public class ReviewServer {
         List<List<String>> out = new ArrayList<>();
         if (rec.generated != null && !rec.generated.isEmpty()) out.add(rec.generated);
         return out;
+    }
+
+    // the problem's rank; runs from before it was recorded read it from the problem sgf
+    private static String difficulty(ProblemRecord rec) {
+        if (rec.difficulty != null || rec.file == null) return rec.difficulty;
+        File f = new File(rec.file);
+        if (!f.isFile()) return null;
+        try {
+            String sgf = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+            return ProblemRedoer.difficulty(new Parser().parse(sgf));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private Object saveCase(String name, String body) throws Exception {

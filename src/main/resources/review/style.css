@@ -88,10 +88,12 @@ kbd {
 #top .title { font-weight: 600; }
 #runInfo { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+body { display: flex; flex-direction: column; }
 #layout {
   display: grid;
-  grid-template-columns: 230px 1fr;
-  height: calc(100% - 47px);
+  grid-template-columns: 250px 1fr;
+  flex: 1;
+  min-height: 0;
 }
 #problems {
   border-right: 1px solid var(--line);
@@ -109,8 +111,27 @@ kbd {
   background: transparent;
 }
 .prob.sel { background: var(--accent-soft); }
-.prob .name { font-weight: 600; display: flex; gap: 6px; align-items: center; }
-.prob .meta { font-size: 12px; color: var(--muted); }
+.prob .name { font-weight: 600; display: flex; gap: 7px; align-items: center; }
+.prob .meta { font-size: 12px; color: var(--muted); padding-left: 23px; }
+.prob .level { font-weight: 400; font-size: 12px; color: var(--muted); }
+.prob .progress { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--muted); }
+.prob .state {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.prob .state.todo { color: var(--muted); font-size: 15px; }
+.prob .state.part { color: var(--accent); font-size: 15px; }
+.prob .state.good { background: var(--good-soft); color: var(--good); }
+.prob .state.bad { background: var(--bad-soft); color: var(--bad); }
+.good-text { color: var(--good); }
 .badge {
   font-size: 11px;
   border-radius: 9px;
@@ -122,13 +143,16 @@ kbd {
 .badge.good { background: var(--good-soft); color: var(--good); }
 .badge.bad { background: var(--bad-soft); color: var(--bad); }
 
+/* wide screens: both panes fill the window and scroll inside. the board is capped at
+   about half the height, and the tree takes all the room left below it */
 #main {
   display: grid;
   grid-template-columns: minmax(320px, 1fr) minmax(380px, 520px);
   gap: 16px;
   padding: 16px;
-  overflow: auto;
-  align-items: start;
+  overflow: hidden;
+  align-items: stretch;
+  min-height: 0;
 }
 #empty { padding: 24px; }
 #boardPane, #side {
@@ -139,7 +163,13 @@ kbd {
 }
 #lineTabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 #lineTabs button.sel { background: var(--accent-soft); border-color: var(--accent); }
-#board svg { width: 100%; height: auto; display: block; }
+#boardPane { display: flex; flex-direction: column; min-height: 0; }
+#side { overflow-y: auto; min-height: 0; }
+#board { flex: none; }
+#board svg { width: 100%; height: auto; max-height: 48vh; display: block; }
+#board .next { cursor: pointer; }
+#board .next .ghost { opacity: 0; }
+#board .next:hover .ghost { opacity: 0.5; }
 #boardBar { display: flex; gap: 14px; align-items: center; margin-top: 8px; font-size: 13px; }
 #boardBar .spacer { flex: 1; }
 #boardBar .step { display: inline-flex; align-items: center; gap: 6px; }
@@ -170,12 +200,12 @@ kbd {
 .legend span { display: inline-flex; align-items: center; gap: 4px; }
 .legend .sw { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
 .legend .sw.dashed { background: repeating-linear-gradient(90deg, #a3e635 0 5px, transparent 5px 9px); }
-.legend .ring { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 2.5px solid #a3e635; }
 .legend .halo { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #65a30d; }
 .legend .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
 #tree {
   margin-top: 6px;
-  max-height: 340px;
+  flex: 1 1 auto;
+  min-height: 140px;
   overflow: auto;
   background: var(--tree-bg);
   border-radius: 8px;
@@ -256,10 +286,13 @@ dialog td { padding: 3px 10px 3px 0; vertical-align: top; }
 #toast.show { opacity: .92; }
 
 @media (max-width: 1150px) {
-  #main { grid-template-columns: 1fr; }
-  #boardPane { max-width: 760px; }
+  #main { grid-template-columns: 1fr; overflow: auto; align-items: start; align-content: start; }
+  #boardPane { display: block; max-width: 760px; min-height: auto; }
+  #side { overflow: visible; min-height: auto; }
+  #tree { max-height: 340px; }
 }
 @media (max-width: 760px) {
+  body { display: block; }
   #layout { grid-template-columns: 1fr; height: auto; }
   #problems { max-height: 200px; border-right: 0; border-bottom: 1px solid var(--line); }
   #main { padding: 16px; }

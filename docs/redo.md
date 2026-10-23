@@ -65,6 +65,10 @@ purpose.
   goproblems.com convention). A problem with no RIGHT path is reported as an error.
 - Everything else in the tree (wrong branches, alternative resistance) is ignored for
   generation but used by the tree-walk metric.
+- Optionally, the problem's difficulty as a `DI` root property, worded like the
+  goproblems.com rank: `DI[3 dan]`, `DI[12 kyu]`. SGF has no standard difficulty property,
+  so this is a custom one. It does not affect generation; it is recorded in the run and
+  shown in the review page. The sample problems all have it.
 
 ## How it works
 

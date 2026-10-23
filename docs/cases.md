@@ -53,10 +53,10 @@ Every `redo` run writes `redo_runs/<yyyyMMdd-HHmmss>/`:
 
 - `manifest.json`: the git commit (with `-dirty` if tracked files were modified), KataGo
   binary, model, human model, all `redo.*` settings, and summary counts.
-- `<problem>.json`: the frozen isolation (board rows, komi, stakes), every decision with
-  its candidates, the generated tree's lines (`generatedLines`) and main line
-  (`generated`), the author's RIGHT lines (`refs`), and the scores including the tree
-  comparison (`tree`).
+- `<problem>.json`: the problem's difficulty (its `DI` property, when it has one), the
+  frozen isolation (board rows, komi, stakes), every decision with its candidates, the
+  generated tree's lines (`generatedLines`) and main line (`generated`), the author's
+  RIGHT lines (`refs`), and the scores including the tree comparison (`tree`).
 
 Problem files are written as each problem finishes. Turn recording off with
 `redo.record=false`; move it with `redo.runs.dir`.
@@ -164,6 +164,14 @@ under it, and a panel for the selected move. The panel also lists where the gene
 and the author's differ (missing or extra working moves and resistances, and where one
 ends before the other).
 
+The problem list on the left gives each problem a status: ○ not reviewed, ◐ partly
+reviewed, ✓ every choice reviewed (or the tree accepted), ! needs a look. Next to the name
+is the problem's difficulty on goproblems.com (the SGF's `DI` property; for older runs it
+is read from the problem file). On the right is how many of the generated tree's choices
+you have reviewed. Below the name: the number of lines in the generated tree and the
+author's (or "same as author"), and in red the author's working moves the tree is missing
+and the choices where the run disagrees with your judgments.
+
 The correct tree is drawn like the goproblems.com tree: depth runs right, branches stack
 downward, and a branch drops straight down from its parent before slanting in. It merges
 both trees:
@@ -192,13 +200,23 @@ says whether the line ends there, in the generated tree and in the author's, and
 buttons judge it: the line should end here (`e`, which also marks wrong any response the
 tree plays there) or should continue (`c`).
 
-The table, and the numbered markers on the board, show the other choices at the position
-the selected move was played from (at the start position, the first moves): the
-candidates the generator weighed, with your verdicts, the author's moves starred and the
-selected move highlighted. They are for reference: verdicts are set only with the buttons
-or their keys, on moves selected in the tree. On the board, a light green ring marks the author's moves
-there that the generated tree does not play (with a star when the move is not one of the
-numbered candidates). On a solver turn the table shows each candidate's lead after the
+The table shows the other choices at the position the selected move was played from (at
+the start position, the first moves): the candidates the generator weighed, with your
+verdicts, the author's moves starred and the selected move highlighted. It is for
+reference: verdicts are set only with the buttons or their keys, on moves selected in the
+tree.
+
+The board shows what can come next from the position on it. Its circles are the
+generator's candidates there, numbered in its order, and the next moves of both trees,
+colored like the tree: green when both trees play the move, solid blue when only the
+generated tree does, dotted light green when only the author does (with a star instead of
+a number when it is not one of the candidates). A candidate no tree plays is brown, dotted
+when KataGo barely considered it (a prior below 0.02). A green or red dot is your verdict
+on that move, and the selected move's stone is ringed in the color of your verdict on it.
+Past the start position these candidates are not the table's: the table is about the
+selected move, the board about the next one.
+
+On a solver turn the table shows each candidate's lead after the
 move and whether the tree plays it (main or alternative); on an opponent turn the threat
 numbers.
 
@@ -206,6 +224,7 @@ Every button has a tooltip.
 
 | Key | Action |
 |---|---|
+| click on the board | play the next move there, if either tree has it (hovering a next move shows its stone) |
 | `←` `→` | back / forward along the current line |
 | `↑` `↓` | choose which branch `→` follows from the selected move |
 | `Home` | start position |

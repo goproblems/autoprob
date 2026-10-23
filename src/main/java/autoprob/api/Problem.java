@@ -10,6 +10,7 @@ public class Problem {
     public String description;
     public String imageUrl;
     public UserProfile.Rank rank;
+    public String genre;
     public String specificGenre;
     public List<String> tags;
     public String createdAt;

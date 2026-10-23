@@ -270,8 +270,10 @@ public class SolutionPathGenerator {
         }
     }
 
-    // warn if the stake stones are no longer settled the way the root solution expects
+    // warn if the stake stones are no longer settled the way the root solution expects.
+    // an isolation rebuilt from a record has no solved state to compare with
     private void checkStakesHeld(KataAnalysisResult kar, int moveCount, GenResult result) {
+        if (iso.solvedKar == null) return;
         int flipped = 0;
         for (Point s : iso.stakes) {
             double rootOwn = iso.solvedKar.ownership.get(s.x + s.y * 19);

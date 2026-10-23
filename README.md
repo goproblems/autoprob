@@ -114,4 +114,6 @@ The `redo.*` settings in config.properties control visits, threat thresholds, an
 
 Full details are in [docs/redo.md](docs/redo.md). Every run is recorded to `redo_runs/`, and generated trees can be reviewed in a local web page, next to the author's tree, and turned into a library of test cases for replay and tuning: see [docs/cases.md](docs/cases.md).
 
+The `missing-variations` command uses the same machinery to look for correct lines a problem lacks: moves that also solve it but that the problem would mark wrong. It checks a local SGF, given goproblems.com problems, or scans the site's standard life and death problems by id, remembering where it stopped, and shows the first one it finds with its line: see [docs/missing-variations.md](docs/missing-variations.md).
+
 Tip: wrap long batch runs in `caffeinate -i` so the machine cannot idle-sleep mid-run (a sleeping Mac freezes katago while wall clock timeouts keep counting, which looks exactly like an engine stall). `tools/kata_latency_bench.py` measures raw engine latency for your setup if runs seem slow.

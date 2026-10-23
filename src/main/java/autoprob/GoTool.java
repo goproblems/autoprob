@@ -84,6 +84,8 @@ public class GoTool {
             new autoprob.validate.cases.CaseTuner(props).run();
         } else if (command.equals("review")) {
             new autoprob.validate.review.ReviewServer(props).run();
+        } else if (command.equals("missing-variations")) {
+            new autoprob.validate.MissingVariationFinder(props).run();
         } else {
             throw new RuntimeException("unknown command: " + command);
         }

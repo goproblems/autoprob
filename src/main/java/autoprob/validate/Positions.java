@@ -43,7 +43,7 @@ public class Positions {
         return out;
     }
 
-    private static List<String> rows(Node node, ProblemIsolator.IsolatedProblem iso) {
+    static List<String> rows(Node node, ProblemIsolator.IsolatedProblem iso) {
         List<String> rows = new ArrayList<>();
         for (int y = 0; y < 19; y++) {
             StringBuilder sb = new StringBuilder();

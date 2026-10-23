@@ -57,6 +57,7 @@ public class MissingVariationFinder {
     private final int visitsRoot;
     private final int verifyVisits;
     private final double tolerance;
+    private final double misreadMargin;
     private final boolean allowKo;
     private final boolean skipKo;
     private KataBrain brain;
@@ -128,6 +129,10 @@ public class MissingVariationFinder {
         this.visitsRoot = Integer.parseInt(props.getProperty("redo.visits_root", "2000"));
         this.verifyVisits = Integer.parseInt(props.getProperty("missing.verify_visits", String.valueOf(4 * visits)));
         this.tolerance = params.altScoreTolerance;
+        // the author's move is trusted to work: one this far behind katago's best means the
+        // isolation misreads the position. a smaller gap is a slower way to the same result,
+        // and the faster move is just what is looked for
+        this.misreadMargin = Math.max(tolerance, Double.parseDouble(props.getProperty("missing.misread_margin", "5")));
         // the isolated board has no ko threats, so a move that only works through a ko can
         // look as good as an unconditional one. dropped unless the author's line needs a ko too
         this.allowKo = Boolean.parseBoolean(props.getProperty("missing.allow_ko", "false"));
@@ -403,9 +408,9 @@ public class MissingVariationFinder {
             System.out.println("  " + where + ": cannot measure the author's moves");
             return null;
         }
-        // when the author's own move does not work here, the isolation misreads the position
-        // and no comparison is safe
-        if (authorLead < best - tolerance) {
+        // when the author's own move looks like it fails here, the isolation misreads the
+        // position and no comparison is safe
+        if (authorLead < best - misreadMargin) {
             System.out.println("  " + where + ": skipped, the author's " + pt(authorMove) + " (" + df.format(authorLead)
                     + ") looks worse than katago's best (" + df.format(best) + ")");
             return null;
@@ -459,12 +464,6 @@ public class MissingVariationFinder {
                         + df.format(deepAuthor) + ")");
                 continue;
             }
-            if (f == null) {
-                f = new Finding();
-                f.problem = name;
-                f.at = pos.at();
-                f.accepted.addAll(pos.correct());
-            }
             FoundMove m = new FoundMove();
             m.move = c.move;
             m.source = c.source;
@@ -492,6 +491,12 @@ public class MissingVariationFinder {
                 System.out.println("  " + where + ": " + pt(c.move) + " only works through a ko (" + pt(m.ko)
                         + " takes it) and the problem's own line needs none, so it is not counted (missing.allow_ko=true keeps it)");
                 continue;
+            }
+            if (f == null) {
+                f = new Finding();
+                f.problem = name;
+                f.at = pos.at();
+                f.accepted.addAll(pos.correct());
             }
             f.moves.add(m);
         }

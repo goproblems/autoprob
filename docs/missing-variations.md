@@ -49,9 +49,11 @@ Every problem's outcome is appended to `missing_variations/log.jsonl`.
    A move works when that lead is within `redo.alt_score_tolerance` (1.5) of the best
    reliable move's and, unless it is KataGo's top move, it is within `redo.alt_region_dist`
    of a stone at stake (a move away from the fight is a tenuki, not an answer).
-4. The author's own moves there are measured too. If the author's move does not work by
-   this measure, the isolation misreads the position and no comparison is safe, so the
-   position is skipped.
+4. The author's own moves there are measured too. If the best of them is more than
+   `missing.misread_margin` (5) points behind the best reliable move, KataGo thinks the
+   author's answer fails: the isolation misreads the position and no comparison is safe, so
+   the position is skipped. A smaller gap is a slower way to the same result, and a
+   faster move is just what is looked for.
 5. A working move the problem does not accept, and whose lead is within the tolerance of
    the author's move's, is measured again against the author's move with a deeper search
    (`missing.verify_visits`, 4 times `redo.visits`). A move that falls short is dropped.

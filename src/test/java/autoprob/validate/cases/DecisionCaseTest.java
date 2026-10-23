@@ -28,6 +28,24 @@ class DecisionCaseTest {
     }
 
     @Test
+    void casesBelowALineThatMustEndAreMoot() {
+        CaseFile cf = new CaseFile();
+        DecisionCase end = kase(DecisionRecord.OPPONENT, List.of(DecisionRecord.END), List.of("W M1"));
+        end.at.addAll(List.of("B L1", "W N1", "B J1"));
+        DecisionCase below = kase(DecisionRecord.OPPONENT, List.of("W L2"), List.of());
+        below.at.addAll(List.of("B L1", "W N1", "B J1", "W M1", "B K3"));
+        DecisionCase beside = kase(DecisionRecord.OPPONENT, List.of("W M1"), List.of());
+        beside.at.addAll(List.of("B L1", "W N1", "B K3"));
+        cf.decisions.addAll(List.of(end, below, beside));
+        assertTrue(cf.moot(below));
+        assertFalse(cf.moot(beside));
+        assertFalse(cf.moot(end));
+        // either way above leaves the line free to go on
+        end.expect.choose.add("W M1");
+        assertFalse(cf.moot(below));
+    }
+
+    @Test
     void eitherWayAcceptsEndingOrGoingOn() {
         // after a solver move: the line may end, or go on with the accepted resistance
         DecisionCase opponent = kase(DecisionRecord.OPPONENT, List.of("W G2", DecisionRecord.END), List.of());

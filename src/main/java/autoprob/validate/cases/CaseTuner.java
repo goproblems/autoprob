@@ -60,7 +60,8 @@ public class CaseTuner {
 
         System.out.println("tuning over " + items.size() + " decision cases"
                 + (features.resultsId != null ? " (numbers from replay " + features.resultsId + " where available)" : "")
-                + (features.missing > 0 ? ", " + features.missing + " cases skipped without numbers" : ""));
+                + (features.missing > 0 ? ", " + features.missing + " cases skipped without numbers" : "")
+                + (features.moot > 0 ? ", " + features.moot + " below a line ending left out" : ""));
         System.out.println("current settings pass " + baseCount + "/" + items.size());
         if (grid.isEmpty()) {
             System.out.println("no tune.<setting>=values given; e.g. tune.threat_stones=3,4,5 tune.severe_threat_ratio=0.5,0.6,0.8");

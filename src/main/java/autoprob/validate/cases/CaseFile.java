@@ -3,6 +3,7 @@ package autoprob.validate.cases;
 import java.util.ArrayList;
 import java.util.List;
 
+import autoprob.validate.DecisionRecord;
 import autoprob.validate.IsolationRecord;
 
 // all cases for one problem, stored as cases/<problem>.json
@@ -24,5 +25,18 @@ public class CaseFile {
             if (c.key().equals(key)) return c;
         }
         return null;
+    }
+
+    // a case below a position where the line must end (END alone right there): the tree
+    // should never get there, so the case says nothing about the generator. such cases are
+    // kept but not counted. "either way" above does not make a case moot
+    public boolean moot(DecisionCase c) {
+        for (int i = 1; i < c.at.size(); i++) {
+            DecisionCase above = find(DecisionRecord.key(c.at.subList(0, i)));
+            if (above != null && above.expect.choose.size() == 1 && above.expect.choose.contains(DecisionRecord.END)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

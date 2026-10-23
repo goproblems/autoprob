@@ -115,6 +115,15 @@ function passes(c, d) {
   return c.expect.choose.length === 0 || moves.some((m) => c.expect.choose.includes(m));
 }
 
+// mirrors CaseFile.moot: a case below a position where the line must end is not counted
+function moot(c) {
+  for (let i = 1; i < c.at.length; i++) {
+    const above = caseAt(keyOf(c.at.slice(0, i)));
+    if (above && above.expect.choose.length === 1 && above.expect.choose[0] === END) return true;
+  }
+  return false;
+}
+
 // your verdict on whether the line ends after the move that reached key: end, continue,
 // either (ending and going on are both fine), or null
 function endingState(key) {
@@ -642,7 +651,9 @@ function renderDecision() {
     const solver = d.role === 'solver';
     const choseText = d.chose === END ? 'end the line' : (solver ? 'play ' : 'answer ') + played.map(pt).join(', ');
     parts.push(`<div class="reason">The generator chose to ${esc(choseText)}: ${esc(d.reason || '')}<br>${esc(authorText)}</div>`);
-    if (c) {
+    if (c && moot(c)) {
+      parts.push(`<div class="status none" title="You marked the line as ending earlier on, so the tree should never get here">Below a position where you ended the line, so this choice is not counted</div>`);
+    } else if (c) {
       const ok = passes(c, d);
       parts.push(`<div class="status ${ok ? 'pass' : 'fail'}" title="${solver
         ? 'At a solver turn every move you marked right must be in the tree, and none you marked wrong'
@@ -829,7 +840,7 @@ function afterSave(msg) {
       const c = caseAt(keyOf(d.at));
       if (!c) continue;
       judged++;
-      if (!passes(c, d)) failing++;
+      if (!moot(c) && !passes(c, d)) failing++;
     }
     p.judged = judged;
     p.failing = failing;

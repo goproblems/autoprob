@@ -209,7 +209,9 @@ line ends there, in the generated tree and in the author's, and three buttons ju
 the line should end here (`e`, which also marks wrong any move the tree plays next), should
 continue (`c`), or either way is fine (`w`: ending here and going on as the tree does are
 both right). Sometimes how long a line runs is a matter of taste; marking such places
-either way keeps the tuner from counting an earlier or later ending as a mistake. A line
+either way keeps the tuner from counting an earlier or later ending as a mistake. Cases
+below a position where the line must end (accepted before the ending was marked, say) are
+kept but not counted anywhere: the tree should never get there. A line
 usually ends on a solver move, when the opponent has no real try left, but it can end on
 an opponent move too, as when a ko is the result. The generator
 only ends a line after an opponent move when KataGo's best answer is a pass, so these

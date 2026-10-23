@@ -117,6 +117,10 @@ public class CaseReplayer {
             for (CaseFile cf : files) {
                 for (DecisionCase c : cf.decisions) {
                     if (sourceFilter != null && !sourceFilter.equals(c.source)) continue;
+                    if (cf.moot(c)) {
+                        System.out.println("SKIP " + cf.problem + " @ " + c.key() + ": below a position where the line must end");
+                        continue;
+                    }
                     if (!brain.isAlive()) {
                         System.out.println("katago died, restarting engine");
                         brain.stopKataBrain();

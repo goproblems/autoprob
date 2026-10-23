@@ -22,6 +22,7 @@ public class CaseFeatures {
 
     public final List<Item> items = new ArrayList<>();
     public int missing; // cases with no numbers yet (author cases never replayed)
+    public int moot;    // cases below a position where the line must end, left out
     public String resultsId;
 
     public static CaseFeatures load(Properties props) throws Exception {
@@ -45,6 +46,10 @@ public class CaseFeatures {
         for (CaseFile file : files) {
             for (DecisionCase c : file.decisions) {
                 if (sourceFilter != null && !sourceFilter.equals(c.source)) continue;
+                if (file.moot(c)) {
+                    cf.moot++;
+                    continue;
+                }
                 Item item = new Item();
                 item.file = file;
                 item.c = c;

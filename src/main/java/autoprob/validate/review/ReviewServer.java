@@ -118,7 +118,7 @@ public class ReviewServer {
                 DecisionCase c = cf == null ? null : cf.find(d.key());
                 if (c == null) continue;
                 judged++;
-                if (!c.passes(d)) failing++;
+                if (!cf.moot(c) && !c.passes(d)) failing++;
             }
             Map<String, Object> p = new LinkedHashMap<>();
             p.put("problem", name);

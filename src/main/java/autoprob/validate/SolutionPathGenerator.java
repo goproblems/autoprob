@@ -113,7 +113,7 @@ public class SolutionPathGenerator {
             cut(node, main, "analysis failed at move " + moveNumber + ", truncating");
             return;
         }
-        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(solver, params);
+        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(solver, params, iso.stakes);
         if (at.isEmpty() && forcedFirstMove != null) {
             String forced = solver.toMove + " " + Intersection.toGTPloc(forcedFirstMove.x, forcedFirstMove.y, 19);
             if (!forced.equals(choice.move)) {

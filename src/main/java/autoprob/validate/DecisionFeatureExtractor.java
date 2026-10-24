@@ -4,6 +4,7 @@ import java.awt.Point;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -22,6 +23,11 @@ import autoprob.validate.ProblemIsolator.IsolatedProblem;
 public class DecisionFeatureExtractor {
     private static final DecimalFormat df = new DecimalFormat("0.00");
     private static final int SOLVER_CANDIDATES = 5;
+    // a stone's ownership change below this is left out of a candidate's status: noise
+    private static final double STATUS_FLOOR = 0.5;
+    // the quick look at a scanned move is noisier: it passes on to the full measurement
+    // when its lead is within this much more than status_score_margin of the best
+    private static final double SCAN_SLACK = 2.0;
 
     private final KataBrain brain;
     private final IsolatedProblem iso;
@@ -60,7 +66,8 @@ public class DecisionFeatureExtractor {
     // solver to move: katago's top moves, plus moves a human would naturally try. with
     // redo.solver_alternatives on, each plausible one is played and analyzed on its own, so
     // ChoiceRule can keep every move that works: a working move missing from the tree
-    // would mark a correct answer wrong.
+    // would mark a correct answer wrong. each gets its life status against the best one,
+    // and every other point near the stakes gets a quick look (see scan).
     public DecisionRecord solver(Node node, List<String> at, int v) throws Exception {
         DecisionRecord rec = newRecord(node, at, DecisionRecord.SOLVER);
         KataAnalysisResult kar = analyzeNear(node, v);
@@ -98,11 +105,14 @@ public class DecisionFeatureExtractor {
 
         // play each plausible candidate and see whether the solver keeps the result
         int sign = rec.toMove.equals("B") ? 1 : -1;
+        Map<String, KataAnalysisResult> afterMove = new HashMap<>();
         int evaluated = 0;
         for (int i = 0; i < rec.candidates.size() && evaluated < solverCandidates; i++) {
             CandidateFeatures c = rec.candidates.get(i);
             if (c.point().equals("pass")) continue;
+            // a natural human move counts even when katago listed it too, with few visits
             boolean plausible = i == 0 || "human".equals(c.source)
+                    || (c.humanPolicy != null && c.humanPolicy >= params.minHumanPolicy)
                     || c.prior >= params.minResponsePrior || c.visits >= v * 0.1;
             // a move away from the fight is a tenuki, not an answer: not worth the engine time
             if (!plausible || (i > 0 && !ChoiceRule.nearFight(c, params))) continue;
@@ -115,13 +125,120 @@ public class DecisionFeatureExtractor {
                     c.error = true;
                 } else {
                     c.afterLead = sign * after.blackScore();
+                    afterMove.put(c.move, after);
                 }
             } finally {
                 node.removeChildNode(tike);
             }
             evaluated++;
         }
+
+        // the life status after each move, against the best one's
+        CandidateFeatures best = ChoiceRule.bestCandidate(rec);
+        if (best == null) return rec;
+        KataAnalysisResult reference = afterMove.get(best.move);
+        for (CandidateFeatures c : rec.candidates) {
+            KataAnalysisResult after = afterMove.get(c.move);
+            if (after != null) c.statusDeltas = statusDeltas(node, after, reference);
+        }
+        scan(rec, node, kar, human, reference, best.afterLead);
         return rec;
+    }
+
+    // every other legal point near the stakes, however unlikely a move it is: one that
+    // reaches the best move's life status is correct even when it costs points, and katago
+    // and the human policy can both rate such a move very low. each gets a quick look at
+    // scan_visits, and those that keep the status there are measured like the rest
+    private void scan(DecisionRecord rec, Node node, KataAnalysisResult kar, List<KataAnalysisResult.Policy> human,
+                      KataAnalysisResult reference, double best) throws Exception {
+        if (params.scanDist < 0 || iso.stakes.isEmpty()) return;
+        int sign = rec.toMove.equals("B") ? 1 : -1;
+        int looked = 0;
+        List<String> kept = new ArrayList<>();
+        for (int y = 0; y < 19; y++)
+            for (int x = 0; x < 19; x++) {
+                Point p = new Point(x, y);
+                if (node.board.board[x][y].stone != Intersection.EMPTY || iso.threats.contains(p)) continue;
+                if (distanceToStakes(p) > params.scanDist || !node.legalMove(p)) continue;
+                String gtp = Intersection.toGTPloc(x, y, 19);
+                String move = rec.toMove + " " + gtp;
+                // a candidate katago or the human policy listed but that was not measured gets
+                // the look too
+                CandidateFeatures listed = rec.candidate(move);
+                if (listed != null && (listed.afterLead != null || Boolean.TRUE.equals(listed.error))) continue;
+                Node tike = node.addBasicMove(x, y);
+                try {
+                    looked++;
+                    KataAnalysisResult quick = analyzeNear(tike, params.scanVisits);
+                    if (quick.isError() || sign * quick.blackScore() < best - params.statusScoreMargin - SCAN_SLACK) continue;
+                    if (ChoiceRule.fateChanges(statusDeltas(node, quick, reference), params)
+                            > ChoiceRule.allowedChanges(params, iso.stakes)) continue;
+                    KataAnalysisResult after = after(tike);
+                    if (after.isError()) continue;
+                    CandidateFeatures c = listed;
+                    if (c == null) {
+                        c = new CandidateFeatures(move, "scan");
+                        c.prior = kar.policy == null ? null : kar.policy.get(x + y * 19);
+                        MoveInfo mi = kar.getMoveInfo(gtp);
+                        c.visits = mi == null ? 0 : mi.visits;
+                        c.humanPolicy = humanPolicyAt(human, gtp);
+                        c.stakeDist = distanceToStakes(p);
+                        rec.candidates.add(c);
+                    }
+                    c.afterLead = sign * after.blackScore();
+                    c.statusDeltas = statusDeltas(node, after, reference);
+                    kept.add(gtp);
+                } finally {
+                    node.removeChildNode(tike);
+                }
+            }
+        if (!kept.isEmpty()) {
+            System.out.println("  looked at " + looked + " more points near the stakes, measured " + String.join(", ", kept));
+        }
+    }
+
+    // the ownership change of each real stone at the decision position after a move,
+    // against after the reference move (this one's minus the reference's, black's view),
+    // for the stones that moved more than STATUS_FLOOR
+    public Map<String, Double> statusDeltas(Node node, KataAnalysisResult after, KataAnalysisResult reference) {
+        Map<String, Double> out = new LinkedHashMap<>();
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                if (node.board.board[x][y].stone == Intersection.EMPTY || iso.isFilled(x, y)) continue;
+                double d = after.ownership.get(x + y * 19) - reference.ownership.get(x + y * 19);
+                if (Math.abs(d) > STATUS_FLOOR) out.put(Intersection.toGTPloc(x, y, 19), Math.round(d * 1000.0) / 1000.0);
+            }
+        return out;
+    }
+
+    // a solver move measured like the candidates: the decision's own measurement when it has
+    // one, or played and measured now against the decision's best move. null when it cannot
+    // be played or analyzed
+    public CandidateFeatures measure(Node node, DecisionRecord rec, String move) throws Exception {
+        CandidateFeatures c = rec.candidate(move);
+        if (c != null && c.afterLead != null && !Boolean.TRUE.equals(c.error)) return c;
+        CandidateFeatures best = ChoiceRule.bestCandidate(rec);
+        Point p = Intersection.gtp2point(move.substring(2));
+        if (best == null || !node.legalMove(p)) return null;
+        KataAnalysisResult reference = afterMove(node, best.move);
+        KataAnalysisResult after = afterMove(node, move);
+        if (reference == null || after == null) return null;
+        CandidateFeatures out = new CandidateFeatures(move, "measured");
+        out.afterLead = (move.startsWith("B") ? 1 : -1) * after.blackScore();
+        out.statusDeltas = statusDeltas(node, after, reference);
+        return out;
+    }
+
+    // the analysis after a move at node, or null
+    private KataAnalysisResult afterMove(Node node, String move) throws Exception {
+        Point p = Intersection.gtp2point(move.substring(2));
+        Node child = node.addBasicMove(p.x, p.y);
+        try {
+            KataAnalysisResult kar = after(child);
+            return kar.isError() ? null : kar;
+        } finally {
+            node.removeChildNode(child);
+        }
     }
 
     // the analysis of a position right after a solver move, at redo.visits, from the cache
@@ -208,7 +325,7 @@ public class DecisionFeatureExtractor {
         if ("katago".equals(c.source)) {
             return "katago " + c.point() + " v" + c.visits + " p" + df.format(c.prior);
         }
-        return "human " + c.point() + " hp" + df.format(c.humanPolicy == null ? 0 : c.humanPolicy);
+        return c.source + " " + c.point() + " hp" + df.format(c.humanPolicy == null ? 0 : c.humanPolicy);
     }
 
     private DecisionRecord newRecord(Node node, List<String> at, String role) {

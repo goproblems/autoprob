@@ -40,53 +40,71 @@ Every problem's outcome is appended to `missing_variations/log.jsonl`.
 
 ## How it works
 
-1. The problem is isolated the way `redo` does it ([redo.md](redo.md)): fortress fill,
-   balanced komi, and the stones at stake.
+1. The problem is isolated the way `redo` does it ([redo.md](redo.md)), balanced komi and
+   the stones at stake, on a board with ko threats for one side (see [Kos](#kos)).
 2. Every position on the author's correct lines (the lines ending RIGHT) where the solver
    is to play is checked, the start first, then deeper.
-3. At each, every plausible move is played and measured as `redo` measures solver moves:
-   KataGo's top candidates and natural human moves, each with the solver's lead after it.
-   A move works when that lead is within `redo.alt_score_tolerance` (1.5) of the best
-   reliable move's and, unless it is KataGo's top move, it is within `redo.alt_region_dist`
-   of a stone at stake (a move away from the fight is a tenuki, not an answer).
-4. The author's own moves there are measured too. If the best of them is more than
-   `missing.misread_margin` (5) points behind the best reliable move, KataGo thinks the
-   author's answer fails: the isolation misreads the position and no comparison is safe, so
-   the position is skipped. A smaller gap is a slower way to the same result, and a
-   faster move is just what is looked for.
-5. A working move the problem does not accept, and whose lead is within the tolerance of
-   the author's move's, is measured again against the author's move with a deeper search
-   (`missing.verify_visits`, 4 times `redo.visits`). A move that falls short is dropped.
+3. At each, every candidate move is measured as `redo` measures solver moves
+   ([redo.md](redo.md)): KataGo's top candidates, natural human moves, and every other
+   point within `redo.scan_dist` (2) of a stone at stake, each with the life status and the
+   solver's lead after it. A move works when it reaches the life status of KataGo's best
+   move, whatever it costs in points, as goproblems.com grades a standard problem: a stone
+   or two may change fate (`redo.status_stones`), and the lead may fall up to
+   `redo.status_score_margin` (10) behind. Unless it is KataGo's top move, it must also be
+   within `redo.alt_region_dist` of a stone at stake (a move away from the fight is a
+   tenuki, not an answer).
+4. The author's own moves there are measured too. If none of them works by this measure,
+   KataGo thinks the author's answer fails: the isolation misreads the position and no
+   comparison is safe, so the position is skipped.
+5. A working move the problem does not accept is measured again against the author's move
+   with a deeper search (`missing.verify_visits`, 4 times `redo.visits`). One that reaches
+   a different life status, or a lead more than the status margin behind, is dropped.
 6. If the problem has the move on a wrong line, the author thinks it is refuted: each of
    the problem's own answers to it is played and measured with the deeper search too, and
-   if any of them leaves the solver short, the author is right and the move is dropped.
+   if any of them leaves the solver short in the same way, the author is right and the
+   move is dropped.
 7. For a move that holds, its line is generated with the `redo` generator from that
    position, with the move forced first, so the line answers and ends the way `redo`'s
    would; for each of the problem's own answers to it, the solver's way through is
-   generated as well.
-8. A move whose generated lines take a ko when the author's lines from that position do
-   not is not counted: the solver would be trading an unconditional result for a ko
-   (`missing.allow_ko=true` keeps it, flagged). Otherwise the command stops there.
+   generated as well. The generator does not scan every point near the stakes at each of
+   its turns, which would multiply the time a line takes. Otherwise the command stops there.
 
 ### Kos
 
-The usual isolated board has no ko threats, so KataGo counts every ko as lost by whoever
-needs a threat. When the problem's own answer is a ko, that makes the answer look no
-better than a move that simply fails, and failing moves get reported. In gp-36582 the
-author's S17 ends in a ko for the whole corner, while Q18 lets Black live outright; on the
-plain board both came out as Black living, within a point of each other.
+On a board without ko threats, KataGo counts every ko as lost by whoever needs a threat.
+That misjudges kos both ways, so the board gets KaTrain's tsumego frame with lizgoban's ko
+threat pattern (`redo.ko_threats`, see [redo.md](redo.md)), with the threats for one side:
 
-So a problem whose own line goes through a ko is checked on a board with ko threats for the
-solver: KaTrain's tsumego frame with lizgoban's ko threat pattern (`redo.ko_threats`, see
-[redo.md](redo.md)). A ko the solver starts then counts as won by the solver, as the
-author's ko answer intends: in gp-36582 the corner dies after S17 and lives after Q18, 25
-points apart, and Q18 is no longer reported. A move on the threat pattern is never
-reported, and generated lines stop where they would go on into the threats, so they end at
-the ko the way the problem's do.
+- **A problem whose own line goes through a ko: threats for the solver.** A ko the solver
+  starts then counts as won, as the author's ko answer intends. Without them the answer
+  looks no better than a move that simply fails, and failing moves get reported: in
+  gp-36582 the author's S17 ends in a ko for the whole corner, while Q18 lets Black live
+  outright, and on a board without threats both came out as Black living. With them the
+  corner dies after S17 and lives after Q18, 25 points apart, and Q18 is not reported.
+- **Any other problem: threats for the opponent** (`missing.opponent_ko_threats`, on by
+  default). A move that needs to win a ko then fails, so a clean answer comes out ahead of
+  a ko, as on the site. Without them a ko the opponent cannot win looks like clean life: in
+  gp-32711 after B Q19, W O18, B T16, W T18, B T19, W S19, B S18, W T14, B R19, W T15,
+  Black's S16 only lives through a ko, yet came out best (+2.96, against +1.39 and +1.42
+  for T17 and T19, which live outright). With threats for White, S16 lets the whole corner
+  die, while T17 and T19 still live.
+
+A move on the threat pattern is never reported, and generated lines stop where they would
+go on into the threats, so they end at the ko the way the problem's do.
+
+With threats for the opponent the board itself decides kos, so the lines are not checked
+for one: a ko taken on them is one the move does without, such as a retake for points (the
+report notes it). Without them (`missing.opponent_ko_threats=false`), a move that only
+works through a ko is not counted when the author's lines from that position take none
+(`missing.allow_ko=true` keeps it, flagged). KataGo's own lines are checked for a ko
+before any are generated (the principal variation of its best answer, and of every other
+answer with at least a tenth of the best one's visits, from the deeper searches), then the
+generated lines. That catches kos by their shape, not by whether the result depends on
+them, so it also drops moves whose ko is optional.
 
 `missing.skip_ko=true` instead passes over every position whose own line goes through a ko
-("ko, not judged"), which avoids relying on the threats at all; useful when scanning the
-site for findings to trust without a second look.
+("ko, not judged"), which avoids relying on the solver's threats at all; useful when
+scanning the site for findings to trust without a second look.
 
 ## What it shows
 
@@ -106,7 +124,10 @@ data. `missing.dir` moves all of this.
 ## Caveats
 
 The verdict is KataGo's, on the isolated position, so look at each finding before adding
-it to a problem. Moves that keep the result but are clearly inferior (a slower or less
-efficient way to the same result) can pass the tolerance; positions the isolation misreads
-are skipped rather than reported, so some missing variations go unnoticed. The ko threats
-are modest, so a ko worth more than they are can still be counted as lost.
+it to a problem. Moves that reach the result in a slower or less efficient way are
+reported on purpose, since the site counts them correct; positions the isolation misreads
+are skipped rather than reported, so some missing variations go unnoticed. Seki can show
+the same life status as clean life when KataGo's ownership does not tell them apart. The
+ko threats are modest: a ko worth more than they are can still be counted as lost by the
+side holding them, and a solver with threats of its own nearby (against a weak outside
+wall, say) can still win a ko the opponent's threats should have cost it.

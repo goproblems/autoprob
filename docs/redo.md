@@ -109,12 +109,15 @@ answer is a ko looks no better than one where the solver fails outright. With ko
 on, the board is filled with KaTrain's tsumego frame instead (`TsumegoFrame`, ported from
 KaTrain, which took it from lizgoban): an attacker border around the problem, the rest split
 between defender and attacker with checkerboard eyes, and lizgoban's edge pattern in a far
-corner that gives the side to play a run of forcing ataris to use as ko threats. A ko the
-solver starts then counts as won by the solver, as a problem's ko answer intends. The
-solver may move on the threat pattern at the first move of every analysis, so it can
-answer a ko capture with a threat. The threats are modest: a ko worth more than they are
-can still be lost. `missing-variations` turns this on for problems whose own line goes
-through a ko ([missing-variations.md](missing-variations.md)).
+corner that gives one side a run of forcing ataris to use as ko threats.
+`redo.ko_threats_for` picks the side. With `solver` (the default), a ko the solver starts
+counts as won by the solver, as a problem's ko answer intends. With `opponent`, a solver
+move that needs to win a ko fails, so a clean answer comes out ahead of a ko, as the site
+ranks them. The side to move may play on the threat pattern at the first move of every
+analysis, so it can answer a ko capture with a threat. The threats are modest: a ko worth
+more than they are can still be lost. `missing-variations` uses the solver's threats for
+problems whose own line goes through a ko and the opponent's for all others
+([missing-variations.md](missing-variations.md)).
 
 **Komi balance.** The isolated root is analyzed (`redo.balance_visits`) and komi is set so
 that with correct play the solver leads by `redo.komi_margin` points. Solving then decides
@@ -163,20 +166,41 @@ move, `redo.visits` after) plus the moves a human would naturally try (human pol
 plausible ones (KataGo's top move, human-natural moves, and KataGo moves with a prior of at
 least `redo.min_response_prior` or 10% of the visits) are each played and the position
 after them analyzed on its own at `redo.visits`, giving the solver's **lead after** the
-move. A move works if its lead after is within `redo.alt_score_tolerance` points of the
-best lead among the *reliable* candidates: KataGo's top move and moves its search gave at
-least a tenth of the top move's visits. A move the search barely looked at can come back
-with an inflated lead, because the search after it can wander into a line that flatters it,
-so it may join the tree but never sets the bar. Because komi is set so that correct play
-wins by only `redo.komi_margin`, a move that gives up the result loses far more than that.
+move and its **life status**: the ownership of every real stone on the board.
+
+The yardstick is the best of the *reliable* candidates by lead after: KataGo's top move
+and moves its search gave at least a tenth of the top move's visits. A move the search
+barely looked at can come back with an inflated lead, because the search after it can
+wander into a line that flatters it, so it may join the tree but never sets the bar.
+
+A move works when it reaches the yardstick's life status, whatever it costs in points.
+That is how [goproblems.com](https://goproblems.com/article/bestpractices) grades a standard
+problem: any clean kill or life is correct, and points within it do not count ("atomic
+correctness"). A stone changes fate when its ownership moves by more than
+`redo.status_threshold`. Up to `redo.status_stones` stones may change fate, since losing a
+stone or two is not wrong, but fewer than half the stones at stake. A move more than
+`redo.status_score_margin` points behind the yardstick does not work either, since a gap
+that wide is a status change no stone shows, such as the opponent living somewhere new.
+Older records, which have no status, use points alone: within `redo.alt_score_tolerance`
+of the yardstick.
+
+Since a move that costs points can still be correct, KataGo and the human policy can both
+rate it very low. With `redo.scan_dist` set, every other legal point within that distance of
+a stake stone gets a quick look at `redo.scan_visits`. It is off by default, since at every
+solver turn of a tree it multiplies the time a run takes; `missing-variations` uses 2 at
+the positions it checks. One that keeps the status there, with a lead within
+`redo.status_score_margin` (plus 2 for the noise of so few visits), is measured like the
+rest and joins the candidates as a `scan` move. A scan move never sets the bar.
 
 Moves other than KataGo's top move must also be within `redo.alt_region_dist` of a stake
 stone: a move away from the fight is a tenuki, not an answer to the problem, and is not
 evaluated.
 
-KataGo's top move stays the main choice when it works; the other working moves become
-alternatives, up to `redo.max_solver_moves` in all. If KataGo's top move is a pass, the
-line ends. `redo.solver_alternatives=false` turns this off and the solver plays only
+KataGo's top move stays the main choice when it works; every other working move becomes an
+alternative, since a correct move missing from the tree is marked wrong on the site
+(`redo.max_solver_moves` caps them, 0 for no cap). The tree's size is bounded by
+`redo.max_tree_decisions` instead: an alternative the budget does not reach stays in the
+tree as a correct line end. If KataGo's top move is a pass, the line ends. `redo.solver_alternatives=false` turns this off and the solver plays only
 KataGo's top move, as before trees. With `redo.force_first_move=true` the first move is
 pinned to the first reference path's first move, as a diagnostic for "is the rest of the
 line right if the start is right".
@@ -359,7 +383,8 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.pass_visits` | 1000 | Visits for each half of a threat pass test |
 | `redo.balance_visits` | 1500 | Visits for the initial komi balance |
 | `redo.gap` | 4 | Empty lines between the problem stones and the fortress walls |
-| `redo.ko_threats` | false | Fill the board with KaTrain's tsumego frame, with ko threats for the solver, instead of the fortress |
+| `redo.ko_threats` | false | Fill the board with KaTrain's tsumego frame, with ko threats for one side, instead of the fortress |
+| `redo.ko_threats_for` | solver | Whose threats: `solver` (a ko the solver starts counts as won) or `opponent` (a move that needs to win a ko fails) |
 | `redo.komi_margin` | 2.5 | Solver's target lead after correct play |
 | `redo.stake_threshold` | 1.3 | Ownership change (0 to 2) for a stone to count as at stake |
 | `redo.threat_stones` | 4 | Stones that must change fate for a response to be a real threat |
@@ -385,9 +410,14 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.max_moves` | 20 | Truncate a line after this many moves |
 | `redo.solver_alternatives` | true | Evaluate every plausible solver move and keep each one that works |
 | `redo.solver_candidates` | 6 | Solver candidates evaluated per position |
-| `redo.alt_score_tolerance` | 1.5 | A solver move works within this many points of the best reliable move's lead |
+| `redo.status_threshold` | 1.0 | A stone changes fate when its ownership after a solver move differs from after the best move by more than this |
+| `redo.status_stones` | 2 | A solver move works with at most this many stones changing fate (and fewer than half the stones at stake) |
+| `redo.status_score_margin` | 10 | ...and a lead at most this far behind the best reliable move's |
+| `redo.scan_dist` | -1 | Every legal point this close to a stake stone gets a quick look as a solver move (-1: off; `missing-variations` uses 2) |
+| `redo.scan_visits` | 150 | Visits for that quick look |
+| `redo.alt_score_tolerance` | 1.5 | Records without a status: a solver move works within this many points of the best reliable move's lead |
 | `redo.alt_region_dist` | 3 | Alternatives must be this close to a stake stone (-1: anywhere) |
-| `redo.max_solver_moves` | 4 | Most solver moves kept at one position |
+| `redo.max_solver_moves` | 0 | Most solver moves kept at one position (0: every move that works) |
 | `redo.opponent_branches` | 1 | Most opponent resistances kept at one position |
 | `redo.max_answers` | 3 | A threat more solver answers handle than this is no real try (0: off) |
 | `redo.max_tree_decisions` | 60 | Stop expanding the tree after this many decisions |

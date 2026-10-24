@@ -9,7 +9,7 @@ import java.util.Map;
 // optional fields are left null where they do not apply (gson omits nulls).
 public class CandidateFeatures {
     public String move;   // with color, e.g. "W F1"
-    public String source; // katago or human: how the candidate was found
+    public String source; // katago, human or scan: how the candidate was found
 
     // katago's view of the move at the decision position
     public Double prior;
@@ -19,6 +19,11 @@ public class CandidateFeatures {
     // solver candidates only, when alternatives are evaluated: the position after the
     // move analyzed on its own, so every plausible move gets a reliable verdict
     public Double afterLead; // the solver's score lead after this move (solver's perspective)
+    // the life status after this move against the best move's: the ownership change of each
+    // real stone at the decision position (this move's minus the best's, black's view), for
+    // the stones that moved more than 0.5. ChoiceRule counts a stone moving more than
+    // redo.status_threshold as changing fate. null where not measured (older records)
+    public Map<String, Double> statusDeltas;
 
     public Double humanPolicy;  // blended human policy for this move at the decision position
 

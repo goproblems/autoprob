@@ -43,16 +43,20 @@ public class ChoiceRule {
     }
 
     public static Choice decide(DecisionRecord rec, ChoiceParams p, List<Point> stakes) {
-        return rec.role.equals(DecisionRecord.SOLVER) ? chooseSolver(rec, p) : chooseOpponent(rec, p, stakes);
+        return rec.role.equals(DecisionRecord.SOLVER) ? chooseSolver(rec, p, stakes) : chooseOpponent(rec, p, stakes);
+    }
+
+    public static Choice chooseSolver(DecisionRecord rec, ChoiceParams p) {
+        return chooseSolver(rec, p, null);
     }
 
     // the solver plays every move that works: in a problem, any move that solves it must be
-    // in the tree or a correct answer gets marked wrong. a candidate works when its lead
-    // after the move is within alt_score_tolerance of the best reliable candidate's (see
-    // bestAfterLead), and, unless it is katago's top move, it is within alt_region_dist of
-    // a stake stone: a move away from the fight is a tenuki, not an answer to the problem.
-    // the main choice is katago's top move when it works. a top move of pass ends the line.
-    public static Choice chooseSolver(DecisionRecord rec, ChoiceParams p) {
+    // in the tree or a correct answer gets marked wrong. a candidate works when it reaches
+    // the life status of the best reliable candidate (see works and bestCandidate), and,
+    // unless it is katago's top move, it is within alt_region_dist of a stake stone: a move
+    // away from the fight is a tenuki, not an answer to the problem. the main choice is
+    // katago's top move when it works. a top move of pass ends the line.
+    public static Choice chooseSolver(DecisionRecord rec, ChoiceParams p, List<Point> stakes) {
         if (rec.candidates.isEmpty()) {
             return new Choice(DecisionRecord.END, "no solver moves");
         }
@@ -68,7 +72,7 @@ public class ChoiceRule {
         List<String> working = new ArrayList<>();
         for (CandidateFeatures c : rec.candidates) {
             if (c != top && !nearFight(c, p)) continue;
-            if (works(c, best, p.altScoreTolerance)) working.add(c.move);
+            if (works(c, best, p, stakes)) working.add(c.move);
         }
         if (working.isEmpty()) {
             return new Choice(top.move, "katago's top move (no candidate evaluated)");
@@ -76,38 +80,69 @@ public class ChoiceRule {
         // katago's top move stays the main line when it works
         if (working.remove(top.move)) working.add(0, top.move);
         int found = working.size();
-        if (working.size() > p.maxSolverMoves) working = new ArrayList<>(working.subList(0, p.maxSolverMoves));
+        boolean capped = p.maxSolverMoves > 0 && found > p.maxSolverMoves;
+        if (capped) working = new ArrayList<>(working.subList(0, p.maxSolverMoves));
         String main = working.remove(0);
         String reason = found == 1 ? "the only move that works"
-                : found + " moves work" + (found > p.maxSolverMoves ? ", kept " + p.maxSolverMoves : "");
+                : found + " moves work" + (capped ? ", kept " + p.maxSolverMoves : "");
         return new Choice(main, working, reason);
     }
 
-    static boolean works(CandidateFeatures c, double best, double tolerance) {
+    // a move works when it reaches the life status the best move does, whatever it costs in
+    // points: goproblems marks any clean kill or life correct in a standard problem, and
+    // losing a stone or two along the way is not wrong. so at most status_stones stones may
+    // change fate against the best move, and fewer than half the stones at stake; and the
+    // lead may fall up to status_score_margin behind the best, past which some status change
+    // no stone shows is likely (the opponent living somewhere new). older records without a
+    // status compare points only, within alt_score_tolerance
+    static boolean works(CandidateFeatures c, double best, ChoiceParams p, List<Point> stakes) {
         if (c.afterLead == null || Boolean.TRUE.equals(c.error) || c.point().equals("pass")) return false;
-        return c.afterLead >= best - tolerance;
+        if (c.statusDeltas == null) return c.afterLead >= best - p.altScoreTolerance;
+        return fateChanges(c.statusDeltas, p) <= allowedChanges(p, stakes) && c.afterLead >= best - p.statusScoreMargin;
+    }
+
+    // the stones whose ownership moved more than status_threshold: they change fate
+    static int fateChanges(Map<String, Double> statusDeltas, ChoiceParams p) {
+        int n = 0;
+        for (double d : statusDeltas.values()) {
+            if (Math.abs(d) > p.statusThreshold) n++;
+        }
+        return n;
+    }
+
+    // a stone or two may change fate, but never half the stones at stake
+    static int allowedChanges(ChoiceParams p, List<Point> stakes) {
+        if (stakes == null || stakes.isEmpty()) return p.statusStones;
+        return Math.min(p.statusStones, (stakes.size() - 1) / 2);
     }
 
     static boolean nearFight(CandidateFeatures c, ChoiceParams p) {
         return p.altRegionDist < 0 || c.stakeDist == null || c.stakeDist <= p.altRegionDist;
     }
 
-    // the yardstick a solver move is measured against: the best lead after any reliable
-    // candidate, or NaN when nothing was evaluated. reliable means katago's top move or a
-    // katago move its search gave at least a tenth of the top move's visits. a move the
+    // the yardstick a solver move is measured against: the reliable candidate with the best
+    // lead after it, or null when nothing was evaluated. reliable means katago's top move or
+    // a katago move its search gave at least a tenth of the top move's visits. a move the
     // search barely looked at can come back with an inflated lead (the search after it
     // can wander into a line that flatters it) and must not push out the real answer.
-    static double bestAfterLead(DecisionRecord rec) {
-        double best = Double.NaN;
+    static CandidateFeatures bestCandidate(DecisionRecord rec) {
+        if (rec.candidates.isEmpty()) return null;
+        CandidateFeatures best = null;
         CandidateFeatures top = rec.candidates.get(0);
         for (CandidateFeatures c : rec.candidates) {
             if (c.afterLead == null || Boolean.TRUE.equals(c.error) || c.point().equals("pass")) continue;
             boolean reliable = c == top || ("katago".equals(c.source) && c.visits != null && top.visits != null
                     && c.visits >= 0.1 * top.visits);
             if (!reliable) continue;
-            if (Double.isNaN(best) || c.afterLead > best) best = c.afterLead;
+            if (best == null || c.afterLead > best.afterLead) best = c;
         }
         return best;
+    }
+
+    // the best reliable candidate's lead, or NaN
+    static double bestAfterLead(DecisionRecord rec) {
+        CandidateFeatures best = bestCandidate(rec);
+        return best == null ? Double.NaN : best.afterLead;
     }
 
     // the opponent response for the main line: the strongest resistance that is still a
@@ -217,13 +252,18 @@ public class ChoiceRule {
                 Integer top = rec.candidates.get(0).visits, second = rec.candidates.get(1).visits;
                 return top != null && second != null && second >= 0.6 * top;
             }
-            // a candidate within half a point of the works / does not work line
-            double line = best - p.altScoreTolerance;
+            // a candidate within half a point of the works / does not work line, or with a
+            // stone's ownership near the line between keeping and changing its fate
             CandidateFeatures top = rec.candidates.get(0);
             for (CandidateFeatures c : rec.candidates) {
                 if (c.afterLead == null || Boolean.TRUE.equals(c.error) || c.afterLead == best) continue;
                 if (c != top && !nearFight(c, p)) continue;
+                double line = best - (c.statusDeltas != null ? p.statusScoreMargin : p.altScoreTolerance);
                 if (Math.abs(c.afterLead - line) < 0.5) return true;
+                if (c.statusDeltas == null) continue;
+                for (double d : c.statusDeltas.values()) {
+                    if (Math.abs(Math.abs(d) - p.statusThreshold) < 0.2) return true;
+                }
             }
             return false;
         }

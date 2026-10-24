@@ -323,7 +323,8 @@ breaks relative to the current config. Tunable settings:
 
 | Setting | Notes |
 |---|---|
-| `alt_score_tolerance`, `max_solver_moves` | which solver moves count as working, and how many are kept |
+| `status_threshold`, `status_stones`, `status_score_margin`, `max_solver_moves` | which solver moves count as working, recounted from the stored ownership changes, and how many are kept |
+| `alt_score_tolerance` | which solver moves count as working in cases recorded before the life status was |
 | `alt_region_dist` | how close to the stakes an alternative must be; can only narrow, since distant moves are not evaluated |
 | `opponent_branches` | how many resistances each opponent turn keeps |
 | `max_answers` | how many working answers a threat may have and still count as a real try |

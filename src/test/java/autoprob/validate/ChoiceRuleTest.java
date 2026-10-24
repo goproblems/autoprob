@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Point;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Properties;
 
@@ -235,11 +236,13 @@ class ChoiceRuleTest {
     }
 
     @Test
-    void solverMovesAreCapped() {
+    void everyWorkingSolverMoveIsKeptUnlessCapped() {
         DecisionRecord rec = solver(solverCand("B A1", "katago", 2.0), solverCand("B B1", "katago", 2.0),
                 solverCand("B C1", "katago", 2.0), solverCand("B D1", "katago", 2.0), solverCand("B E1", "human", 2.0));
-        assertEquals(4, ChoiceRule.chooseSolver(rec, params()).moves().size());
-        assertEquals(2, ChoiceRule.chooseSolver(rec, params("max_solver_moves", "2")).moves().size());
+        assertEquals(5, ChoiceRule.chooseSolver(rec, params()).moves().size());
+        ChoiceRule.Choice capped = ChoiceRule.chooseSolver(rec, params("max_solver_moves", "2"));
+        assertEquals(2, capped.moves().size());
+        assertEquals("5 moves work, kept 2", capped.reason);
     }
 
     @Test
@@ -248,6 +251,54 @@ class ChoiceRuleTest {
         ChoiceRule.Choice choice = ChoiceRule.chooseSolver(rec, params());
         assertEquals("B L1", choice.move);
         assertTrue(choice.also.isEmpty());
+    }
+
+    // a solver candidate measured with a life status: the stones whose ownership moved, each
+    // by delta, against the best move's
+    private static CandidateFeatures statusCand(String move, String source, double afterLead, double... deltas) {
+        CandidateFeatures c = solverCand(move, source, afterLead);
+        c.statusDeltas = new LinkedHashMap<>();
+        String[] stones = {"G2", "H2", "J2", "K2", "G3", "H3"};
+        for (int i = 0; i < deltas.length; i++) c.statusDeltas.put(stones[i], deltas[i]);
+        return c;
+    }
+
+    @Test
+    void aMoveThatReachesTheSameStatusWorksWhateverItCosts() {
+        // goproblems grades a standard problem by status: K1 kills as L1 does but 4.5 points
+        // worse, J1 lets three stones live
+        DecisionRecord rec = solver(statusCand("B L1", "katago", 2.4), statusCand("B K1", "scan", -2.1, 0.6),
+                statusCand("B J1", "katago", 1.9, 1.8, 1.9, 1.7));
+        assertEquals(List.of("B L1", "B K1"), ChoiceRule.chooseSolver(rec, params()).moves());
+        // past the status margin, some change no stone shows is likely
+        assertEquals(List.of("B L1"), ChoiceRule.chooseSolver(rec, params("status_score_margin", "4")).moves());
+    }
+
+    @Test
+    void losingAStoneOrTwoIsNotWrongButHalfTheStakesIs() {
+        List<Point> six = List.of(new Point(0, 0), new Point(1, 0), new Point(2, 0), new Point(3, 0),
+                new Point(4, 0), new Point(5, 0));
+        DecisionRecord rec = solver(statusCand("B L1", "katago", 2.4), statusCand("B K1", "katago", 0.4, 1.9, -1.8));
+        assertEquals(List.of("B L1", "B K1"), ChoiceRule.chooseSolver(rec, params(), six).moves());
+        // two of four stones at stake is half the group
+        assertEquals(List.of("B L1"), ChoiceRule.chooseSolver(rec, params(), six.subList(0, 4)).moves());
+        assertEquals(List.of("B L1"), ChoiceRule.chooseSolver(rec, params("status_stones", "1"), six).moves());
+    }
+
+    @Test
+    void aScannedMoveNeverSetsTheBar() {
+        // the scan's moves were barely searched at the decision, like a low-visit katago move
+        DecisionRecord rec = solver(statusCand("B L1", "katago", 0.5), statusCand("B K1", "scan", 6.0));
+        assertEquals(0.5, ChoiceRule.bestAfterLead(rec));
+        assertEquals("B L1", ChoiceRule.chooseSolver(rec, params()).move);
+    }
+
+    @Test
+    void aStoneNearTheFateLineIsFragile() {
+        assertTrue(ChoiceRule.isFragile(solver(statusCand("B L1", "katago", 2.4),
+                statusCand("B K1", "katago", 2.0, 1.1)), params(), STAKES));
+        assertFalse(ChoiceRule.isFragile(solver(statusCand("B L1", "katago", 2.4),
+                statusCand("B K1", "katago", 2.0, 0.6)), params(), STAKES));
     }
 
     @Test

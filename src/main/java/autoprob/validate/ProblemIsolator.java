@@ -30,9 +30,10 @@ public class ProblemIsolator {
         public double targetLead; // black score the komi balance aims for with correct play
         public ArrayList<Point> stakes = new ArrayList<>(); // stones whose life depends on solving
         public ArrayList<String> warnings = new ArrayList<>();
-        // with ko threats on: the points of the threat pattern, where the solver may move
-        // even though they are far from the problem
+        // with ko threats on: the points of the threat pattern, where the side to move may
+        // play even though they are far from the problem, and whose threats they are
         public List<Point> threats = new ArrayList<>();
+        public int threatColor;
 
         public boolean isFilled(int x, int y) {
             return filledStones.board[x][y].stone != Intersection.EMPTY;
@@ -58,13 +59,20 @@ public class ProblemIsolator {
         problem.addXtraTag("PL", iso.solverColor == Intersection.BLACK ? "B" : "W");
         iso.problem = problem;
 
-        // fill the rest of the board: balanced static stones, or with ko threats for the
-        // solver, katrain's tsumego frame (its threat only works inside its own fill), so a
-        // ko the solver starts counts as won by the solver
+        // fill the rest of the board: balanced static stones, or with ko threats, katrain's
+        // tsumego frame (its threat only works inside its own fill). threats for the solver
+        // make a ko the solver starts count as won, as a problem whose answer is a ko intends;
+        // threats for the opponent make a solver move that needs to win a ko fail, so a clean
+        // answer comes out ahead of a ko
         int gap = Integer.parseInt(props.getProperty("redo.gap", "4"));
         if (Boolean.parseBoolean(props.getProperty("redo.ko_threats", "false"))) {
-            iso.threats = new TsumegoFrame().build(problem.board, gap, iso.solverColor, 7.5, true, iso.filledStones);
-            System.out.println("tsumego frame with ko threats for " + Intersection.color2name(iso.solverColor)
+            boolean forOpponent = props.getProperty("redo.ko_threats_for", "solver").equals("opponent");
+            int opponent = iso.solverColor == Intersection.BLACK ? Intersection.WHITE : Intersection.BLACK;
+            int threatColor = forOpponent ? opponent : iso.solverColor;
+            iso.threats = new TsumegoFrame().build(problem.board, gap, threatColor, 7.5, true, iso.filledStones);
+            iso.threatColor = threatColor;
+            System.out.println("tsumego frame with ko threats for " + Intersection.color2name(threatColor)
+                    + (forOpponent ? " (the opponent)" : "")
                     + (iso.threats.isEmpty() ? ": WARNING, no room for the threat pattern" : ""));
             if (iso.threats.isEmpty()) iso.warnings.add("no room for the ko threat pattern");
         } else {

@@ -26,10 +26,20 @@ public class ChoiceParams {
     public int routineMinTries;
     public int threatRegionDist;     // only count threats near the stakes; -1 counts everywhere
 
-    // solution tree branching
-    public double altScoreTolerance; // a solver move works if its lead is within this of the best move's
+    // solution tree branching. a solver move works when it reaches the life status the best
+    // move does, whatever it costs in points (goproblems grades a standard problem by status
+    // alone): at most statusStones stones change fate against the best move (a stone's
+    // ownership moving more than statusThreshold), and fewer than half the stones at stake.
+    // a lead more than statusScoreMargin behind the best is a status change no stone shows,
+    // such as the opponent living somewhere new
+    public double statusThreshold;
+    public int statusStones;
+    public double statusScoreMargin;
+    public double altScoreTolerance; // older records without a status: a move works within this of the best lead
     public int altRegionDist;        // alternatives must be this close to a stake stone; -1 anywhere
-    public int maxSolverMoves;       // most solver moves kept at one position (main plus alternatives)
+    // most solver moves kept at one position (main plus alternatives); 0 keeps every move
+    // that works, since on the site a correct move missing from the tree is marked wrong
+    public int maxSolverMoves;
     public int opponentBranches;     // most opponent resistances kept at one position
     public int maxAnswers;           // a resistance this many solver answers handle is no real try; 0 off
 
@@ -40,6 +50,8 @@ public class ChoiceParams {
     public double minResponsePrior;
     public double minHumanPolicy;
     public boolean humanThreatExtends;
+    public int scanDist;   // every legal point this close to a stake stone gets a quick look as a solver move; -1 off
+    public int scanVisits; // the visits of that look
 
     public static ChoiceParams fromProps(Properties props) {
         ChoiceParams p = new ChoiceParams();
@@ -57,9 +69,12 @@ public class ChoiceParams {
         // redo.threat_region_dist is not applied to live generation yet (see docs/redo.md
         // known gaps); the tuner can try it offline first
         p.threatRegionDist = -1;
+        p.statusThreshold = Double.parseDouble(props.getProperty("redo.status_threshold", "1.0"));
+        p.statusStones = Integer.parseInt(props.getProperty("redo.status_stones", "2"));
+        p.statusScoreMargin = Double.parseDouble(props.getProperty("redo.status_score_margin", "10"));
         p.altScoreTolerance = Double.parseDouble(props.getProperty("redo.alt_score_tolerance", "1.5"));
         p.altRegionDist = Integer.parseInt(props.getProperty("redo.alt_region_dist", "3"));
-        p.maxSolverMoves = Integer.parseInt(props.getProperty("redo.max_solver_moves", "4"));
+        p.maxSolverMoves = Integer.parseInt(props.getProperty("redo.max_solver_moves", "0"));
         p.opponentBranches = Integer.parseInt(props.getProperty("redo.opponent_branches", "1"));
         p.maxAnswers = Integer.parseInt(props.getProperty("redo.max_answers", "3"));
         p.visits = Integer.parseInt(props.getProperty("redo.visits", "1000"));
@@ -67,6 +82,8 @@ public class ChoiceParams {
         p.minResponsePrior = Double.parseDouble(props.getProperty("redo.min_response_prior", "0.02"));
         p.minHumanPolicy = Double.parseDouble(props.getProperty("redo.min_human_policy", "0.05"));
         p.humanThreatExtends = Boolean.parseBoolean(props.getProperty("redo.human_threat_extends", "true"));
+        p.scanDist = Integer.parseInt(props.getProperty("redo.scan_dist", "-1"));
+        p.scanVisits = Integer.parseInt(props.getProperty("redo.scan_visits", "150"));
         return p;
     }
 
@@ -84,6 +101,9 @@ public class ChoiceParams {
         p.routineHumanAnswer = routineHumanAnswer;
         p.routineMinTries = routineMinTries;
         p.threatRegionDist = threatRegionDist;
+        p.statusThreshold = statusThreshold;
+        p.statusStones = statusStones;
+        p.statusScoreMargin = statusScoreMargin;
         p.altScoreTolerance = altScoreTolerance;
         p.altRegionDist = altRegionDist;
         p.maxSolverMoves = maxSolverMoves;
@@ -94,6 +114,8 @@ public class ChoiceParams {
         p.minResponsePrior = minResponsePrior;
         p.minHumanPolicy = minHumanPolicy;
         p.humanThreatExtends = humanThreatExtends;
+        p.scanDist = scanDist;
+        p.scanVisits = scanVisits;
         return p;
     }
 
@@ -112,6 +134,9 @@ public class ChoiceParams {
             case "routine_human_answer" -> routineHumanAnswer = Double.parseDouble(value);
             case "routine_min_tries" -> routineMinTries = Integer.parseInt(value);
             case "threat_region_dist" -> threatRegionDist = Integer.parseInt(value);
+            case "status_threshold" -> statusThreshold = Double.parseDouble(value);
+            case "status_stones" -> statusStones = Integer.parseInt(value);
+            case "status_score_margin" -> statusScoreMargin = Double.parseDouble(value);
             case "alt_score_tolerance" -> altScoreTolerance = Double.parseDouble(value);
             case "alt_region_dist" -> altRegionDist = Integer.parseInt(value);
             case "max_solver_moves" -> maxSolverMoves = Integer.parseInt(value);

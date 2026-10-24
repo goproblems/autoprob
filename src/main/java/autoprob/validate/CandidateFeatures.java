@@ -20,10 +20,14 @@ public class CandidateFeatures {
     // move analyzed on its own, so every plausible move gets a reliable verdict
     public Double afterLead; // the solver's score lead after this move (solver's perspective)
     // the life status after this move against the best move's: the ownership change of each
-    // real stone at the decision position (this move's minus the best's, black's view), for
-    // the stones that moved more than 0.5. ChoiceRule counts a stone moving more than
+    // real stone at the decision position, keyed by the stone with its color ("W S19"), from
+    // the solver's view (below 0: worse for the solver than after the best move), for the
+    // stones that moved more than 0.5. ChoiceRule counts a stone moving more than
     // redo.status_threshold as changing fate. null where not measured (older records)
     public Map<String, Double> statusDeltas;
+    // the move that takes a ko katago's line after this move then fights over (taking a ko
+    // again, or playing a ko threat), or null: a clean result comes ahead of it
+    public String koFight;
 
     public Double humanPolicy;  // blended human policy for this move at the decision position
 

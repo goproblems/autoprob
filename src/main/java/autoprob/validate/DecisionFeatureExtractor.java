@@ -4,10 +4,12 @@ import java.awt.Point;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 import autoprob.KataBrain;
 import autoprob.NodeAnalyzer;
@@ -133,16 +135,26 @@ public class DecisionFeatureExtractor {
             evaluated++;
         }
 
-        // the life status after each move, against the best one's
+        // the life status after each move, against the best one's, and whether katago's line
+        // after it fights a ko
         CandidateFeatures best = ChoiceRule.bestCandidate(rec);
         if (best == null) return rec;
         KataAnalysisResult reference = afterMove.get(best.move);
         for (CandidateFeatures c : rec.candidates) {
             KataAnalysisResult after = afterMove.get(c.move);
-            if (after != null) c.statusDeltas = statusDeltas(node, after, reference);
+            if (after == null) continue;
+            c.statusDeltas = statusDeltas(node, after, reference);
+            c.koFight = koFight(node, c.move, after);
         }
         scan(rec, node, kar, human, reference, best.afterLead);
         return rec;
+    }
+
+    // the move that takes a ko katago's line after the move then fights over, or null
+    private String koFight(Node node, String move, KataAnalysisResult after) throws Exception {
+        Set<String> threatPoints = new HashSet<>();
+        for (Point t : iso.threats) threatPoints.add(Intersection.toGTPloc(t.x, t.y, 19));
+        return KoLines.koFight(node, KoLines.katagoLines(List.of(move), after), threatPoints);
     }
 
     // every other legal point near the stakes, however unlikely a move it is: one that
@@ -171,8 +183,7 @@ public class DecisionFeatureExtractor {
                     looked++;
                     KataAnalysisResult quick = analyzeNear(tike, params.scanVisits);
                     if (quick.isError() || sign * quick.blackScore() < best - params.statusScoreMargin - SCAN_SLACK) continue;
-                    if (ChoiceRule.fateChanges(statusDeltas(node, quick, reference), params)
-                            > ChoiceRule.allowedChanges(params, iso.stakes)) continue;
+                    if (!ChoiceRule.sameStatus(statusDeltas(node, quick, reference), params, iso.stakes, rec.toMove)) continue;
                     KataAnalysisResult after = after(tike);
                     if (after.isError()) continue;
                     CandidateFeatures c = listed;
@@ -187,6 +198,7 @@ public class DecisionFeatureExtractor {
                     }
                     c.afterLead = sign * after.blackScore();
                     c.statusDeltas = statusDeltas(node, after, reference);
+                    c.koFight = koFight(node, move, after);
                     kept.add(gtp);
                 } finally {
                     node.removeChildNode(tike);
@@ -198,15 +210,21 @@ public class DecisionFeatureExtractor {
     }
 
     // the ownership change of each real stone at the decision position after a move,
-    // against after the reference move (this one's minus the reference's, black's view),
-    // for the stones that moved more than STATUS_FLOOR
+    // against after the reference move (this one's minus the reference's, from the solver's
+    // view: below 0 is worse for the solver), keyed by the stone with its color, for the
+    // stones that moved more than STATUS_FLOOR
     public Map<String, Double> statusDeltas(Node node, KataAnalysisResult after, KataAnalysisResult reference) {
+        int sign = iso.solverColor == Intersection.BLACK ? 1 : -1;
         Map<String, Double> out = new LinkedHashMap<>();
         for (int x = 0; x < 19; x++)
             for (int y = 0; y < 19; y++) {
-                if (node.board.board[x][y].stone == Intersection.EMPTY || iso.isFilled(x, y)) continue;
-                double d = after.ownership.get(x + y * 19) - reference.ownership.get(x + y * 19);
-                if (Math.abs(d) > STATUS_FLOOR) out.put(Intersection.toGTPloc(x, y, 19), Math.round(d * 1000.0) / 1000.0);
+                int stone = node.board.board[x][y].stone;
+                if (stone == Intersection.EMPTY || iso.isFilled(x, y)) continue;
+                double d = sign * (after.ownership.get(x + y * 19) - reference.ownership.get(x + y * 19));
+                if (Math.abs(d) > STATUS_FLOOR) {
+                    out.put(IsolationRecord.colorLetter(stone) + " " + Intersection.toGTPloc(x, y, 19),
+                            Math.round(d * 1000.0) / 1000.0);
+                }
             }
         return out;
     }
@@ -226,6 +244,7 @@ public class DecisionFeatureExtractor {
         CandidateFeatures out = new CandidateFeatures(move, "measured");
         out.afterLead = (move.startsWith("B") ? 1 : -1) * after.blackScore();
         out.statusDeltas = statusDeltas(node, after, reference);
+        out.koFight = koFight(node, move, after);
         return out;
     }
 

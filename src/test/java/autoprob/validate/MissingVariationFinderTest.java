@@ -11,17 +11,12 @@ import org.junit.jupiter.api.Test;
 import autoprob.api.Problem;
 import autoprob.go.Node;
 import autoprob.go.parse.Parser;
-import autoprob.katastruct.KataAnalysisResult;
-import autoprob.katastruct.MoveInfo;
 
 class MissingVariationFinderTest {
     // black plays A19; white answers B18 or B19, each with a correct reply; C19 is wrong
     private static final String SGF = "(;SZ[19]AB[dd]AW[ee]"
             + "(;B[aa](;W[bb];B[cc]C[RIGHT])(;W[ba];B[ab]C[RIGHT]))"
             + "(;B[ca]C[WRONG]))";
-    // white F14 is held by black E14 F15 F13; black G14 takes it inside white G15 H14 G13,
-    // and white could take straight back
-    private static final String KO = "(;SZ[19]PL[B]AB[ef][fe][fg]AW[ff][hf][ge][gg])";
 
     @Test
     void solverPositionsOnTheCorrectLinesRootFirst() throws Exception {
@@ -39,33 +34,6 @@ class MissingVariationFinderTest {
         assertEquals(List.of(List.of("B A19", "W B18", "B C17"), List.of("B A19", "W B19", "B A18")),
                 positions.get(0).lines());
         assertEquals(List.of(List.of("B C17")), positions.get(1).lines());
-    }
-
-    @Test
-    void aRetakeableSingleStoneCaptureIsAKo() throws Exception {
-        Node root = new Parser().parse(KO);
-        assertEquals("B G14", MissingVariationFinder.koIn(root, List.of(List.of("B G14"))));
-        assertNull(MissingVariationFinder.koIn(root, List.of(List.of("B C17"))));
-        assertEquals(0, root.babies.size()); // the board is left as it was
-    }
-
-    @Test
-    void katagoLinesFollowEverySeriousAnswer() throws Exception {
-        // after black C17 katago's best answer is white A1, and black then takes the ko at G14.
-        // B1 got a tenth of A1's visits and is followed too; C1 got less
-        KataAnalysisResult kar = new KataAnalysisResult();
-        kar.moveInfos = List.of(info(1000, "A1", "G14", "pass", "A2"), info(100, "B1", "B2"), info(99, "C1"));
-        List<List<String>> lines = MissingVariationFinder.katagoLines(List.of("B C17"), kar);
-        assertEquals(List.of(List.of("B C17", "W A1", "B G14"), List.of("B C17", "W B1", "B B2")), lines);
-        assertEquals("B G14", MissingVariationFinder.koIn(new Parser().parse(KO), lines));
-    }
-
-    private static MoveInfo info(int visits, String... pv) {
-        MoveInfo mi = new MoveInfo();
-        mi.move = pv[0];
-        mi.visits = visits;
-        mi.pv = List.of(pv);
-        return mi;
     }
 
     @Test

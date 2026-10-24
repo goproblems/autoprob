@@ -177,12 +177,22 @@ A move works when it reaches the yardstick's life status, whatever it costs in p
 That is how [goproblems.com](https://goproblems.com/article/bestpractices) grades a standard
 problem: any clean kill or life is correct, and points within it do not count ("atomic
 correctness"). A stone changes fate when its ownership moves by more than
-`redo.status_threshold`. Up to `redo.status_stones` stones may change fate, since losing a
-stone or two is not wrong, but fewer than half the stones at stake. A move more than
+`redo.status_threshold`. None of the opponent's stones may live that the yardstick kills:
+that is a seki, or stones saved. Up to `redo.status_stones` of the solver's own may die that
+it saves, since losing a stone or two is not wrong, but fewer than half the stones at
+stake. A change for the better never counts against a move. A move more than
 `redo.status_score_margin` points behind the yardstick does not work either, since a gap
 that wide is a status change no stone shows, such as the opponent living somewhere new.
 Older records, which have no status, use points alone: within `redo.alt_score_tolerance`
 of the yardstick.
+
+A clean result comes ahead of a ko, as the site ranks them. KataGo's ownership after a ko
+averages over who wins it, so the stones can look settled when they are not. Instead,
+KataGo's own lines after each working move are checked: its best answer's, and every other
+answer's with a tenth of its visits. A move whose line takes a ko and then fights over it
+(the reply is a ko threat on the board's threat pattern, or a ko is taken again within four
+moves) does not count when another working move's line fights none. A ko no one fights
+over, taken for points or one the result does not hang on, is not a ko here.
 
 Since a move that costs points can still be correct, KataGo and the human policy can both
 rate it very low. With `redo.scan_dist` set, every other legal point within that distance of

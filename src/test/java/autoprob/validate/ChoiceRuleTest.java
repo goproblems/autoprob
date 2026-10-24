@@ -254,21 +254,22 @@ class ChoiceRuleTest {
     }
 
     // a solver candidate measured with a life status: the stones whose ownership moved, each
-    // by delta, against the best move's
+    // by delta from the solver's (black's) view, against the best move's. black's stones
+    // first, then white's
     private static CandidateFeatures statusCand(String move, String source, double afterLead, double... deltas) {
         CandidateFeatures c = solverCand(move, source, afterLead);
         c.statusDeltas = new LinkedHashMap<>();
-        String[] stones = {"G2", "H2", "J2", "K2", "G3", "H3"};
+        String[] stones = {"B G2", "B H2", "B J2", "W K2", "W G3", "W H3"};
         for (int i = 0; i < deltas.length; i++) c.statusDeltas.put(stones[i], deltas[i]);
         return c;
     }
 
     @Test
     void aMoveThatReachesTheSameStatusWorksWhateverItCosts() {
-        // goproblems grades a standard problem by status: K1 kills as L1 does but 4.5 points
-        // worse, J1 lets three stones live
-        DecisionRecord rec = solver(statusCand("B L1", "katago", 2.4), statusCand("B K1", "scan", -2.1, 0.6),
-                statusCand("B J1", "katago", 1.9, 1.8, 1.9, 1.7));
+        // goproblems grades a standard problem by status: K1 lives as L1 does but 4.5 points
+        // worse, J1 loses three of black's stones
+        DecisionRecord rec = solver(statusCand("B L1", "katago", 2.4), statusCand("B K1", "scan", -2.1, -0.6),
+                statusCand("B J1", "katago", 1.9, -1.8, -1.9, -1.7));
         assertEquals(List.of("B L1", "B K1"), ChoiceRule.chooseSolver(rec, params()).moves());
         // past the status margin, some change no stone shows is likely
         assertEquals(List.of("B L1"), ChoiceRule.chooseSolver(rec, params("status_score_margin", "4")).moves());
@@ -278,11 +279,37 @@ class ChoiceRuleTest {
     void losingAStoneOrTwoIsNotWrongButHalfTheStakesIs() {
         List<Point> six = List.of(new Point(0, 0), new Point(1, 0), new Point(2, 0), new Point(3, 0),
                 new Point(4, 0), new Point(5, 0));
-        DecisionRecord rec = solver(statusCand("B L1", "katago", 2.4), statusCand("B K1", "katago", 0.4, 1.9, -1.8));
+        DecisionRecord rec = solver(statusCand("B L1", "katago", 2.4), statusCand("B K1", "katago", 0.4, -1.9, -1.8));
         assertEquals(List.of("B L1", "B K1"), ChoiceRule.chooseSolver(rec, params(), six).moves());
         // two of four stones at stake is half the group
         assertEquals(List.of("B L1"), ChoiceRule.chooseSolver(rec, params(), six.subList(0, 4)).moves());
         assertEquals(List.of("B L1"), ChoiceRule.chooseSolver(rec, params("status_stones", "1"), six).moves());
+    }
+
+    @Test
+    void anOpponentStoneThatLivesIsADifferentResult() {
+        // gp-32711: white's stones live in a seki where the best move kills them. no stone of
+        // the opponent's may survive, while one of the solver's may be lost; a change for the
+        // better does not count
+        DecisionRecord rec = solver(statusCand("B L1", "katago", 2.4),
+                statusCand("B K1", "katago", 2.0, 0, 0, 0, -1.9),
+                statusCand("B M1", "katago", 2.0, -1.9, 0, 0, 1.9, 1.8));
+        assertEquals(List.of("B L1", "B M1"), ChoiceRule.chooseSolver(rec, params()).moves());
+    }
+
+    @Test
+    void aCleanResultComesAheadOfAKo() {
+        // gp-32711 after B O18 W N18 B Q19 W O19: T15 keeps the status on katago's numbers,
+        // but its line fights a ko where T16's is clean
+        CandidateFeatures t16 = statusCand("B T16", "katago", 0.7);
+        CandidateFeatures t15 = statusCand("B T15", "katago", 0.5);
+        t15.koFight = "B T18";
+        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(solver(t15, t16), params());
+        assertEquals(List.of("B T16"), choice.moves()); // the clean move leads, though katago put T15 first
+        assertEquals("the only move that works (1 more only through a ko)", choice.reason);
+        // when every working move needs a ko, they all count
+        t16.koFight = "B T17";
+        assertEquals(List.of("B T15", "B T16"), ChoiceRule.chooseSolver(solver(t15, t16), params()).moves());
     }
 
     @Test

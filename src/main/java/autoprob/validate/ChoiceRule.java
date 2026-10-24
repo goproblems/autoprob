@@ -72,10 +72,17 @@ public class ChoiceRule {
         List<String> working = new ArrayList<>();
         for (CandidateFeatures c : rec.candidates) {
             if (c != top && !nearFight(c, p)) continue;
-            if (works(c, best, p, stakes)) working.add(c.move);
+            if (works(c, best, p, stakes, rec.toMove)) working.add(c.move);
         }
         if (working.isEmpty()) {
             return new Choice(top.move, "katago's top move (no candidate evaluated)");
+        }
+        // a clean result comes ahead of a ko, as the site ranks them: a move katago's line
+        // fights a ko after does not count when another working move's line fights none
+        int kos = 0;
+        if (working.stream().anyMatch(m -> rec.candidate(m).koFight == null)) {
+            kos = (int) working.stream().filter(m -> rec.candidate(m).koFight != null).count();
+            working.removeIf(m -> rec.candidate(m).koFight != null);
         }
         // katago's top move stays the main line when it works
         if (working.remove(top.move)) working.add(0, top.move);
@@ -83,29 +90,44 @@ public class ChoiceRule {
         boolean capped = p.maxSolverMoves > 0 && found > p.maxSolverMoves;
         if (capped) working = new ArrayList<>(working.subList(0, p.maxSolverMoves));
         String main = working.remove(0);
-        String reason = found == 1 ? "the only move that works"
-                : found + " moves work" + (capped ? ", kept " + p.maxSolverMoves : "");
+        String reason = (found == 1 ? "the only move that works"
+                : found + " moves work" + (capped ? ", kept " + p.maxSolverMoves : ""))
+                + (kos > 0 ? " (" + kos + " more only through a ko)" : "");
         return new Choice(main, working, reason);
     }
 
     // a move works when it reaches the life status the best move does, whatever it costs in
-    // points: goproblems marks any clean kill or life correct in a standard problem, and
-    // losing a stone or two along the way is not wrong. so at most status_stones stones may
-    // change fate against the best move, and fewer than half the stones at stake; and the
-    // lead may fall up to status_score_margin behind the best, past which some status change
-    // no stone shows is likely (the opponent living somewhere new). older records without a
-    // status compare points only, within alt_score_tolerance
-    static boolean works(CandidateFeatures c, double best, ChoiceParams p, List<Point> stakes) {
+    // points: goproblems marks any clean kill or life correct in a standard problem (see
+    // sameStatus); and the lead may fall up to status_score_margin behind the best, past
+    // which some status change no stone shows is likely (the opponent living somewhere new).
+    // older records without a status compare points only, within alt_score_tolerance.
+    // solver is the solver's color letter
+    static boolean works(CandidateFeatures c, double best, ChoiceParams p, List<Point> stakes, String solver) {
         if (c.afterLead == null || Boolean.TRUE.equals(c.error) || c.point().equals("pass")) return false;
         if (c.statusDeltas == null) return c.afterLead >= best - p.altScoreTolerance;
-        return fateChanges(c.statusDeltas, p) <= allowedChanges(p, stakes) && c.afterLead >= best - p.statusScoreMargin;
+        return sameStatus(c.statusDeltas, p, stakes, solver) && c.afterLead >= best - p.statusScoreMargin;
     }
 
-    // the stones whose ownership moved more than status_threshold: they change fate
+    // the same life status as the best move: none of the opponent's stones lives that the
+    // best move kills (a seki, or stones saved), and at most status_stones of the solver's
+    // own die that it saves, fewer than half the stones at stake, since losing a stone or
+    // two is not wrong. a stone changes fate when its ownership moves more than
+    // status_threshold; a change for the better does not count against a move
+    static boolean sameStatus(Map<String, Double> statusDeltas, ChoiceParams p, List<Point> stakes, String solver) {
+        int lost = 0;
+        for (Map.Entry<String, Double> e : statusDeltas.entrySet()) {
+            if (e.getValue() >= -p.statusThreshold) continue;
+            if (!e.getKey().startsWith(solver + " ")) return false;
+            lost++;
+        }
+        return lost <= allowedChanges(p, stakes);
+    }
+
+    // the stones that change fate for the worse
     static int fateChanges(Map<String, Double> statusDeltas, ChoiceParams p) {
         int n = 0;
         for (double d : statusDeltas.values()) {
-            if (Math.abs(d) > p.statusThreshold) n++;
+            if (d < -p.statusThreshold) n++;
         }
         return n;
     }

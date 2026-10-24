@@ -48,17 +48,20 @@ Every problem's outcome is appended to `missing_variations/log.jsonl`.
    ([redo.md](redo.md)): KataGo's top candidates, natural human moves, and every other
    point within `redo.scan_dist` (2) of a stone at stake, each with the life status and the
    solver's lead after it. A move works when it reaches the life status of KataGo's best
-   move, whatever it costs in points, as goproblems.com grades a standard problem: a stone
-   or two may change fate (`redo.status_stones`), and the lead may fall up to
-   `redo.status_score_margin` (10) behind. Unless it is KataGo's top move, it must also be
-   within `redo.alt_region_dist` of a stone at stake (a move away from the fight is a
-   tenuki, not an answer).
+   move, whatever it costs in points, as goproblems.com grades a standard problem: no
+   opponent stone lives that the best move kills (a seki, or stones saved), a stone or two
+   of the solver's own may be lost (`redo.status_stones`), and the lead may fall up to
+   `redo.status_score_margin` (10) behind. A move whose line fights a ko does not count
+   when the author's answer is clean. Unless it is KataGo's top move, it must also be within
+   `redo.alt_region_dist` of a stone at stake (a move away from the fight is a tenuki, not
+   an answer).
 4. The author's own moves there are measured too. If none of them works by this measure,
    KataGo thinks the author's answer fails: the isolation misreads the position and no
    comparison is safe, so the position is skipped.
 5. A working move the problem does not accept is measured again against the author's move
    with a deeper search (`missing.verify_visits`, 4 times `redo.visits`). One that reaches
-   a different life status, or a lead more than the status margin behind, is dropped.
+   a different life status, whose line fights a ko where the author's does not, or whose
+   lead is more than the status margin behind, is dropped.
 6. If the problem has the move on a wrong line, the author thinks it is refuted: each of
    the problem's own answers to it is played and measured with the deeper search too, and
    if any of them leaves the solver short in the same way, the author is right and the
@@ -66,8 +69,11 @@ Every problem's outcome is appended to `missing_variations/log.jsonl`.
 7. For a move that holds, its line is generated with the `redo` generator from that
    position, with the move forced first, so the line answers and ends the way `redo`'s
    would; for each of the problem's own answers to it, the solver's way through is
-   generated as well. The generator does not scan every point near the stakes at each of
-   its turns, which would multiply the time a line takes. Otherwise the command stops there.
+   generated as well. The opponent answers with its strongest resistance, the first real
+   threat in KataGo's order, rather than redo's most testing one for a human: a found move
+   has to hold against the best defense. The generator does not scan every point near the
+   stakes at each of its turns, which would multiply the time a line takes. Otherwise the
+   command stops there.
 
 ### Kos
 
@@ -92,9 +98,17 @@ threat pattern (`redo.ko_threats`, see [redo.md](redo.md)), with the threats for
 A move on the threat pattern is never reported, and generated lines stop where they would
 go on into the threats, so they end at the ko the way the problem's do.
 
-With threats for the opponent the board itself decides kos, so the lines are not checked
-for one: a ko taken on them is one the move does without, such as a retake for points (the
-report notes it). Without them (`missing.opponent_ko_threats=false`), a move that only
+The threats alone do not settle every ko: when the solver has threats of its own nearby, it
+can still win one, and KataGo's ownership averages over a ko anyway. So at every solver
+turn, in the positions checked and the generated lines alike, a move whose KataGo line
+takes a ko and then fights over it (takes one again, or plays a ko threat) does not count
+when a clean move also works ([redo.md](redo.md)). In gp-32711 after B O18, W N18, B Q19,
+W O19, Black's T15 keeps the status on KataGo's numbers, but White's T17 starts a ko that
+KataGo's line fights with the threats on the frame; T16 is clean, so T15 is left out.
+
+With threats for the opponent, the generated lines are not checked for the shape of a ko:
+one taken on them is one the move does without, such as a retake for points (the report
+notes it). Without them (`missing.opponent_ko_threats=false`), a move that only
 works through a ko is not counted when the author's lines from that position take none
 (`missing.allow_ko=true` keeps it, flagged). KataGo's own lines are checked for a ko
 before any are generated (the principal variation of its best answer, and of every other
@@ -120,6 +134,20 @@ the lines end RIGHT. If the problem already has the move on a wrong line, that n
 reused and is no longer marked wrong, and the solver's way through each of the problem's
 answers to it is added below that answer, next to the old wrong continuation. `<problem>_missing.json` has the same finding as
 data. `missing.dir` moves all of this.
+
+Each finding is also added to a run the review tool ([cases.md](cases.md)) reads,
+`missing_variations/review`:
+
+```
+bash gotool.sh cmd=review run=missing_variations/review
+```
+
+It lists every problem with a finding, latest last. The author's tree shows as shared and
+the found lines as generated only, so the new moves stand out. Clicking the position shows
+its decision: every candidate measured there, with its lead and life status, and the moves
+the rule counts as working. The generated lines have their decisions too. Judgments made
+there are saved to the case library like any other review (add `review.port=8766` to run it
+next to a redo review).
 
 ## Caveats
 

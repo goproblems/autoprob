@@ -1,0 +1,85 @@
+{
+  "problem": "gp-62080",
+  "problemFile": "missing_variations/easy/review/gp-62080.sgf",
+  "problemSha": "c1c1e36b7a0a3af94c9cab70ef3e592e975cc3b5",
+  "isolation": {
+    "solver": "B",
+    "komi": 20.5,
+    "targetLead": 2.5,
+    "stakes": ["D2", "E3", "F3", "G3", "G2", "H2", "H1"],
+    "rows": [
+      "x.x.x.x.x.x.x.x.x.x",
+      ".x.x.x.x.x.x.x.x.x.",
+      "x.x.x.x.x.x.x.x.x.x",
+      "...................",
+      "o.o.o.o.o.o.o.o.o.o",
+      ".o.o.o.o.o.o.o.o.o.",
+      "o.o.o.o.o.o.o.o.o.o",
+      ".o.o.o.o.o.o.o.o.o.",
+      "................o.o",
+      "ooooooooooooooo..o.",
+      "xxxxxxxxxxxxxxo.o.o",
+      ".............xo..o.",
+      ".............xo.o.o",
+      ".............xo..o.",
+      ".............xo.o.o",
+      "....XXX......xo..o.",
+      ".XXXOOOXX....xo.o.o",
+      ".X.O..OOX....xo..o.",
+      ".......OX....xo.o.o"
+    ]
+  },
+  "acceptedLines": [],
+  "decisions": [
+    {
+      "at": ["B F1", "W E1", "B C2", "W C1", "B B1", "W F2"],
+      "toMove": "B",
+      "role": "solver",
+      "expect": {
+        "choose": [],
+        "avoid": ["B D1"]
+      },
+      "source": "review",
+      "tags": [],
+      "moves": {
+        "B D1": {
+          "tags": [],
+          "note": "only ko"
+        }
+      },
+      "by": "adam",
+      "created": "2026-10-25",
+      "observed": {
+        "run": "missing-variations",
+        "commit": "15e6773-dirty",
+        "model": "C:/Users/Adam/Downloads/weights/kata1-b28c512nbt-s7168446720-d4316919285.bin.gz",
+        "decision": {
+          "at": ["B F1", "W E1", "B C2", "W C1", "B B1", "W F2"],
+          "toMove": "B",
+          "role": "solver",
+          "candidates": [
+            {
+              "move": "B D1",
+              "source": "katago",
+              "prior": 0.019,
+              "visits": 1969,
+              "scoreLead": 1.115,
+              "afterLead": 1.654,
+              "statusDeltas": {},
+              "koFight": "B D1",
+              "humanPolicy": 0.671,
+              "stakeDist": 1
+            },
+            {"move": "B D4", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -1.552, "humanPolicy": 0.016, "stakeDist": 1},
+            {"move": "B H4", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -1.529, "humanPolicy": 0, "stakeDist": 1},
+            {"move": "B B4", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -1.339, "humanPolicy": 0, "stakeDist": 2},
+            {"move": "B E5", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -1.525, "humanPolicy": 0, "stakeDist": 2}
+          ],
+          "chose": "B D1",
+          "alternatives": [],
+          "reason": "the only move that works"
+        }
+      }
+    }
+  ]
+}

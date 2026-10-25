@@ -3,8 +3,10 @@ package autoprob.validate;
 import java.awt.Point;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 
 import autoprob.KataBrain;
 import autoprob.go.Board;
@@ -12,6 +14,7 @@ import autoprob.NodeAnalyzer;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.katastruct.KataAnalysisResult;
+import autoprob.katastruct.MoveInfo;
 
 // takes a bare problem position and prepares it so katago can be effective at solving it:
 // fills the rest of the board with static fortress stones, then balances komi so that
@@ -27,6 +30,7 @@ public class ProblemIsolator {
         public int solverColor;
         public double komi;
         public KataAnalysisResult solvedKar; // analysis of the solved state (after the best first move)
+        public KataAnalysisResult passKar;   // analysis after the solver passes
         public double targetLead; // black score the komi balance aims for with correct play
         public ArrayList<Point> stakes = new ArrayList<>(); // stones whose life depends on solving
         public ArrayList<String> warnings = new ArrayList<>();
@@ -127,6 +131,113 @@ public class ProblemIsolator {
         return Math.abs(drift) > 5;
     }
 
+    // what is at stake when the solver wins every ko. on a board without threats katago counts
+    // a ko as won by whoever takes it first, so in a problem whose answer is a ko the opponent
+    // takes first, its solved state leaves the stones the ko decides alive for the opponent,
+    // and they never come out at stake: in gp-36582 only the two stones the answer cuts off
+    // did, while the corner its ko kills stayed black. katago does not even play the line on
+    // to the ko, since it expects the opponent to take it. so the solver's likely starts
+    // (katago's top first moves, and the hints: the author's lines, which can only add to what
+    // is at stake, never decide what a move comes to) are played out with the solver winning
+    // every ko, and the one that gains the solver the most of the problem area is the solved
+    // state. when it gains the solver more than katago's own solved state, the stones of the
+    // group it decides join the ones katago found at stake, and it is the solved state from
+    // then on. this also steadies the isolation: katago's search at the start does not
+    // always find the answer (gp-10330, where some runs had only the solver's stones inside at
+    // stake and not the group the answer kills)
+    public void settleUnderKos(IsolatedProblem iso, RegimeWalker walker, List<List<String>> hints) throws Exception {
+        if (iso.passKar == null || iso.passKar.isError()) return;
+        KataAnalysisResult adopted = koStakes(iso, walker, hints);
+        // komi balanced on the new solved state, the solver just ahead there, so that katago
+        // plays for that result too. a wider margin was tried, halfway between the solved and
+        // the failed position, so that points would not sway it: but then katago, ahead by far
+        // whatever it does, takes a line through a ko it expects to win as readily as a clean
+        // one, and the regime takes the ko away (gp-32711's T19 and gp-36582's S17 came out a
+        // level lower). just ahead, keeping the status is what keeps it winning
+        if (adopted == null) return;
+        setKomi(iso, iso.komi + adopted.blackScore() - iso.targetLead);
+        System.out.println("komi " + iso.komi + ", balanced on that");
+    }
+
+    // the solved state with the solver winning every ko, when it puts more at stake than
+    // katago's own (the stakes are taken from it then), or null
+    private KataAnalysisResult koStakes(IsolatedProblem iso, RegimeWalker walker, List<List<String>> hints) throws Exception {
+        int visits = Integer.parseInt(props.getProperty("redo.visits_root", "2000"));
+        double threshold = Double.parseDouble(props.getProperty("redo.stake_threshold", "1.3"));
+        String color = IsolationRecord.colorLetter(iso.solverColor);
+        Set<List<String>> starts = new LinkedHashSet<>();
+        KataAnalysisResult root = walker.analyze(List.of(), visits);
+        if (!root.isError() && root.moveInfos != null) {
+            for (MoveInfo mi : root.moveInfos) {
+                if (starts.size() >= 4) break;
+                if (!mi.move.equalsIgnoreCase("pass")) starts.add(List.of(color + " " + mi.move));
+            }
+        }
+        starts.addAll(hints);
+        boolean[][] zone = RegimeWalker.zone(iso);
+        int sign = iso.solverColor == Intersection.BLACK ? 1 : -1;
+        KataAnalysisResult best = null;
+        String bestMove = null;
+        double bestArea = Double.NEGATIVE_INFINITY;
+        for (List<String> start : starts) {
+            if (start.isEmpty() || !start.get(0).startsWith(color) || walker.legalPrefix(start) < start.size()) continue;
+            RegimeWalker.Walk w = walker.walk(start, iso.solverColor, visits);
+            if (w.kar() == null || w.kar().isError() || w.kar().ownership == null) continue;
+            double area = 0;
+            for (int x = 0; x < 19; x++)
+                for (int y = 0; y < 19; y++) {
+                    if (zone[x][y]) area += sign * w.kar().ownership.get(x + y * 19);
+                }
+            if (area > bestArea) {
+                bestArea = area;
+                best = w.kar();
+                bestMove = String.join(" ", start);
+            }
+        }
+        if (best == null) return null;
+        double solvedArea = 0;
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                if (zone[x][y]) solvedArea += sign * iso.solvedKar.ownership.get(x + y * 19);
+            }
+        if (bestArea <= solvedArea + threshold) return null; // no more than katago found on its own
+        // what the line decides, by color: the group the ko is for is the bulk of it, and the
+        // other side's stones in it are the means, captured on the way or given up, which a
+        // different line may well do without (gp-62121, where the author's line captures
+        // white's stones inside black's eye space as black lives)
+        List<Point> swing = new ArrayList<>();
+        int black = 0, white = 0;
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                int stone = iso.problem.board.board[x][y].stone;
+                if (stone == Intersection.EMPTY || iso.isFilled(x, y)) continue;
+                double od = best.ownership.get(x + y * 19) - iso.passKar.ownership.get(x + y * 19);
+                if (Math.abs(od) <= threshold) continue;
+                swing.add(new Point(x, y));
+                if (stone == Intersection.BLACK) black++;
+                else white++;
+            }
+        int bulk = black >= white ? Intersection.BLACK : Intersection.WHITE;
+        List<Point> stakes = new ArrayList<>(iso.stakes);
+        for (Point p : swing) {
+            if (iso.problem.board.board[p.x][p.y].stone == bulk && !stakes.contains(p)) stakes.add(p);
+        }
+        if (stakes.size() == iso.stakes.size()) return null;
+        StringBuilder sb = new StringBuilder();
+        for (Point p : stakes) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append(Intersection.toGTPloc(p.x, p.y, 19));
+        }
+        iso.stakes.clear();
+        iso.stakes.addAll(stakes);
+        iso.solvedKar = best;
+        String note = "with the solver winning every ko (after " + bestMove + "), more is at stake: " + stakes.size()
+                + " stones, " + sb;
+        System.out.println(note);
+        iso.warnings.add(note);
+        return best;
+    }
+
     // adjust komi so that with correct play the solver is slightly ahead:
     // solving decides the game, and any slack move loses
     private void balanceKomi(IsolatedProblem iso) throws Exception {
@@ -221,6 +332,7 @@ public class ProblemIsolator {
             throw new RuntimeException("pass analysis failed: " + karPass.error);
         }
 
+        iso.passKar = karPass;
         iso.stakes.clear();
         StringBuilder sb = new StringBuilder();
         for (int x = 0; x < 19; x++)

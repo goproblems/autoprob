@@ -132,6 +132,14 @@ public class NodeAnalyzer {
 	// alsoAllow: further points the first move may be played at, such as a ko threat pattern
 	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, double dist, boolean useDistance,
 										  Board ignoreStones, java.util.List<Point> alsoAllow) throws Exception {
+		return analyzeNode(brain, node, visits, dist, useDistance, ignoreStones, alsoAllow, null);
+	}
+
+	// avoid: points the first move may not be played at, such as a ko capture the side to move
+	// is not allowed to take
+	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, double dist, boolean useDistance,
+										  Board ignoreStones, java.util.List<Point> alsoAllow,
+										  java.util.Set<String> avoid) throws Exception {
 		if (!useDistance) {
 			return analyzeNode(brain, node, visits, null);
 		}
@@ -163,6 +171,7 @@ public class NodeAnalyzer {
 				if (node.board.board[p.x][p.y].stone == 0 && !moves.contains(gtp)) moves.add(gtp);
 			}
 		}
+		if (avoid != null) moves.removeAll(avoid);
 		return analyzeNode(brain, node, visits, moves);
 	}
 

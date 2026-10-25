@@ -45,6 +45,13 @@ public class DecisionFeatureExtractor {
     // analyses of positions after a solver move, by position, so the tree builder can
     // reuse them as the starting point of the opponent's decision
     private final Map<String, KataAnalysisResult> afterCache = new HashMap<>();
+    // when set, the scan keeps every point whose quick look does not fail outright by this
+    // judge, rather than comparing with the best move
+    private StatusJudge judge;
+
+    public void setJudge(StatusJudge judge) {
+        this.judge = judge;
+    }
 
     public DecisionFeatureExtractor(Properties props, KataBrain brain, IsolatedProblem iso, ChoiceParams params) {
         this.brain = brain;
@@ -63,6 +70,11 @@ public class DecisionFeatureExtractor {
     // must be able to answer a ko capture with a threat
     public KataAnalysisResult analyzeNear(Node node, int v) throws Exception {
         return na.analyzeNode(brain, node, v, nearDist, true, iso.filledStones, iso.threats);
+    }
+
+    // the same, with points the first move may not be played at
+    public KataAnalysisResult analyzeNear(Node node, int v, Set<String> avoid) throws Exception {
+        return na.analyzeNode(brain, node, v, nearDist, true, iso.filledStones, iso.threats, avoid);
     }
 
     // solver to move: katago's top moves, plus moves a human would naturally try. with
@@ -182,8 +194,13 @@ public class DecisionFeatureExtractor {
                 try {
                     looked++;
                     KataAnalysisResult quick = analyzeNear(tike, params.scanVisits);
-                    if (quick.isError() || sign * quick.blackScore() < best - params.statusScoreMargin - SCAN_SLACK) continue;
-                    if (!ChoiceRule.sameStatus(statusDeltas(node, quick, reference), params, iso.stakes, rec.toMove)) continue;
+                    if (quick.isError()) continue;
+                    if (judge != null) {
+                        if (judge.status(tike, quick) == StatusJudge.Status.FAIL) continue;
+                    } else {
+                        if (sign * quick.blackScore() < best - params.statusScoreMargin - SCAN_SLACK) continue;
+                        if (!ChoiceRule.sameStatus(statusDeltas(node, quick, reference), params, iso.stakes, rec.toMove)) continue;
+                    }
                     KataAnalysisResult after = after(tike);
                     if (after.isError()) continue;
                     CandidateFeatures c = listed;

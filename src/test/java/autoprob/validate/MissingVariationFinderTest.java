@@ -1,7 +1,9 @@
 package autoprob.validate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Set;
@@ -42,6 +44,19 @@ class MissingVariationFinderTest {
         assertEquals(Set.of("B A19", "B C19"), MissingVariationFinder.sgfMoves(root, List.of()));
         assertEquals(Set.of("W B18", "W B19"), MissingVariationFinder.sgfMoves(root, List.of("B A19")));
         assertEquals(Set.of(), MissingVariationFinder.sgfMoves(root, List.of("B T1")));
+    }
+
+    @Test
+    void notthisOutlawsAMoveAndForceLimitsThePosition() throws Exception {
+        // gp-62070's tree, in short: after B A19, W B18, black's B19 is outlawed there; the
+        // other answer, W B19, is forced
+        Node root = new Parser().parse("(;SZ[19]AB[dd]AW[ee](;B[aa](;W[bb](;B[cc]C[RIGHT])(;B[ba]C[NOTTHIS]))"
+                + "(;W[ba]C[FORCE];B[ab]C[RIGHT])))");
+        assertEquals(Set.of("B B19"), MissingVariationFinder.outlawed(root, List.of("B A19", "W B18")));
+        assertEquals(Set.of("B C17", "B B19"), MissingVariationFinder.sgfMoves(root, List.of("B A19", "W B18")));
+        assertEquals(Set.of(), MissingVariationFinder.outlawed(root, List.of()));
+        assertFalse(MissingVariationFinder.forced(root, List.of("B A19", "W B18")));
+        assertTrue(MissingVariationFinder.forced(root, List.of("B A19", "W B19")));
     }
 
     @Test

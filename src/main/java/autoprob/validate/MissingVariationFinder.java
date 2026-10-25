@@ -32,17 +32,19 @@ import autoprob.go.Node;
 import autoprob.go.action.CommentAction;
 import autoprob.go.action.MoveAction;
 import autoprob.go.parse.Parser;
+import autoprob.go.parse.SmallBoard;
 import autoprob.katastruct.KataAnalysisResult;
 
-// cmd=missing-variations: looks for correct lines a problem is missing, and stops at the
-// first one. it walks every position on the author's correct lines where the solver is to
-// play, root first, and finds every move that works there the way redo does: katago's
-// plausible moves and natural human moves are each played and analyzed, and a move works
-// when its lead after is within redo.alt_score_tolerance of the best reliable move's and
-// it is near the fight. a working move the author's tree does not accept, and at least as
-// good as the author's own move, is looked at again with a deeper search. if it holds, its
-// line is generated with the redo generator, and the command stops and shows it, writing
-// the problem with the line added to missing.dir.
+// cmd=missing-variations: checks a problem's correct moves against what the position allows,
+// and stops at the first position where they disagree. it walks every position on the
+// author's correct lines where the solver is to play, root first. at each, every move worth
+// judging gets the level of result it reaches (MoveClassifier): clean, seki, ko or failure,
+// the way goproblems ranks them, never by points. the best level any move reaches is the
+// answer there, worked out without trusting the author, and the correct moves are the ones
+// that reach it. a correct move the problem does not accept is a missing variation; a move
+// it accepts that falls short is an error in the problem. both are judged again with a
+// deeper search before they are reported, and the problem is written to missing.dir with
+// the missing lines added.
 //
 // sources: path=<sgf file or directory>, id=<goproblems ids, comma separated>, or neither
 // to scan the goproblems database by id from where the last scan stopped. problems from
@@ -55,10 +57,9 @@ public class MissingVariationFinder {
     private final File dir;
     private final int visits;
     private final int visitsRoot;
-    private final int verifyVisits;
-    private final double tolerance;
-    private final boolean opponentThreats;
-    private final boolean allowKo;
+    private final int replyVisits;   // the quick walk after each of the opponent's answers
+    private final int verifyVisits;  // the deeper walks, and everything reported is judged again with them
+    private final int replyDist;     // answers this close to a stone at stake or the move are tried
     private final boolean skipKo;
     private KataBrain brain;
 
@@ -67,9 +68,9 @@ public class MissingVariationFinder {
     // (the author's lines from there too)
     record Position(List<String> at, Set<String> correct, List<List<String>> lines) {}
 
-    // a deeper search after some moves: the solver's lead, katago's own lines from there, and
-    // the analysis itself, whose ownership gives the life status
-    record Deep(double lead, List<List<String>> lines, KataAnalysisResult kar) {}
+    // what judging a problem needs, built once per problem
+    private record Judging(ProblemIsolator.IsolatedProblem iso, DecisionFeatureExtractor extractor, StatusJudge judge,
+                           MoveClassifier quick, MoveClassifier deep) {}
 
     // what a scan of the site remembers between runs
     static class State {
@@ -91,13 +92,15 @@ public class MissingVariationFinder {
         Finding finding;
     }
 
-    // the first position found with working moves the problem lacks
+    // the first position where the problem disagrees with what the position allows
     static class Finding {
         String problem;
         String difficulty;
         List<String> at;                               // moves from the root
         List<String> accepted = new ArrayList<>();     // the moves the problem accepts there
-        List<FoundMove> moves = new ArrayList<>();
+        MoveClassifier.Level level;                    // the best level any move reaches there
+        List<FoundMove> moves = new ArrayList<>();     // correct moves the problem lacks
+        List<WrongMove> wrong = new ArrayList<>();     // moves it accepts that fall short
         String sgf;                                    // the problem with the new lines added
         // for the review tool, not the json: the decision at the position, with every
         // candidate measured there, and the isolation it was measured on
@@ -108,51 +111,42 @@ public class MissingVariationFinder {
 
     static class FoundMove {
         String move;
+        MoveClassifier.Level level;
         String source;          // katago, human or scan: how the move came up
-        String authorMove;      // the author's best move at the position, for comparison
-        double lead;            // the solver's lead after the move, at redo.visits
-        double authorLead;      // the same for the author's move
-        double deepLead;        // both again at missing.verify_visits
-        double deepAuthorLead;
         Double prior;
         Integer visits;
         Double humanPolicy;
         Integer stakeDist;
         boolean inFileAsWrong;  // the problem has the move, on a line that is not correct
-        String ko;              // the move that takes a ko on the generated lines, or on katago's own
-        boolean koOnKatagoLine; // only katago's own lines take it
-        boolean authorKo;       // the author's lines from the position take a ko too
-        boolean koWithThreats;  // the board gives the opponent ko threats, and the move works anyway
-        // the problem's own answers to the move on its wrong line, with the solver's lead
-        // after each (deeper search): none of them refutes it
-        Map<String, Double> refutations = new LinkedHashMap<>();
+        List<String> line;      // the walk that shows the result, ko exchanges taken out
         List<List<String>> lines = new ArrayList<>(); // generated lines from the position, starting with the move
         // for the review tool: the generator's decisions behind the lines, at from the root
         transient List<DecisionRecord> decisions = new ArrayList<>();
     }
 
+    // a move the problem accepts that reaches a lower level than the best
+    static class WrongMove {
+        String move;
+        MoveClassifier.Level level;
+        String refutation;      // the opponent's answer that brings it down
+        List<String> line;      // the walk that shows it, ko exchanges taken out
+    }
+
     public MissingVariationFinder(Properties props) {
         this.props = new Properties();
         this.props.putAll(props);
-        // every working move has to be measured, whatever redo is set to, including moves
-        // katago and the human policy both rate low: every point near the stakes gets a look
+        // every move near the stakes is a candidate, however unlikely katago and the human
+        // policy rate it
         this.props.setProperty("redo.solver_alternatives", "true");
         if (!props.containsKey("redo.scan_dist")) this.props.setProperty("redo.scan_dist", "2");
         this.params = ChoiceParams.fromProps(this.props);
         this.dir = new File(props.getProperty("missing.dir", "missing_variations"));
         this.visits = Integer.parseInt(props.getProperty("redo.visits", "1000"));
         this.visitsRoot = Integer.parseInt(props.getProperty("redo.visits_root", "2000"));
-        this.verifyVisits = Integer.parseInt(props.getProperty("missing.verify_visits", String.valueOf(4 * visits)));
-        this.tolerance = params.altScoreTolerance;
-        // a problem whose own line takes no ko is checked on a board with ko threats for the
-        // opponent (katrain's tsumego frame), where a move that needs to win a ko fails
-        this.opponentThreats = Boolean.parseBoolean(props.getProperty("missing.opponent_ko_threats", "true"));
-        // on a board without threats for the opponent, a move that only works through a ko
-        // can look as good as an unconditional one: dropped by its lines unless the author's
-        // line needs a ko too
-        this.allowKo = Boolean.parseBoolean(props.getProperty("missing.allow_ko", "false"));
-        // a problem whose own line goes through a ko is checked on a board with ko threats for
-        // the solver, or with skip_ko its ko positions are passed over
+        this.replyVisits = Integer.parseInt(props.getProperty("missing.reply_visits", "300"));
+        this.verifyVisits = Integer.parseInt(props.getProperty("missing.verify_visits", String.valueOf(2 * visits)));
+        this.replyDist = Integer.parseInt(props.getProperty("missing.reply_dist", "2"));
+        // with skip_ko, positions whose own line goes through a ko are passed over
         this.skipKo = Boolean.parseBoolean(props.getProperty("missing.skip_ko", "false"));
     }
 
@@ -346,6 +340,21 @@ public class MissingVariationFinder {
     private Finding find(String name, String sgf, String difficulty, Outcome o) throws Exception {
         System.out.println();
         System.out.println("=== " + name + (difficulty != null ? " (" + difficulty + ")" : "") + " ===");
+        // a problem on a smaller board is checked, and written out, in the matching corner of
+        // a full one
+        SmallBoard.Embedded embedded;
+        try {
+            embedded = SmallBoard.toNineteen(sgf);
+        } catch (IllegalArgumentException e) {
+            o.status = "skipped";
+            o.reason = e.getMessage();
+            return null;
+        }
+        if (embedded.moved()) {
+            System.out.println("a " + embedded.size() + "x" + embedded.size() + " board, played in the corner of a 19x19 one"
+                    + " (columns +" + embedded.dx() + ", rows +" + embedded.dy() + " from the top)");
+            sgf = embedded.sgf();
+        }
         Node root = new Parser().parse(sgf);
         if (difficulty == null) difficulty = ProblemRedoer.difficulty(root);
         List<MovePath> refs = MovePath.extractRightPaths(root);
@@ -354,26 +363,25 @@ public class MissingVariationFinder {
             o.reason = "no correct line";
             return null;
         }
-        // a board without ko threats cannot judge a ko the way a game would. a problem whose
-        // own line goes through one gets threats for the solver, so the author's ko answer
-        // counts as won; any other gets threats for the opponent, so a move that needs to win
-        // a ko fails and a clean answer comes out ahead of it, as on the site
+        // the plain fortress board: kos are settled by the RegimeWalker, which plays them out
+        // with one side or the other winning every ko, not by threats on the board
         Properties isolation = new Properties();
         isolation.putAll(props);
-        List<List<String>> authorLines = new ArrayList<>();
-        for (MovePath ref : refs) authorLines.add(ProblemRecord.moves(ref));
-        boolean koProblem = KoLines.koIn(root, authorLines) != null;
-        if (koProblem && !skipKo) {
-            isolation.setProperty("redo.ko_threats", "true");
-            isolation.setProperty("redo.ko_threats_for", "solver");
-            System.out.println("the problem's line goes through a ko, so the board gets ko threats for the solver");
-        } else if (opponentThreats) {
-            isolation.setProperty("redo.ko_threats", "true");
-            isolation.setProperty("redo.ko_threats_for", "opponent");
-            System.out.println("the board gets ko threats for the opponent, so a move that needs a ko fails");
-        }
-        ProblemIsolator.IsolatedProblem iso = new ProblemIsolator(isolation, brain).isolate(root);
+        isolation.setProperty("redo.ko_threats", "false");
+        ProblemIsolator isolator = new ProblemIsolator(isolation, brain);
+        ProblemIsolator.IsolatedProblem iso = isolator.isolate(root);
         DecisionFeatureExtractor extractor = new DecisionFeatureExtractor(props, brain, iso, params);
+        // what is at stake when the solver wins its kos, with the author's lines among those
+        // played out: hints at what may be at stake, never at what a move comes to
+        List<List<String>> lines = new ArrayList<>();
+        for (MovePath ref : refs) lines.add(ProblemRecord.moves(ref));
+        isolator.settleUnderKos(iso, new RegimeWalker(iso, extractor, new StatusJudge(iso, params.statusStones)), lines);
+        StatusJudge judge = new StatusJudge(iso, params.statusStones);
+        extractor.setJudge(judge);
+        RegimeWalker walker = new RegimeWalker(iso, extractor, judge);
+        Judging judging = new Judging(iso, extractor, judge,
+                new MoveClassifier(iso, walker, visits, replyVisits, verifyVisits, replyDist),
+                new MoveClassifier(iso, walker, verifyVisits, visits, 2 * verifyVisits, replyDist));
         for (Position pos : authorPositions(refs, IsolationRecord.colorLetter(iso.solverColor))) {
             o.positions++;
             if (skipKo) {
@@ -390,7 +398,7 @@ public class MissingVariationFinder {
                     continue;
                 }
             }
-            Finding f = findAt(name, sgf, root, iso, extractor, pos);
+            Finding f = findAt(name, sgf, root, judging, pos);
             if (f != null) {
                 f.difficulty = difficulty;
                 try {
@@ -404,9 +412,9 @@ public class MissingVariationFinder {
         return null;
     }
 
-    // the working moves the problem lacks at one position, or null
-    private Finding findAt(String name, String sgf, Node root, ProblemIsolator.IsolatedProblem iso,
-                           DecisionFeatureExtractor extractor, Position pos) throws Exception {
+    // where the problem disagrees with what the position allows at one position, or null
+    private Finding findAt(String name, String sgf, Node root, Judging j, Position pos) throws Exception {
+        ProblemIsolator.IsolatedProblem iso = j.iso();
         String where = pos.at().isEmpty() ? "at the start" : "after " + String.join(" ", pos.at());
         Node node;
         try {
@@ -415,163 +423,209 @@ public class MissingVariationFinder {
             System.out.println("  " + where + ": cannot replay the position (" + e.getMessage() + ")");
             return null;
         }
-        DecisionRecord rec = extractor.solver(node, pos.at(), pos.at().isEmpty() ? visitsRoot : visits);
-        double best = rec.error == null ? ChoiceRule.bestAfterLead(rec) : Double.NaN;
-        if (Double.isNaN(best)) {
+        DecisionRecord rec = j.extractor().solver(node, pos.at(), pos.at().isEmpty() ? visitsRoot : visits);
+        if (rec.error != null || rec.candidates.isEmpty()) {
             System.out.println("  " + where + ": no moves measured" + (rec.error != null ? " (" + rec.error + ")" : ""));
             return null;
         }
-        // the author's moves, measured the same way: the one that comes closest to katago's
-        // best move's life status, then the best lead
-        CandidateFeatures author = null;
-        for (String m : pos.correct()) {
-            CandidateFeatures a = extractor.measure(node, rec, m);
-            if (a != null && (author == null || closer(a, author))) author = a;
-        }
-        if (author == null) {
-            System.out.println("  " + where + ": cannot measure the author's moves");
-            return null;
-        }
-        String authorMove = author.move;
-        double authorLead = author.afterLead;
-        String solver = IsolationRecord.colorLetter(iso.solverColor);
-        // when the author's own move does not reach the life status katago's best does, the
-        // isolation misreads the position and no comparison is safe
-        if (!ChoiceRule.works(author, best, params, iso.stakes, solver)) {
-            System.out.println("  " + where + ": skipped, katago thinks the author's " + pt(authorMove) + " ("
-                    + df.format(authorLead) + ") does not reach the result of its best move (" + df.format(best) + ")"
-                    + (author.statusDeltas == null ? "" : changedFate(author.statusDeltas)));
-            return null;
-        }
-        CandidateFeatures top = rec.candidates.get(0);
         Set<String> threatPoints = new HashSet<>();
         for (Point t : iso.threats) threatPoints.add(Intersection.toGTPloc(t.x, t.y, 19));
-        boolean authorKo = KoLines.koIn(node, pos.lines()) != null;
-        List<CandidateFeatures> missing = new ArrayList<>();
+
+        // the moves worth judging: every candidate that does not fail outright on the plain
+        // board (a move that reaches its result whoever wins the kos reaches it there too), and
+        // the author's own moves whatever they did
+        List<String> judged = new ArrayList<>();
+        List<String> failedPlain = new ArrayList<>();
         for (CandidateFeatures c : rec.candidates) {
-            if (pos.correct().contains(c.move) || c.point().equals("pass")) continue;
-            if (threatPoints.contains(c.point())) continue; // a ko threat, not an answer to the problem
-            if (c != top && !ChoiceRule.nearFight(c, params)) continue;
-            if (!ChoiceRule.works(c, best, params, iso.stakes, solver)) continue;
-            // without a status (older measurements), points against the author's move
-            if (c.statusDeltas == null && c.afterLead < authorLead - tolerance) continue;
-            // a clean result comes ahead of a ko: a move katago's line fights a ko after does
-            // not count when the author's answer is clean
-            if (c.koFight != null && author.koFight == null && !authorKo) {
-                System.out.println("  " + where + ": " + pt(c.move) + " keeps the result only through a ko ("
-                        + pt(c.koFight) + " takes it on katago's line), where the author's " + pt(authorMove) + " is clean");
-                continue;
-            }
-            missing.add(c);
+            if (c.afterLead == null || c.point().equals("pass") || threatPoints.contains(c.point())) continue;
+            if (plainStatus(j, node, c.move) == StatusJudge.Status.FAIL) failedPlain.add(c.move);
+            else judged.add(c.move);
         }
-        if (missing.isEmpty()) {
-            System.out.println("  " + where + ": nothing missing (the problem accepts "
+        for (String m : pos.correct()) {
+            if (!judged.contains(m)) judged.add(m);
+            failedPlain.remove(m);
+        }
+        // what the file says beyond right and wrong (article/bestpractices): with FORCE on the
+        // position the solver can only play the moves the file has, so those are the ones
+        // judged, and a move tagged NOTTHIS is outlawed there, so it is not judged at all
+        Set<String> outlawed = outlawed(root, pos.at());
+        if (forced(root, pos.at())) {
+            judged.clear();
+            failedPlain.clear();
+            judged.addAll(sgfMoves(root, pos.at()));
+            System.out.println("  " + where + ": FORCE, only the problem's own moves can be played");
+        }
+        if (!outlawed.isEmpty()) {
+            judged.removeAll(outlawed);
+            failedPlain.removeAll(outlawed);
+            System.out.println("  " + where + ": NOTTHIS outlaws " + String.join(", ", outlawed.stream().map(MissingVariationFinder::pt).toList()));
+        }
+        // the author's moves first, since they are the likeliest to show the best level; once
+        // a level is reached, a move the problem does not accept only matters if it reaches it
+        // too (the author's own are always judged in full, for what they fall short of)
+        List<String> order = new ArrayList<>(pos.correct());
+        order.retainAll(judged);
+        for (String m : judged) if (!order.contains(m)) order.add(m);
+        Map<String, MoveClassifier.Verdict> verdicts = new LinkedHashMap<>();
+        for (String m : order) verdicts.put(m, classify(j, pos, m, verdicts));
+        MoveClassifier.Level best = bestLevel(j.quick(), verdicts);
+        // a move that fails on the plain board can still win a ko there for the solver, but
+        // reach nothing better: when nothing reaches more than a ko, those are judged too
+        if (j.quick().rank(best) <= j.quick().rank(MoveClassifier.Level.KO)) {
+            for (String m : failedPlain) verdicts.put(m, classify(j, pos, m, verdicts));
+            best = bestLevel(j.quick(), verdicts);
+        }
+        System.out.println("  " + where + ": " + summary(j.quick(), verdicts));
+        if (best == MoveClassifier.Level.FAIL) {
+            System.out.println("  " + where + ": skipped, no move reaches anything even winning every ko, so the isolation"
+                    + " misreads the position");
+            return null;
+        }
+
+        // correct moves the problem lacks, and moves it accepts that fall short, each judged
+        // again with the deeper search before it counts
+        List<MoveClassifier.Verdict> missing = new ArrayList<>();
+        List<MoveClassifier.Verdict> wrong = new ArrayList<>();
+        for (MoveClassifier.Verdict v : verdicts.values()) {
+            boolean accepted = pos.correct().contains(v.move);
+            if (!accepted && v.level == best) {
+                MoveClassifier.Verdict deep = j.deep().classify(pos.at(), v.move);
+                if (deep.level == best) missing.add(deep);
+                else System.out.println("  " + where + ": " + pt(v.move) + " looked " + level(best) + " but the deeper look says "
+                        + level(deep.level) + refuted(deep));
+            } else if (accepted && j.quick().rank(v.level) < j.quick().rank(best)) {
+                MoveClassifier.Verdict deep = j.deep().classify(pos.at(), v.move);
+                if (j.quick().rank(deep.level) < j.quick().rank(best)) wrong.add(deep);
+                else System.out.println("  " + where + ": the problem's " + pt(v.move) + " looked " + level(v.level)
+                        + " but the deeper look says " + level(deep.level));
+            }
+        }
+        if (missing.isEmpty() && wrong.isEmpty()) {
+            System.out.println("  " + where + ": nothing missing (best " + level(best) + "; the problem accepts "
                     + String.join(", ", pos.correct().stream().map(MissingVariationFinder::pt).toList()) + ")");
             return null;
         }
 
-        // a deeper look at each, against the author's move: the same life status (a stone or
-        // two aside), and a lead within the status margin of the author's
-        Deep authorDeep = deepLook(extractor, node, List.of(authorMove));
-        double deepAuthor = authorDeep.lead();
+        Finding f = new Finding();
+        f.problem = name;
+        f.at = pos.at();
+        f.accepted.addAll(pos.correct());
+        f.level = best;
+        f.iso = iso;
+        // the position as redo's rule sees it, for the review tool
+        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(rec, params, iso.stakes);
+        rec.chose = choice.move;
+        rec.alternatives = new ArrayList<>(choice.also);
+        rec.reason = choice.reason;
+        f.decision = rec;
         Set<String> inFile = sgfMoves(root, pos.at());
-        // with ko threats for the opponent on the board, a move that needs to win a ko already
-        // fails above, and a ko taken on its lines is one it can do without (or for points):
-        // only a board without them needs the lines checked for a ko
-        boolean koByLines = !allowKo && !(!iso.threats.isEmpty() && iso.threatColor != iso.solverColor);
-        Finding f = null;
-        for (CandidateFeatures c : missing) {
-            Deep deep = deepLook(extractor, node, List.of(c.move));
-            String why = fallsShort(node, iso, extractor, deep, authorDeep, authorKo);
-            if (why != null) {
-                System.out.println("  " + where + ": " + pt(c.move) + " seemed to work (" + df.format(c.afterLead)
-                        + ") but a deeper look says no: " + why);
-                continue;
-            }
-            List<List<String>> katagoLines = new ArrayList<>(deep.lines());
-            // the problem has the move on a wrong line: each of its answers there must leave
-            // the solver a way through, or the author is right
-            List<String> afterMove = new ArrayList<>(pos.at());
-            afterMove.add(c.move);
-            Map<String, Double> refutations = new LinkedHashMap<>();
-            String refutedBy = null;
-            String refutedHow = null;
-            for (String answer : sgfMoves(root, afterMove)) {
-                Deep after = deepLook(extractor, node, List.of(c.move, answer));
-                refutations.put(answer, after.lead());
-                katagoLines.addAll(after.lines());
-                refutedHow = fallsShort(node, iso, extractor, after, authorDeep, authorKo);
-                if (refutedHow != null) {
-                    refutedBy = answer;
-                    break;
-                }
-            }
-            if (refutedBy != null) {
-                System.out.println("  " + where + ": " + pt(c.move) + " seemed to work, but the problem's answer "
-                        + pt(refutedBy) + " refutes it: " + refutedHow);
-                continue;
-            }
-            // katago's own lines are checked for a ko before any are generated: the generator
-            // follows its own picks of answers and can miss the one that makes a ko
-            String katagoKo = KoLines.koIn(node, katagoLines);
-            if (katagoKo != null && koByLines && !authorKo) {
-                System.out.println("  " + where + ": " + pt(c.move) + " only works through a ko (on katago's line "
-                        + pt(katagoKo) + " takes it) and the problem's own line needs none, so it is not counted (missing.allow_ko=true keeps it)");
-                continue;
-            }
+        for (MoveClassifier.Verdict v : missing) {
             FoundMove m = new FoundMove();
-            m.move = c.move;
-            m.source = c.source;
-            m.authorMove = authorMove;
-            m.lead = c.afterLead;
-            m.authorLead = authorLead;
-            m.deepLead = deep.lead();
-            m.deepAuthorLead = deepAuthor;
-            m.prior = c.prior;
-            m.visits = c.visits;
-            m.humanPolicy = c.humanPolicy;
-            m.stakeDist = c.stakeDist;
-            m.inFileAsWrong = inFile.contains(c.move);
-            m.refutations = refutations;
-            System.out.println("  " + where + ": " + pt(c.move) + " works too, generating its line");
-            m.lines.addAll(linesFrom(iso, node, pos.at(), List.of(), c.move, m.decisions));
+            m.move = v.move;
+            m.level = v.level;
+            m.line = withoutExchanges(v.line, iso);
+            CandidateFeatures c = rec.candidate(v.move);
+            if (c != null) {
+                m.source = c.source;
+                m.prior = c.prior;
+                m.visits = c.visits;
+                m.humanPolicy = c.humanPolicy;
+                m.stakeDist = c.stakeDist;
+            }
+            m.inFileAsWrong = inFile.contains(v.move);
+            System.out.println("  " + where + ": " + pt(v.move) + " reaches " + level(best) + " too, generating its line");
+            m.lines.addAll(linesFrom(iso, node, pos.at(), List.of(), v.move, m.decisions));
             // and the solver's way through each of the problem's own answers to it
-            for (String answer : refutations.keySet()) {
+            List<String> afterMove = new ArrayList<>(pos.at());
+            afterMove.add(v.move);
+            for (String answer : sgfMoves(root, afterMove)) {
                 boolean covered = m.lines.stream().anyMatch(l -> l.size() > 1 && l.get(1).equals(answer));
-                if (!covered) m.lines.addAll(linesFrom(iso, node, pos.at(), List.of(c.move, answer), null, m.decisions));
-            }
-            m.ko = KoLines.koIn(node, m.lines);
-            if (m.ko == null && katagoKo != null) {
-                m.ko = katagoKo;
-                m.koOnKatagoLine = true;
-            }
-            m.authorKo = m.ko != null && authorKo;
-            m.koWithThreats = m.ko != null && !m.authorKo && !iso.threats.isEmpty() && iso.threatColor != iso.solverColor;
-            if (m.ko != null && koByLines && !m.authorKo) {
-                System.out.println("  " + where + ": " + pt(c.move) + " only works through a ko (" + pt(m.ko)
-                        + " takes it) and the problem's own line needs none, so it is not counted (missing.allow_ko=true keeps it)");
-                continue;
-            }
-            if (f == null) {
-                f = new Finding();
-                f.problem = name;
-                f.at = pos.at();
-                f.accepted.addAll(pos.correct());
-                // the position as redo's rule sees it, for the review tool
-                ChoiceRule.Choice choice = ChoiceRule.chooseSolver(rec, params, iso.stakes);
-                rec.chose = choice.move;
-                rec.alternatives = new ArrayList<>(choice.also);
-                rec.reason = choice.reason;
-                f.decision = rec;
-                f.iso = iso;
+                if (!covered) m.lines.addAll(linesFrom(iso, node, pos.at(), List.of(v.move, answer), null, m.decisions));
             }
             f.moves.add(m);
         }
-        if (f != null) {
-            f.sgf = writeSgf(name, sgf, f).getPath();
-            Files.writeString(new File(dir, name + "_missing.json").toPath(), RunRecorder.GSON.toJson(f) + "\n");
+        for (MoveClassifier.Verdict v : wrong) {
+            WrongMove w = new WrongMove();
+            w.move = v.move;
+            w.level = v.level;
+            w.refutation = v.refutation;
+            w.line = withoutExchanges(v.line, iso);
+            f.wrong.add(w);
         }
+        f.sgf = writeSgf(name, sgf, f).getPath();
+        Files.writeString(new File(dir, name + "_missing.json").toPath(), RunRecorder.GSON.toJson(f) + "\n");
         return f;
+    }
+
+    // what the move comes to on the plain board, from the analysis the extractor already made
+    private StatusJudge.Status plainStatus(Judging j, Node node, String move) throws Exception {
+        Point p = Intersection.gtp2point(move.substring(2));
+        if (!node.legalMove(p)) return StatusJudge.Status.FAIL;
+        Node child = node.addBasicMove(p.x, p.y);
+        try {
+            return j.judge().status(child, j.extractor().after(child));
+        } finally {
+            node.removeChildNode(child);
+        }
+    }
+
+    // a move's quick verdict, held to the best level so far unless the problem accepts it
+    private static MoveClassifier.Verdict classify(Judging j, Position pos, String move,
+                                                   Map<String, MoveClassifier.Verdict> sofar) throws Exception {
+        boolean accepted = pos.correct().contains(move);
+        MoveClassifier.Level floor = accepted || sofar.isEmpty() ? null : bestLevel(j.quick(), sofar);
+        return j.quick().classify(pos.at(), move, floor);
+    }
+
+    private static MoveClassifier.Level bestLevel(MoveClassifier c, Map<String, MoveClassifier.Verdict> verdicts) {
+        MoveClassifier.Level best = MoveClassifier.Level.FAIL;
+        for (MoveClassifier.Verdict v : verdicts.values()) {
+            if (c.rank(v.level) > c.rank(best)) best = v.level;
+        }
+        return best;
+    }
+
+    // the judged moves by level, best first, with what brings each one down
+    private static String summary(MoveClassifier c, Map<String, MoveClassifier.Verdict> verdicts) {
+        List<String> parts = new ArrayList<>();
+        List<MoveClassifier.Level> levels = new ArrayList<>(List.of(MoveClassifier.Level.values()));
+        levels.sort(Comparator.comparingInt(c::rank).reversed());
+        for (MoveClassifier.Level l : levels) {
+            List<String> moves = new ArrayList<>();
+            for (MoveClassifier.Verdict v : verdicts.values()) {
+                if (v.level == l && !v.capped) moves.add(pt(v.move) + (v.refutation != null ? " (" + pt(v.refutation) + ")" : ""));
+            }
+            if (!moves.isEmpty()) parts.add(level(l) + " " + String.join(", ", moves));
+        }
+        List<String> capped = new ArrayList<>();
+        for (MoveClassifier.Verdict v : verdicts.values()) if (v.capped) capped.add(pt(v.move));
+        if (!capped.isEmpty()) parts.add("short of the best " + String.join(", ", capped));
+        return String.join("; ", parts);
+    }
+
+    static String level(MoveClassifier.Level l) {
+        return switch (l) {
+            case CLEAN -> "clean";
+            case SEKI -> "seki";
+            case KO -> "ko";
+            case FAIL -> "failure";
+        };
+    }
+
+    private static String refuted(MoveClassifier.Verdict v) {
+        return v.refutation == null ? "" : " (" + pt(v.refutation) + " answers it)";
+    }
+
+    // a walk's line without the free ko exchanges, which are played in the fill
+    private static List<String> withoutExchanges(List<String> line, ProblemIsolator.IsolatedProblem iso) {
+        if (line == null) return null;
+        boolean[][] zone = RegimeWalker.zone(iso);
+        List<String> out = new ArrayList<>();
+        for (String m : line) {
+            Point p = Intersection.gtp2point(m.substring(2));
+            if (zone[p.x][p.y]) out.add(m);
+        }
+        return out;
     }
 
     // every position on the author's correct lines where the solver is to play, root first,
@@ -596,81 +650,42 @@ public class MissingVariationFinder {
 
     // the moves the problem file has at a position, on correct lines or not
     static Set<String> sgfMoves(Node root, List<String> at) {
-        Node cur = root;
-        for (String m : at) {
-            cur = cur.getChildWithMove(Intersection.gtp2point(m.substring(2)));
-            if (cur == null) return Set.of();
-        }
+        return fileMoves(root, at, false);
+    }
+
+    // the moves the file outlaws at a position: NOTTHIS in a move's comment, which the site
+    // takes as a point the solver may not play (article/bestpractices)
+    static Set<String> outlawed(Node root, List<String> at) {
+        return fileMoves(root, at, true);
+    }
+
+    // whether the file limits the solver to its own moves at a position: FORCE in the
+    // comment of the position's node (article/bestpractices)
+    static boolean forced(Node root, List<String> at) {
+        Node cur = nodeAt(root, at);
+        return cur != null && cur.forceMove;
+    }
+
+    private static Set<String> fileMoves(Node root, List<String> at, boolean onlyOutlawed) {
+        Node cur = nodeAt(root, at);
+        if (cur == null) return Set.of();
         Set<String> out = new LinkedHashSet<>();
         for (Node child : cur.babies) {
             MoveAction ma = child.getMoveAction();
             if (ma == null || ma.loc.x < 0 || ma.loc.x >= 19 || ma.loc.y < 0 || ma.loc.y >= 19) continue;
+            if (onlyOutlawed && !child.notThis) continue;
             out.add(IsolationRecord.colorLetter(ma.stone) + " " + Intersection.toGTPloc(ma.loc.x, ma.loc.y, 19));
         }
         return out;
     }
 
-    // is a closer to the life status of katago's best move than b: fewer stones changing
-    // fate, then the better lead
-    private boolean closer(CandidateFeatures a, CandidateFeatures b) {
-        int fa = a.statusDeltas == null ? 0 : ChoiceRule.fateChanges(a.statusDeltas, params);
-        int fb = b.statusDeltas == null ? 0 : ChoiceRule.fateChanges(b.statusDeltas, params);
-        return fa != fb ? fa < fb : a.afterLead > b.afterLead;
-    }
-
-    // why a deeper look puts a move short of the author's, or null: a different life status
-    // (an opponent stone lives that the author's kills, or more than a stone or two of the
-    // solver's die), katago's line fighting a ko where the author's fights none, or the lead
-    // more than the status margin behind
-    private String fallsShort(Node node, ProblemIsolator.IsolatedProblem iso, DecisionFeatureExtractor extractor,
-                              Deep deep, Deep author, boolean authorKo) throws Exception {
-        Map<String, Double> deltas = extractor.statusDeltas(node, deep.kar(), author.kar());
-        if (!ChoiceRule.sameStatus(deltas, params, iso.stakes, IsolationRecord.colorLetter(iso.solverColor))) {
-            return "a different life status from the author's" + changedFate(deltas) + " (lead " + df.format(deep.lead())
-                    + " against " + df.format(author.lead()) + ")";
+    private static Node nodeAt(Node root, List<String> at) {
+        Node cur = root;
+        for (String m : at) {
+            cur = cur.getChildWithMove(Intersection.gtp2point(m.substring(2)));
+            if (cur == null) return null;
         }
-        if (!authorKo) {
-            Set<String> threatPoints = new HashSet<>();
-            for (Point t : iso.threats) threatPoints.add(Intersection.toGTPloc(t.x, t.y, 19));
-            String ko = KoLines.koFight(node, deep.lines(), threatPoints);
-            if (ko != null && KoLines.koFight(node, author.lines(), threatPoints) == null) {
-                return "katago's line fights a ko (" + pt(ko) + " takes it), where the author's is clean";
-            }
-        }
-        if (deep.lead() < author.lead() - params.statusScoreMargin) {
-            return "its lead " + df.format(deep.lead()) + " is more than " + params.statusScoreMargin + " behind the author's "
-                    + df.format(author.lead());
-        }
-        return null;
-    }
-
-    // the stones a status change is made of, for the report
-    private String changedFate(Map<String, Double> statusDeltas) {
-        List<String> changed = new ArrayList<>();
-        for (Map.Entry<String, Double> e : statusDeltas.entrySet()) {
-            if (e.getValue() < -params.statusThreshold) changed.add(e.getKey());
-        }
-        return changed.isEmpty() ? "" : ": " + String.join(", ", changed) + " change fate";
-    }
-
-    // the solver's lead after the moves, with a deeper search, and katago's lines from there.
-    // the first move is the solver's
-    private Deep deepLook(DecisionFeatureExtractor extractor, Node node, List<String> moves) throws Exception {
-        Node cur = node;
-        Node first = null;
-        try {
-            for (String move : moves) {
-                Point p = Intersection.gtp2point(move.substring(2));
-                if (!cur.legalMove(p)) throw new IOException("illegal move " + move);
-                cur = cur.addBasicMove(p.x, p.y);
-                if (first == null) first = cur;
-            }
-            KataAnalysisResult kar = extractor.analyzeNear(cur, verifyVisits);
-            if (kar.isError()) throw new IOException("deeper analysis failed: " + kar.error);
-            return new Deep(sign(moves.get(0)) * kar.blackScore(), KoLines.katagoLines(moves, kar), kar);
-        } finally {
-            if (first != null) node.removeChildNode(first);
-        }
+        return cur;
     }
 
     // lines from a position, generated by the redo generator so they answer and end the way
@@ -712,11 +727,13 @@ public class MissingVariationFinder {
         // the scan of every point near the stakes is for the positions being checked; at every
         // turn of a generated line it would multiply the time a line takes. the opponent
         // answers with its strongest resistance, in katago's order, rather than the one
-        // hardest for a human: a found move has to hold against the best defense
+        // hardest for a human: a found move has to hold against the best defense. the line
+        // only illustrates the move, so the solver keeps to its main choice
         Properties lineProps = new Properties();
         lineProps.putAll(props);
         lineProps.setProperty("redo.scan_dist", "-1");
         lineProps.setProperty("redo.response_criterion", "order");
+        lineProps.setProperty("redo.max_solver_moves", "1");
         SolutionPathGenerator generator = new SolutionPathGenerator(lineProps, brain, from);
         if (forced != null) generator.setForcedFirstMove(Intersection.gtp2point(forced.substring(2)));
         for (DecisionRecord d : generator.generate().decisions) {
@@ -782,8 +799,12 @@ public class MissingVariationFinder {
             for (DecisionRecord d : m.decisions) {
                 if (keys.add(d.key())) rec.decisions.add(d);
             }
-            rec.notes.add("missing variation " + where + ": " + pt(m.move) + " also works, lead " + df.format(m.deepLead)
-                    + " against the author's " + pt(m.authorMove) + " " + df.format(m.deepAuthorLead) + " at " + verifyVisits + " visits");
+            rec.notes.add("missing variation " + where + ": " + pt(m.move) + " reaches " + level(m.level)
+                    + ", the best result there");
+        }
+        for (WrongMove w : f.wrong) {
+            rec.notes.add("the problem accepts " + pt(w.move) + " " + where + ", but it only reaches " + level(w.level)
+                    + " where " + level(f.level) + " is possible" + (w.refutation != null ? ": " + pt(w.refutation) + " answers it" : ""));
         }
         rec.generated = rec.generatedLines.get(rec.generatedLines.size() - 1);
         rec.tree = TreeComparison.compare(rec.generatedLines, rec.refs);
@@ -841,6 +862,11 @@ public class MissingVariationFinder {
                 cur.result = Intersection.RIGHT;
             }
         }
+        // a move the problem accepts that falls short keeps its place, with a comment saying so
+        for (WrongMove w : f.wrong) {
+            Node node = at.getChildWithMove(Intersection.gtp2point(w.move.substring(2)));
+            if (node != null) addComment(node, comment(w, f.level));
+        }
         File out = new File(dir, name + "_missing.sgf");
         Files.writeString(out.toPath(), "(" + root.outputSGF(true) + ")\n");
         return out;
@@ -857,54 +883,60 @@ public class MissingVariationFinder {
         node.addAct(new CommentAction(text));
     }
 
-    private String comment(FoundMove m) {
-        return "MISSING VARIATION (autoprob): " + pt(m.move) + " also works here. Lead after it "
-                + df.format(m.lead) + ", after the author's " + pt(m.authorMove) + " " + df.format(m.authorLead)
-                + "; at " + verifyVisits + " visits " + df.format(m.deepLead) + " and " + df.format(m.deepAuthorLead) + ".";
+    private static String comment(FoundMove m) {
+        return "MISSING VARIATION (autoprob): " + pt(m.move) + " reaches " + level(m.level)
+                + " here too, the best result in this position, so it should be accepted.";
+    }
+
+    private static String comment(WrongMove w, MoveClassifier.Level best) {
+        return "AUTOPROB: " + pt(w.move) + " only reaches " + level(w.level) + " here, where " + level(best)
+                + " is possible" + (w.refutation != null ? " (" + pt(w.refutation) + " answers it)" : "") + ".";
     }
 
     private void show(Finding f) {
         String bar = "=".repeat(72);
-        String side = f.moves.get(0).move.startsWith("B") ? "black" : "white";
+        String side = IsolationRecord.colorLetter(f.iso.solverColor).equals("B") ? "black" : "white";
         System.out.println();
         System.out.println(bar);
-        System.out.println("MISSING VARIATION in " + f.problem + (f.difficulty != null ? " (" + f.difficulty + ")" : ""));
+        System.out.println((f.moves.isEmpty() ? "PROBLEM ERROR" : "MISSING VARIATION") + " in " + f.problem
+                + (f.difficulty != null ? " (" + f.difficulty + ")" : ""));
         System.out.println("position: " + (f.at.isEmpty() ? "the start" : "after " + String.join(" ", f.at))
-                + ", " + side + " to play");
+                + ", " + side + " to play; the best result there is " + level(f.level));
         System.out.println("the problem accepts: " + String.join(", ", f.accepted.stream().map(MissingVariationFinder::pt).toList()));
         for (FoundMove m : f.moves) {
             System.out.println();
-            System.out.println("also works: " + pt(m.move) + "   lead after it " + df.format(m.lead) + ", after the author's "
-                    + pt(m.authorMove) + " " + df.format(m.authorLead));
-            System.out.println("  deeper look at " + verifyVisits + " visits: " + df.format(m.deepLead) + " against "
-                    + df.format(m.deepAuthorLead));
-            System.out.println("  came up " + ("scan".equals(m.source) ? "in the scan of points near the stakes"
-                    : "as a " + m.source + " move") + ": katago prior "
-                    + (m.prior == null ? "-" : new DecimalFormat("0.000").format(m.prior))
-                    + (m.visits == null ? "" : ", " + m.visits + " visits")
-                    + ", human policy " + (m.humanPolicy == null ? "-" : new DecimalFormat("0.00").format(m.humanPolicy))
-                    + (m.stakeDist == null ? "" : ", " + m.stakeDist + " from the stones at stake"));
+            System.out.println("also " + level(m.level) + ": " + pt(m.move));
+            if (m.source != null) {
+                System.out.println("  came up " + ("scan".equals(m.source) ? "in the scan of points near the stakes"
+                        : "as a " + m.source + " move") + ": katago prior "
+                        + (m.prior == null ? "-" : new DecimalFormat("0.000").format(m.prior))
+                        + (m.visits == null ? "" : ", " + m.visits + " visits")
+                        + ", human policy " + (m.humanPolicy == null ? "-" : new DecimalFormat("0.00").format(m.humanPolicy))
+                        + (m.stakeDist == null ? "" : ", " + m.stakeDist + " from the stones at stake"));
+            }
             if (m.inFileAsWrong) {
                 System.out.println("  the problem has " + pt(m.move) + ", but on a line that does not end RIGHT, so it is marked wrong");
-                for (Map.Entry<String, Double> r : m.refutations.entrySet()) {
-                    System.out.println("  the problem answers it with " + pt(r.getKey()) + "; after that the solver still leads "
-                            + df.format(r.getValue()) + " (deeper look), and the lines below show the way through");
-                }
             }
-            if (m.ko != null) {
-                System.out.println("  " + (m.koOnKatagoLine ? "katago's own line" : "its line") + " goes through a ko ("
-                        + pt(m.ko) + " takes it)" + (m.authorKo
-                        ? ", as the problem's own line does"
-                        : m.koWithThreats
-                        ? ", but the move works with the opponent holding ko threats: check that ko is not needed"
-                        : ": the isolated board has no ko threats, so check the problem allows a ko here"));
+            if (m.line != null && m.line.size() > f.at.size()) {
+                System.out.println("  played out: " + String.join(" ", m.line.subList(f.at.size(), m.line.size()).stream()
+                        .map(MissingVariationFinder::pt).toList()));
             }
             for (List<String> line : m.lines) {
                 System.out.println("  line: " + String.join(" ", line.stream().map(MissingVariationFinder::pt).toList()));
             }
         }
+        for (WrongMove w : f.wrong) {
+            System.out.println();
+            System.out.println("the problem accepts " + pt(w.move) + ", but it only reaches " + level(w.level)
+                    + (w.refutation != null ? ": " + pt(w.refutation) + " answers it" : ""));
+            if (w.line != null && w.line.size() > f.at.size()) {
+                System.out.println("  played out: " + String.join(" ", w.line.subList(f.at.size(), w.line.size()).stream()
+                        .map(MissingVariationFinder::pt).toList()));
+            }
+        }
         System.out.println();
-        System.out.println("wrote " + f.sgf + ": the problem with the line added, its first move commented MISSING VARIATION");
+        System.out.println("wrote " + f.sgf + ": the problem with the missing lines added (commented MISSING VARIATION)"
+                + (f.wrong.isEmpty() ? "" : " and the accepted moves that fall short commented"));
         if (f.review != null) {
             System.out.println("in the review tool, with the findings before it: bash gotool.sh cmd=review run=" + f.review.getPath());
         }
@@ -922,14 +954,12 @@ public class MissingVariationFinder {
         row.put("seconds", o.seconds);
         if (o.finding != null) {
             row.put("at", String.join(" ", o.finding.at));
+            row.put("level", level(o.finding.level));
             row.put("found", o.finding.moves.stream().map(m -> m.move).toList());
+            if (!o.finding.wrong.isEmpty()) row.put("wrong", o.finding.wrong.stream().map(w -> w.move).toList());
         }
         Files.writeString(new File(dir, "log.jsonl").toPath(), new Gson().toJson(row) + "\n",
                 StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-    }
-
-    private static int sign(String move) {
-        return move.startsWith("B") ? 1 : -1;
     }
 
     private static String pt(String move) {

@@ -450,6 +450,9 @@ public class Node {
 
     // tests if it is on board, but also legal capturing etc.
     public boolean legalMove(Point op) {
+        // the point a ko just taken bans for this move
+        Point ko = getKo();
+        if (ko != null && ko.x == op.x && ko.y == op.y) return false;
         // test board
         try {
             Board nb = (Board) board.clone();
@@ -824,7 +827,7 @@ public class Node {
         if (board.deathList.size() != 1)
             return null;
         Point p = findMove();
-        if (p == null) return null;
+        if (p == null || p.x < 0 || p.y < 0 || p.x >= 19 || p.y >= 19) return null; // none, or a pass
         if (board.isKo(p))
             return (Point) board.deathList.elementAt(0);
         return null;

@@ -190,13 +190,22 @@ public class ChoiceRule {
         }
 
         if (p.responseCriterion.equals("order")) {
-            // the first candidates that still threaten extend the tree, in katago's order
-            List<String> picked = new ArrayList<>();
+            // the first candidates that still threaten extend the tree, in katago's order. the
+            // order picks which resistance to show, not when the result is clear, so the line
+            // ends as with the other criteria when the real tries left are routine (gp-62070,
+            // where black's answers to white's P17 and T19 are found every time)
+            List<CandidateFeatures> threatening = new ArrayList<>();
             for (CandidateFeatures c : candidates) {
-                if (countThreat(c, p, stakes) >= p.threatStones && realTry(c, p)) picked.add(c.move);
-                if (picked.size() >= Math.max(1, p.opponentBranches)) break;
+                if (countThreat(c, p, stakes) >= p.threatStones && realTry(c, p)) threatening.add(c);
             }
-            if (picked.isEmpty()) return new Choice(DecisionRecord.END, "no opponent threat remains");
+            if (threatening.isEmpty()) return new Choice(DecisionRecord.END, "no opponent threat remains");
+            Choice routine = routineEnd(threatening, p);
+            if (routine != null) return routine;
+            List<String> picked = new ArrayList<>();
+            for (CandidateFeatures c : threatening) {
+                if (picked.size() >= Math.max(1, p.opponentBranches)) break;
+                picked.add(c.move);
+            }
             String main = picked.remove(0);
             return new Choice(main, picked, "first threatening response " + main.substring(2)
                     + ", threat " + countThreat(rec.candidate(main), p, stakes));
@@ -221,14 +230,8 @@ public class ChoiceRule {
                     ? "no testing threat remains (" + easy + " threat" + (easy == 1 ? "" : "s") + " any of several answers handle)"
                     : "no opponent threat remains");
         }
-        // the line also ends when the real tries left are routine. authors stop once the
-        // result is clear rather than play out replies everyone finds, though they still
-        // show a single last resistance
-        if (p.endOnObvious && threatening.size() >= Math.max(1, p.routineMinTries)
-                && threatening.stream().allMatch(c -> obviousAnswer(c, p))) {
-            return new Choice(DecisionRecord.END, "only routine tries remain (obvious answers to "
-                    + String.join(", ", threatening.stream().map(CandidateFeatures::point).toList()) + ")");
-        }
+        Choice routine = routineEnd(threatening, p);
+        if (routine != null) return routine;
         double severeFloor = maxThreat * p.severeThreatRatio;
         List<CandidateFeatures> severe = new ArrayList<>();
         for (CandidateFeatures c : threatening) {
@@ -251,6 +254,18 @@ public class ChoiceRule {
         return new Choice(best.move, also, "chose response " + best.point() + " (human " + df.format(humanPolicy(best))
                 + ", threat " + countThreat(best, p, stakes) + ", human answer " + df.format(answerChance(best)) + ")"
                 + (also.isEmpty() ? "" : ", also " + String.join(", ", also.stream().map(m -> m.substring(2)).toList())));
+    }
+
+    // the end of a line when the real tries left are routine: authors stop once the result is
+    // clear rather than play out replies everyone finds, though they still show a single last
+    // resistance. null when the line goes on
+    private static Choice routineEnd(List<CandidateFeatures> threatening, ChoiceParams p) {
+        if (p.endOnObvious && threatening.size() >= Math.max(1, p.routineMinTries)
+                && threatening.stream().allMatch(c -> obviousAnswer(c, p))) {
+            return new Choice(DecisionRecord.END, "only routine tries remain (obvious answers to "
+                    + String.join(", ", threatening.stream().map(CandidateFeatures::point).toList()) + ")");
+        }
+        return null;
     }
 
     // a threat is a real try only if few solver answers handle it: when many moves answer

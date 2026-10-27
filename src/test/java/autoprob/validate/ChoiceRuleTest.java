@@ -114,6 +114,29 @@ class ChoiceRuleTest {
     }
 
     @Test
+    void orderEndsWhenTheTriesLeftAreRoutine() {
+        // gp-62070 after B R19, W R16, B S19 (the review: the line ends there). P17 and T19
+        // threaten, but black's answers are found every time; P16 has seven answers, so it
+        // tests nothing, and T13 threatens nothing
+        CandidateFeatures p16 = cand("W P16", "human", 0.0, 0, 0.351, 0.051, 14, 0);
+        CandidateFeatures p17 = cand("W P17", "human", 0.0, 0, 0.127, 0.993, 16, 0);
+        CandidateFeatures t19 = cand("W T19", "human", 0.0, 0, 0.089, 0.897, 14, 0);
+        CandidateFeatures t13 = cand("W T13", "human", 0.0, 0, 0.055, 0.006, 0, 0);
+        p16.answers = 7;
+        p17.answers = 1;
+        p17.answerPrior = 1.0;
+        t19.answers = 2;
+        t19.answerPrior = 0.837;
+        t19.humanAnswers = 1.0;
+        DecisionRecord rec = opponent(p16, p17, t19, t13);
+        ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(rec, params("response_criterion", "order"), STAKES);
+        assertTrue(choice.isEnd(), choice.reason);
+        assertTrue(choice.reason.startsWith("only routine tries remain"), choice.reason);
+        // without the routine rule, katago's first real threat goes on
+        assertEquals("W P17", ChoiceRule.chooseOpponent(rec, params("response_criterion", "order", "end_on_obvious", "false"), STAKES).move);
+    }
+
+    @Test
     void orderAndPrimaryTakeKatagosFirstThreat() {
         assertEquals("W F1", ChoiceRule.chooseOpponent(gp721(), params("response_criterion", "order"), STAKES).move);
         assertEquals("W F1", ChoiceRule.chooseOpponent(gp721(), params("extend_mode", "primary"), STAKES).move);

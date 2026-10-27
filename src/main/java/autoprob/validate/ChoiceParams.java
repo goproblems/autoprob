@@ -63,7 +63,7 @@ public class ChoiceParams {
         p.testingBand = Double.parseDouble(props.getProperty("redo.testing_band", "0.2"));
         p.naturalnessWeight = Double.parseDouble(props.getProperty("redo.naturalness_weight", "1"));
         p.endOnObvious = Boolean.parseBoolean(props.getProperty("redo.end_on_obvious", "true"));
-        p.routineAnswerPrior = Double.parseDouble(props.getProperty("redo.routine_answer_prior", "0.9"));
+        p.routineAnswerPrior = Double.parseDouble(props.getProperty("redo.routine_answer_prior", "0.8"));
         p.routineHumanAnswer = Double.parseDouble(props.getProperty("redo.routine_human_answer", "0.8"));
         p.routineMinTries = Integer.parseInt(props.getProperty("redo.routine_min_tries", "2"));
         // redo.threat_region_dist is not applied to live generation yet (see docs/redo.md

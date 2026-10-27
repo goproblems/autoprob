@@ -290,9 +290,12 @@ testing severe threat by the same criterion also branches the tree.
 **Ending.** A line ends naturally when no candidate is a real threat ("no opponent threat
 remains"), when the solver's best move is a pass, or (with `redo.end_on_obvious`, the
 default) when at least `redo.routine_min_tries` (2) real tries are left and every one is
-routine: KataGo's prior on the answer is at least `redo.routine_answer_prior` (0.9) and a
+routine: KataGo's prior on the answer is at least `redo.routine_answer_prior` (0.8) and a
 human finds an answer that holds at least `redo.routine_human_answer` (0.8) of the time
-("only routine tries remain"). Authors stop once the result is clear rather than play out
+("only routine tries remain"). The prior was 0.9 until a review of gp-62070 ended a line
+after B S19, where White's T19 has two answers that hold and a human finds one every time,
+but KataGo's prior on the better one is 0.84; offline tuning over the 127 recorded
+decisions showed 0.8 fixing it and breaking none. Authors stop once the result is clear rather than play out
 replies everyone finds, but they still show a single last resistance, even an obvious one:
 in a full run with no minimum, the 4 lines it ended on the author's tree with one try left
 all cut the author short (gp-39693 right after its first move, gp-721 before W N1 B M1,
@@ -406,7 +409,7 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.testing_band` | 0.2 | Width of the human answer bands the `testing` criterion compares |
 | `redo.naturalness_weight` | 1 | How much the `testing` criterion favors natural resistances: their human policy times this comes off how easy they are to answer. 0 leaves naturalness a tie-break |
 | `redo.end_on_obvious` | true | End the line when every real try left has an obvious answer |
-| `redo.routine_answer_prior` | 0.9 | An answer is obvious when KataGo's prior on it is at least this... |
+| `redo.routine_answer_prior` | 0.8 | An answer is obvious when KataGo's prior on it is at least this... |
 | `redo.routine_human_answer` | 0.8 | ...and a human finds an answer that holds at least this often |
 | `redo.routine_min_tries` | 2 | ...and at least this many real tries are left (a single last resistance is still shown) |
 | `redo.force_first_move` | false | Pin the first solver move to the reference |

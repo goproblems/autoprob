@@ -110,6 +110,15 @@ public class StatusJudge {
         return reaches;
     }
 
+    // how clearly the stones at stake end the solver's way: its ownership of the deciding one,
+    // the weakest once the stone or two that may be lost are set aside. past 0.5 is the
+    // solver's, 1 is certain
+    public double margin(KataAnalysisResult kar) {
+        if (kar == null || kar.isError() || kar.ownership == null || iso.stakes.isEmpty()) return 0;
+        double[] owned = iso.stakes.stream().mapToDouble(s -> sign * kar.ownership.get(s.x + s.y * 19)).sorted().toArray();
+        return owned[Math.min(allowedMisses, owned.length - 1)];
+    }
+
     // the stones at stake the position leaves the solver short of, for reports
     public List<String> missed(KataAnalysisResult kar) {
         return iso.stakes.stream()

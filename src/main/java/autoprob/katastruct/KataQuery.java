@@ -57,6 +57,12 @@ public class KataQuery {
 	@Expose
 	public List<AllowMove> allowMoves = null;
 
+	// avoidMoves (list of dicts): moves the search may not explore for a player until a ply.
+	// katago takes either this or allowMoves, never both
+	@SerializedName("avoidMoves")
+	@Expose
+	public List<AllowMove> avoidMoves = null;
+
 	// overrideSettings (object): Optional. Specify any number of "paramName":value entries in this object to override those params from command line CONFIG_FILE for this query. Most search parameters can be overriden: cpuctExploration, winLossUtilityFactor, etc.
 	// just support: humanSLProfile (string). Set the human-like play that KataGo should imitate.
 	@SerializedName("overrideSettings")

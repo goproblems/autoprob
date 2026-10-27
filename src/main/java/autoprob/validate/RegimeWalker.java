@@ -13,8 +13,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import autoprob.go.Board;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
+import autoprob.katastruct.AllowMove;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.MoveInfo;
 
@@ -33,13 +35,24 @@ import autoprob.katastruct.MoveInfo;
 // black keep the corner's ko). the other side may then use its own threats and take the ko
 // again; when it takes the same ko again from the same position, that capture is forbidden
 // there and it has to play something else.
+//
+// a ko the favored side could take back but never end is no ko (deadKos): the stones it
+// decides are dead as they stand, and taking it gains the other side nothing either, since
+// the favored side takes it back. katago, sure of winning it on a board without threats,
+// leaves the stones around it to be captured while it plays elsewhere, so while one is on the
+// board the other side may not take it anywhere in katago's search. a dead ko is barred only
+// where taking it can never be anything but the ko: katago can only bar a point, and where
+// the other side could capture more stones there later, barring it would bar that too.
 public class RegimeWalker {
     private static final int MAX_STEPS = 12;
+    // how deep in katago's search a dead ko may not be taken: all of it
+    private static final int WHOLE_SEARCH = 1000;
 
     // the end of a walk: the status there, the moves played to reach it (exchanges included),
-    // katago's line on from there, the last analysis, and how many exchanges the favored side
-    // was given
-    public record Walk(StatusJudge.Status status, List<String> line, List<String> pv, KataAnalysisResult kar, int exchanges) {
+    // katago's line on from there, the last analysis, how many exchanges the favored side was
+    // given, and how clearly the stones at stake end the solver's way (StatusJudge.margin)
+    public record Walk(StatusJudge.Status status, List<String> line, List<String> pv, KataAnalysisResult kar, int exchanges,
+                       double margin) {
     }
 
     private final ProblemIsolator.IsolatedProblem iso;
@@ -99,13 +112,16 @@ public class RegimeWalker {
                     if (first == null) first = node;
                 }
                 String key = zoneKey(node);
-                kar = analyzeAt(node, line, visits, forbidden.getOrDefault(key, Set.of()));
-                if (kar.isError()) return new Walk(StatusJudge.Status.FAIL, line, List.of(), kar, exchanges);
+                Set<String> dead = deadKos(node, favoredColor);
+                kar = analyzeAt(node, line, visits, forbidden.getOrDefault(key, Set.of()), dead, favoredColor);
+                if (kar.isError()) return new Walk(StatusJudge.Status.FAIL, line, List.of(), kar, exchanges, 0);
                 status = judge.status(node, kar);
 
-                // the first ko the other side takes on katago's line
+                // the first ko the other side takes on katago's line, or the first place on it
+                // where a dead ko comes up, which katago's search here was free to take
                 pv = bestLine(node, kar);
                 int k = -1;
+                int d = -1;
                 String from = null;
                 Node cur = node;
                 Node pvFirst = null;
@@ -122,9 +138,18 @@ public class RegimeWalker {
                             from = before;
                             break;
                         }
+                        if (!dead.containsAll(deadKos(cur, favoredColor))) {
+                            d = i;
+                            break;
+                        }
                     }
                 } finally {
                     if (pvFirst != null) node.removeChildNode(pvFirst);
+                }
+                if (d >= 0) {
+                    // play to there and search again, with that ko barred
+                    line.addAll(pv.subList(0, d + 1));
+                    continue;
                 }
                 if (k < 0) break; // no ko the other side keeps: this is where the line settles
 
@@ -148,7 +173,7 @@ public class RegimeWalker {
                 if (first != null) iso.problem.removeChildNode(first);
             }
         }
-        return new Walk(status, line, pv, kar, exchanges);
+        return new Walk(status, line, pv, kar, exchanges, judge.margin(kar));
     }
 
     // whether a move is played inside the problem area, rather than an exchange in the fill
@@ -178,6 +203,11 @@ public class RegimeWalker {
 
     // katago's look at the position after the moves, for the moves it would play there
     public KataAnalysisResult analyze(List<String> moves, int visits) throws Exception {
+        return analyze(moves, visits, null);
+    }
+
+    // the same with favoredColor winning every ko (null for neither): a dead ko is not taken
+    public KataAnalysisResult analyze(List<String> moves, int visits, Integer favoredColor) throws Exception {
         Node first = null;
         try {
             Node node = iso.problem;
@@ -186,17 +216,27 @@ public class RegimeWalker {
                 node = node.addBasicMove(p.x, p.y);
                 if (first == null) first = node;
             }
-            return analyzeAt(node, moves, visits, Set.of());
+            if (favoredColor == null) return analyzeAt(node, moves, visits, Set.of(), Set.of(), Intersection.BLACK);
+            return analyzeAt(node, moves, visits, Set.of(), deadKos(node, favoredColor), favoredColor);
         } finally {
             if (first != null) iso.problem.removeChildNode(first);
         }
     }
 
-    private KataAnalysisResult analyzeAt(Node node, List<String> line, int visits, Set<String> avoid) throws Exception {
-        String key = String.join(",", line) + "|" + visits + "|" + new TreeSet<>(avoid);
+    // dead: the dead kos there, which the side not favored may not take anywhere in the search
+    private KataAnalysisResult analyzeAt(Node node, List<String> line, int visits, Set<String> avoid, Set<String> dead,
+                                         int favoredColor) throws Exception {
+        String key = String.join(",", line) + "|" + visits + "|" + new TreeSet<>(avoid) + "|" + new TreeSet<>(dead);
         KataAnalysisResult kar = analyses.get(key);
         if (kar == null) {
-            kar = extractor.analyzeNear(node, visits, avoid);
+            AllowMove deep = null;
+            if (!dead.isEmpty()) {
+                deep = new AllowMove();
+                deep.player = Intersection.color2katagoname(favoredColor == Intersection.BLACK ? Intersection.WHITE : Intersection.BLACK);
+                deep.untilDepth = WHOLE_SEARCH;
+                deep.moves = new ArrayList<>(new TreeSet<>(dead));
+            }
+            kar = extractor.analyzeNear(node, visits, avoid, deep);
             fresh++;
             if (!kar.isError()) analyses.put(key, kar);
         }
@@ -206,6 +246,27 @@ public class RegimeWalker {
     // how many analyses katago has made for the walker, not counting the ones it had already
     public int fresh() {
         return fresh;
+    }
+
+    // whether a ko is open after the moves: the other side, were it its turn, could take one
+    public boolean koOpen(List<String> moves) throws Exception {
+        Node first = null;
+        try {
+            Node node = iso.problem;
+            for (String m : moves) {
+                Point p = Intersection.gtp2point(m.substring(2));
+                node = node.addBasicMove(p.x, p.y);
+                if (first == null) first = node;
+            }
+            Node pass = node.addBasicMove(19, 19);
+            try {
+                return !koTakes(pass).isEmpty();
+            } finally {
+                node.removeChildNode(pass);
+            }
+        } finally {
+            if (first != null) iso.problem.removeChildNode(first);
+        }
     }
 
     // the moves for the side to play after the moves that leave the other side a ko to take it
@@ -266,6 +327,102 @@ public class RegimeWalker {
                 node.removeChildNode(child);
             }
         return out;
+    }
+
+    // the dead kos at the node: the kos the side not favored could take, were it its turn,
+    // that the favored side could take back but never end. filled, the point taken from would
+    // leave the favored side's stones there a single liberty, and none of the taker's stones
+    // next to the ko could be captured at once. the stones such a ko decides are dead as they
+    // stand: after B5 W B4 B A6 in gp-62169, white can retake at B6 forever but never fill B5.
+    // only kos whose taking can never capture more than the one stone count (onlyAKo), since
+    // a dead ko is barred by its point
+    Set<String> deadKos(Node node, int favoredColor) throws Exception {
+        Node at = node;
+        Node pass = null;
+        if (node.getToMove() == favoredColor) {
+            pass = node.addBasicMove(19, 19);
+            at = pass;
+        }
+        try {
+            Set<String> out = new HashSet<>();
+            for (String take : koTakes(at)) {
+                Point k = Intersection.gtp2point(take);
+                if (neverEnds(at, k) && onlyAKo(at, k)) out.add(take);
+            }
+            return out;
+        } finally {
+            if (pass != null) node.removeChildNode(pass);
+        }
+    }
+
+    // whether, once the side to play at the node takes the ko at k, the other side could take
+    // it back but never fill it, nor capture a stone next to it at once
+    static boolean neverEnds(Node node, Point k) throws Exception {
+        int taker = node.getToMove();
+        Node take = node.addBasicMove(k.x, k.y);
+        try {
+            Point r = take.getKo();
+            if (r == null) return false;
+            // the other side takes it back once the ban is over
+            Node back = take.addBasicMove(19, 19).addBasicMove(19, 19);
+            if (!back.legalMove(r)) return false;
+            Node retaken = back.addBasicMove(r.x, r.y);
+            for (int[] dir : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+                int x = r.x + dir[0], y = r.y + dir[1];
+                if (x < 0 || y < 0 || x >= 19 || y >= 19) continue;
+                if (retaken.board.board[x][y].stone == taker && liberties(retaken.board, x, y).size() == 1) return false;
+            }
+            Node waits = retaken.addBasicMove(19, 19);
+            if (!waits.legalMove(k)) return true;
+            Node filled = waits.addBasicMove(k.x, k.y);
+            return liberties(filled.board, k.x, k.y).size() <= 1;
+        } finally {
+            node.removeChildNode(take);
+        }
+    }
+
+    // whether the side to play at the node can only ever take the ko at k there: the other
+    // stones next to k have no liberty but k the taker could fill, only eyes it may not play
+    // in, so taking there never captures more than the one stone. in gp-32711, after B T16,
+    // black takes T17 at T18, but once it fills S19, T18 captures T19 and S18 as well
+    static boolean onlyAKo(Node node, Point k) {
+        for (int[] dir : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+            int x = k.x + dir[0], y = k.y + dir[1];
+            if (x < 0 || y < 0 || x >= 19 || y >= 19) continue;
+            int stone = node.board.board[x][y].stone;
+            if (stone == Intersection.EMPTY || stone == node.getToMove()) continue;
+            Set<Point> libs = liberties(node.board, x, y);
+            if (libs.size() == 1) continue; // the stone the ko takes
+            for (Point l : libs) {
+                if (!l.equals(k) && node.legalMove(l)) return false;
+            }
+        }
+        return true;
+    }
+
+    // the liberties of the group with a stone at (x0, y0)
+    static Set<Point> liberties(Board board, int x0, int y0) {
+        int color = board.board[x0][y0].stone;
+        boolean[][] seen = new boolean[19][19];
+        Set<Point> libs = new HashSet<>();
+        Deque<Point> todo = new ArrayDeque<>();
+        todo.add(new Point(x0, y0));
+        seen[x0][y0] = true;
+        while (!todo.isEmpty()) {
+            Point p = todo.poll();
+            for (int[] dir : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+                int x = p.x + dir[0], y = p.y + dir[1];
+                if (x < 0 || y < 0 || x >= 19 || y >= 19 || seen[x][y]) continue;
+                int stone = board.board[x][y].stone;
+                if (stone == Intersection.EMPTY) {
+                    libs.add(new Point(x, y));
+                } else if (stone == color) {
+                    seen[x][y] = true;
+                    todo.add(new Point(x, y));
+                }
+            }
+        }
+        return libs;
     }
 
     // katago's best line from the node, as moves with color
@@ -353,6 +510,65 @@ public class RegimeWalker {
             if (!played.contains(Intersection.toGTPloc(p.x, p.y, 19))) return p;
         }
         return null;
+    }
+
+    // the problem area after the moves, as zoneKey has it, or null when they cannot be played
+    String zoneKeyAfter(List<String> moves) throws Exception {
+        if (legalPrefix(moves) < moves.size()) return null;
+        Node first = null;
+        try {
+            Node node = iso.problem;
+            for (String m : moves) {
+                Point p = Intersection.gtp2point(m.substring(2));
+                node = node.addBasicMove(p.x, p.y);
+                if (first == null) first = node;
+            }
+            return zoneKey(node);
+        } finally {
+            if (first != null) iso.problem.removeChildNode(first);
+        }
+    }
+
+    // the line's kos the favored side was given threats for: the walker's exchanges on it
+    public int kos(List<String> line) throws Exception {
+        return exchanges(line).size() / 2;
+    }
+
+    // the walker's own exchanges in a line, by index: right after a ko taken in the problem
+    // area, a move of the other side in an eye of its own fill, then one of the taker's in its
+    // own. katago's moves away from the problem are not among them, before a ko on its line
+    // as after one: those are turns it passed up there
+    public Set<Integer> exchanges(List<String> line) throws Exception {
+        boolean[] tookKo = new boolean[line.size()];
+        Node first = null;
+        try {
+            Node node = iso.problem;
+            for (int i = 0; i < line.size(); i++) {
+                Point p = Intersection.gtp2point(line.get(i).substring(2));
+                if (!node.legalMove(p)) break;
+                node = node.addBasicMove(p.x, p.y);
+                if (first == null) first = node;
+                tookKo[i] = node.getKo() != null;
+            }
+        } finally {
+            if (first != null) iso.problem.removeChildNode(first);
+        }
+        Set<Integer> out = new HashSet<>();
+        for (int i = 0; i + 2 < line.size(); i++) {
+            String take = line.get(i), mine = line.get(i + 1), theirs = line.get(i + 2);
+            if (tookKo[i] && inZone(take) && mine.charAt(0) != take.charAt(0) && theirs.charAt(0) == take.charAt(0)
+                    && fillsOwnEye(mine) && fillsOwnEye(theirs)) {
+                out.add(i + 1);
+                out.add(i + 2);
+            }
+        }
+        return out;
+    }
+
+    // whether a move fills an eye of its own color's fill, where the exchanges are played
+    private boolean fillsOwnEye(String move) {
+        Point p = Intersection.gtp2point(move.substring(2));
+        return (move.startsWith("B") ? neutralBlack : neutralWhite).contains(p);
     }
 
     // the problem area as stones and side to move, without the fill: two positions that

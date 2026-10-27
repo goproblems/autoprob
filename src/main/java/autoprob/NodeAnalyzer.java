@@ -34,15 +34,28 @@ public class NodeAnalyzer {
 	}
 
 	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, ArrayList<String> moves, String humanSLrank) throws Exception {
+		return analyzeNode(brain, node, visits, moves, humanSLrank, null);
+	}
+
+	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, ArrayList<String> moves, String humanSLrank,
+										  AllowMove deepAvoid) throws Exception {
 		KataQuery.OverrideSettings overrideSettings = null;
 		if (humanSLrank != null) {
 			overrideSettings = new KataQuery.OverrideSettings();
 			overrideSettings.humanSLProfile = "preaz_" + humanSLrank;
 		}
-		return analyzeNode(brain, node, visits, moves, overrideSettings);
+		return analyzeNode(brain, node, visits, moves, overrideSettings, deepAvoid);
 	}
 
 	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, ArrayList<String> moves, KataQuery.OverrideSettings overrideSettings) throws Exception {
+		return analyzeNode(brain, node, visits, moves, overrideSettings, null);
+	}
+
+	// deepAvoid: moves one player may not play before a ply deep in the search, not just as the
+	// first move. katago takes allowMoves or avoidMoves, never both, so with it the first move's
+	// allowed points become an avoid list of every other point, pass included
+	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, ArrayList<String> moves,
+										  KataQuery.OverrideSettings overrideSettings, AllowMove deepAvoid) throws Exception {
 		Gson gson = new Gson();
 
 		QueryBuilder qb = new QueryBuilder();
@@ -67,7 +80,27 @@ public class NodeAnalyzer {
 		}
 
 		// required moves set?
-		if (moves != null && moves.size() > 0) {
+		if (deepAvoid != null) {
+			String toMove = Intersection.color2katagoname(node.getToMove());
+			query.avoidMoves = new ArrayList<>();
+			if (moves != null && moves.size() > 0) {
+				var first = new AllowMove();
+				first.player = toMove;
+				first.untilDepth = 1;
+				first.moves = new ArrayList<>();
+				java.util.Set<String> allowed = new java.util.HashSet<>(moves);
+				for (int x = 0; x < 19; x++)
+					for (int y = 0; y < 19; y++) {
+						String gtp = Intersection.toGTPloc(x, y, 19);
+						// a point in both lists would be avoided to an unspecified depth
+						if (allowed.contains(gtp) || (deepAvoid.player.equals(toMove) && deepAvoid.moves.contains(gtp))) continue;
+						first.moves.add(gtp);
+					}
+				first.moves.add("pass");
+				query.avoidMoves.add(first);
+			}
+			query.avoidMoves.add(deepAvoid);
+		} else if (moves != null && moves.size() > 0) {
 			var am = new AllowMove();
 			am.player = Intersection.color2katagoname(node.getToMove());
 			am.untilDepth = 1;
@@ -140,8 +173,16 @@ public class NodeAnalyzer {
 	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, double dist, boolean useDistance,
 										  Board ignoreStones, java.util.List<Point> alsoAllow,
 										  java.util.Set<String> avoid) throws Exception {
+		return analyzeNode(brain, node, visits, dist, useDistance, ignoreStones, alsoAllow, avoid, null);
+	}
+
+	// deepAvoid: moves one player may not play anywhere in the search before its untilDepth, null
+	// for none
+	public KataAnalysisResult analyzeNode(KataBrain brain, Node node, int visits, double dist, boolean useDistance,
+										  Board ignoreStones, java.util.List<Point> alsoAllow,
+										  java.util.Set<String> avoid, AllowMove deepAvoid) throws Exception {
 		if (!useDistance) {
-			return analyzeNode(brain, node, visits, null);
+			return analyzeNode(brain, node, visits, null, "10k", deepAvoid);
 		}
 		ArrayList<String> moves = new ArrayList<>();
 		// look for locs within dist of a stone
@@ -172,7 +213,7 @@ public class NodeAnalyzer {
 			}
 		}
 		if (avoid != null) moves.removeAll(avoid);
-		return analyzeNode(brain, node, visits, moves);
+		return analyzeNode(brain, node, visits, moves, "10k", deepAvoid);
 	}
 
 }

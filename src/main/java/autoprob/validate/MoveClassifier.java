@@ -4,8 +4,10 @@ import java.awt.Point;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import autoprob.go.Intersection;
@@ -48,15 +50,27 @@ public class MoveClassifier {
         public String refutation;         // the answer that brings the result down, if any
         public List<String> line;         // the walk that shows the result
         public boolean capped;            // short of the floor asked for: level is a stand-in, FAIL
+        // how the level was reached, for the confidence in it: kos on the line that shows it,
+        // the opponent's answers that only came out this way through the search's deviations
+        // from katago's line, and the narrowest margin the stones at stake ended with
+        public int kos;
+        public int searched;
+        public double margin = 1;
     }
 
-    // the worst result the opponent can bring about after a move, under one regime
-    private record Worst(StatusJudge.Status status, String reply, List<String> line) {
+    // the worst result the opponent can bring about after a move, under one regime, with how
+    // many answers came to it only through the search's deviations and the narrowest margin
+    // among the answers that came to it
+    private record Worst(StatusJudge.Status status, String reply, List<String> line, int searched, double margin) {
     }
 
-    // what a position comes to under one regime, the line that shows it, and katago's line on
-    // from where it settled
-    private record Result(StatusJudge.Status status, List<String> line, List<String> pv) {
+    // what a position comes to under one regime, the line that shows it, katago's line on from
+    // where it settled, whether a deviation from katago's line brought it about, and the
+    // margin of the stones at stake at its end
+    private record Result(StatusJudge.Status status, List<String> line, List<String> pv, boolean deviated, double margin) {
+        Result viaDeviation() {
+            return new Result(status, line, pv, true, margin);
+        }
     }
 
     private final ProblemIsolator.IsolatedProblem iso;
@@ -109,6 +123,7 @@ public class MoveClassifier {
         v.clean = clean.status();
         v.refutation = clean.reply();
         v.line = clean.line();
+        evidence(v, clean);
         if (clean.status() == StatusJudge.Status.SUCCESS) {
             v.level = Level.CLEAN;
             return v;
@@ -131,36 +146,61 @@ public class MoveClassifier {
         else if (best == StatusJudge.Status.SEKI) v.level = kills ? Level.SEKI : Level.KO;
         else v.level = Level.FAIL;
         // below a ko, what shows the result is the answer that holds even when the solver
-        // wins every ko
+        // wins every ko; a ko result is shown by the clean walk's answer, and reached in the
+        // ko walk
         if (v.level == Level.FAIL || (v.level == Level.SEKI && ko.status() == StatusJudge.Status.SEKI)) {
             v.refutation = ko.reply() != null ? ko.reply() : clean.reply();
             v.line = ko.line();
         }
+        evidence(v, ko);
+        v.kos = Math.max(v.kos, walker.kos(ko.line()));
         return v;
+    }
+
+    private void evidence(Verdict v, Worst w) throws Exception {
+        v.kos = walker.kos(v.line);
+        v.searched = w.searched();
+        v.margin = w.margin();
     }
 
     private Worst worst(List<String> after, int favored) throws Exception {
         int from = after.size() + 1; // the solver's first turn after the answer
         Result own = search(after, from, favored, ownVisits, DEPTH, new int[]{BUDGET});
-        Worst w = new Worst(own.status(), null, own.line());
-        if (own.status() == StatusJudge.Status.FAIL) return w;
-        // every other answer, quick, then the ones that do worse again with a deeper look
-        record Try(String reply, StatusJudge.Status status) {
-        }
-        List<Try> worse = new ArrayList<>();
-        for (String r : replies(after)) {
-            Result quick = search(with(after, r), from, favored, replyVisits, 1, new int[]{BUDGET / 2});
-            if (quick.status().compareTo(w.status()) < 0) worse.add(new Try(r, quick.status()));
-        }
-        worse.sort(Comparator.comparing(Try::status));
-        for (Try t : worse) {
-            Result deep = search(with(after, t.reply()), from, favored, confirmVisits, DEPTH, new int[]{BUDGET});
-            if (deep.status().compareTo(w.status()) < 0) {
-                w = new Worst(deep.status(), t.reply(), deep.line());
-                if (w.status() == StatusJudge.Status.FAIL) break;
+        Map<String, Result> results = new LinkedHashMap<>(); // each answer's result, the deeper one when there is one
+        results.put("", own);
+        StatusJudge.Status status = own.status();
+        String reply = null;
+        List<String> line = own.line();
+        if (status != StatusJudge.Status.FAIL) {
+            // every other answer, quick, then the ones that do worse again with a deeper look
+            record Try(String reply, StatusJudge.Status status) {
+            }
+            List<Try> worse = new ArrayList<>();
+            for (String r : replies(after)) {
+                Result quick = search(with(after, r), from, favored, replyVisits, 1, new int[]{BUDGET / 2});
+                results.put(r, quick);
+                if (quick.status().compareTo(status) < 0) worse.add(new Try(r, quick.status()));
+            }
+            worse.sort(Comparator.comparing(Try::status));
+            for (Try t : worse) {
+                Result deep = search(with(after, t.reply()), from, favored, confirmVisits, DEPTH, new int[]{BUDGET});
+                results.put(t.reply(), deep);
+                if (deep.status().compareTo(status) < 0) {
+                    status = deep.status();
+                    reply = t.reply();
+                    line = deep.line();
+                    if (status == StatusJudge.Status.FAIL) break;
+                }
             }
         }
-        return w;
+        int searched = 0;
+        double margin = 1;
+        for (Result r : results.values()) {
+            if (r.status() != status) continue;
+            if (r.deviated()) searched++;
+            margin = Math.min(margin, r.margin());
+        }
+        return new Worst(status, reply, line, searched, margin);
     }
 
     // the position after the moves played out under the regime: katago's line, then each side's
@@ -172,7 +212,7 @@ public class MoveClassifier {
         int before = walker.fresh();
         RegimeWalker.Walk w = walker.walk(moves, favored, visits);
         budget[0] -= walker.fresh() - before;
-        Result r = new Result(w.status(), w.line(), w.pv());
+        Result r = new Result(w.status(), w.line(), w.pv(), false, w.margin());
         for (int d = 1; d <= depth && budget[0] > 0; d++) r = deviate(r, from, favored, visits, d, budget);
         return r;
     }
@@ -180,11 +220,14 @@ public class MoveClassifier {
     // katago plays both sides as if on a board without threats, where a ko goes to whoever
     // takes it first, and plays for points where the result here is life status, so its line
     // is not always either side's best under the regime. so each side may deviate at its turns
-    // on the line: the solver, when the line falls short, with katago's next
-    // moves there; the side that wins every ko with moves offering the other a ko to take, which
-    // katago passes over; and the opponent, with katago's next moves, at its turns before a ko
-    // it took and lost or before the solver found a way out: its moves there were katago's
-    // guesses on the way to a line it misjudged, deep in a line with few visits behind them.
+    // on the line: the solver, when the line falls short, with katago's next moves there; the
+    // side that wins every ko with moves offering the other a ko to take, which katago passes
+    // over, and while a ko is open with katago's next moves too, since katago, expecting that
+    // ko lost for want of threats, gives up a fight the regime lets it win (gp-62080, where
+    // white retakes the ko at C1 and katago then plays elsewhere for it, though G1 and E2 live);
+    // and the opponent, with katago's next moves, at its turns before a ko it took and lost or
+    // before the solver found a way out: its moves there were katago's guesses on the way to a
+    // line it misjudged, deep in a line with few visits behind them.
     // each deviation is searched in turn with one less level of deviations, at the turns
     // turns() picks, and whenever a deviation changes the result the line is gone over again,
     // since the other side may now do better earlier; no position is tried twice
@@ -200,8 +243,9 @@ public class MoveClassifier {
             List<String> full = new ArrayList<>(cur.line());
             full.addAll(cur.pv());
             full = new ArrayList<>(full.subList(0, walker.legalPrefix(full)));
-            int lostKo = solverFavored ? lastLostKo(full, from, solver) : -1;
-            for (int i : turns(full, cur.line().size(), from)) {
+            Set<Integer> exchanges = walker.exchanges(full);
+            int lostKo = solverFavored ? lastLostKo(full, exchanges, from, solver) : -1;
+            for (int i : turns(full, exchanges, from)) {
                 if (changed || budget[0] < RESERVE) break;
                 String m = full.get(i);
                 boolean solverTurn = m.startsWith(solver);
@@ -218,7 +262,7 @@ public class MoveClassifier {
                     }
                 }
                 if (best != cur) {
-                    cur = best;
+                    cur = best.viaDeviation();
                     changed = true;
                     if (solverTurn) rescued = i;
                 }
@@ -228,15 +272,16 @@ public class MoveClassifier {
     }
 
     // the turns of a line worth deviating at: its first moves from index from, where the
-    // choices that decide a problem are. the walk's own exchanges are no one's choice; on
-    // katago's line on from where it settled, a move away from the problem is a turn passed
-    // up there. (adding the turns before a ko a side lost, which can be further on, was tried:
-    // on a fixed budget it spent what the first turns needed, and gp-32711's Q19 lost its way
-    // out of the ko at the first turn)
-    private List<Integer> turns(List<String> full, int lineSize, int from) {
+    // choices that decide a problem are. the walk's own exchanges are no one's choice; a move
+    // katago plays away from the problem is a turn passed up there, on the walk's line as on
+    // from where it settled: before a ko on its line, katago may play elsewhere because it
+    // expects to win the ko, which the regime then takes away. (adding the turns before a ko a
+    // side lost, which can be further on, was tried: on a fixed budget it spent what the first
+    // turns needed, and gp-32711's Q19 lost its way out of the ko at the first turn)
+    static List<Integer> turns(List<String> full, Set<Integer> exchanges, int from) {
         List<Integer> out = new ArrayList<>();
         for (int i = from; i < full.size() && out.size() < WINDOW; i++) {
-            if (i < lineSize && !walker.inZone(full.get(i))) continue;
+            if (exchanges.contains(i)) continue;
             out.add(i);
         }
         return out;
@@ -248,31 +293,37 @@ public class MoveClassifier {
     private Set<String> tries(List<String> prefix, String m, boolean solverTurn, boolean solverFavored, boolean reconsider,
                               int visits, int[] budget) throws Exception {
         Set<String> out = new LinkedHashSet<>();
-        if (solverTurn == solverFavored) {
+        boolean favoredTurn = solverTurn == solverFavored;
+        if (favoredTurn) {
             List<Point> near = new ArrayList<>(iso.stakes);
             if (!prefix.isEmpty()) near.add(Intersection.gtp2point(prefix.get(prefix.size() - 1).substring(2)));
             List<String> offers = walker.koOffers(prefix, near, replyDist);
             out.addAll(offers.subList(0, Math.min(WIDTH, offers.size())));
         }
-        if (solverTurn || reconsider) out.addAll(katagoMoves(prefix, visits, budget));
+        if (solverTurn || reconsider || (favoredTurn && walker.koOpen(prefix))) {
+            int favored = solverFavored ? iso.solverColor
+                    : iso.solverColor == Intersection.BLACK ? Intersection.WHITE : Intersection.BLACK;
+            out.addAll(katagoMoves(prefix, visits, favored, budget));
+        }
         out.remove(m);
         return out;
     }
 
     // where the opponent last took a ko and lost it: the solver's exchange follows its move
-    private int lastLostKo(List<String> full, int from, String solver) {
+    static int lastLostKo(List<String> full, Set<Integer> exchanges, int from, String solver) {
         int at = -1;
         for (int i = from; i + 1 < full.size(); i++) {
-            if (!full.get(i).startsWith(solver) && walker.inZone(full.get(i))
-                    && full.get(i + 1).startsWith(solver) && !walker.inZone(full.get(i + 1))) at = i;
+            if (!full.get(i).startsWith(solver) && !exchanges.contains(i)
+                    && full.get(i + 1).startsWith(solver) && exchanges.contains(i + 1)) at = i;
         }
         return at;
     }
 
-    // katago's first moves in the problem area after the moves, for the side to play there
-    private List<String> katagoMoves(List<String> moves, int visits, int[] budget) throws Exception {
+    // katago's first moves in the problem area after the moves, for the side to play there,
+    // with favored winning every ko
+    private List<String> katagoMoves(List<String> moves, int visits, int favored, int[] budget) throws Exception {
         int before = walker.fresh();
-        KataAnalysisResult kar = walker.analyze(moves, visits);
+        KataAnalysisResult kar = walker.analyze(moves, visits, favored);
         budget[0] -= walker.fresh() - before;
         List<String> out = new ArrayList<>();
         if (kar.isError() || kar.moveInfos == null) return out;

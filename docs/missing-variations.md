@@ -62,8 +62,11 @@ coordinates; the console says how far the problem moved.
    is to play is checked, the start first, then deeper.
 3. At each, the candidate moves come up as in `redo` ([redo.md](redo.md)): KataGo's top
    candidates, natural human moves, and every other point within `redo.scan_dist` of a
-   stone at stake. The ones that do not fail outright on the plain board are judged, along
-   with the author's own moves whatever they did. Each gets a [level](#levels).
+   stone at stake. The author's moves from elsewhere on its correct lines are candidates
+   too, since a different move order is a common way to miss an answer (gp-62070's R19, the
+   author's first move, works again later). The ones that do not fail outright on the plain
+   board are judged, along with the author's own moves whatever they did. Each gets a
+   [level](#levels).
 4. The best level any move reaches is what the position allows, worked out without
    trusting the author. A move at that level the problem does not accept is a missing
    variation. A move it accepts that reaches a lower level is an error in the problem.
@@ -84,9 +87,10 @@ coordinates; the console says how far the problem moved.
 5. For a missing move, its line is generated with the `redo` generator from that
    position, with the move forced first, so the line answers and ends the way `redo`'s
    would. For each of the problem's own answers to it, the solver's way through is
-   generated as well. The opponent answers with its strongest resistance, the first real
-   threat in KataGo's order, rather than redo's most testing one for a human: a found move
-   has to hold against the best defense.
+   generated as well. The line only illustrates the move, whose level already holds
+   against every answer (see [Answers](#answers)), so the opponent resists the way
+   `redo`'s lines do (`redo.response_criterion`): by default with the try a human is most
+   likely to get wrong, not KataGo's strongest one, which may be a move nobody plays.
 
 ## Levels
 
@@ -132,6 +136,32 @@ not left to decide the retake: it would weigh it as if that exchange were the la
 and pass it up whenever the other side has threats near the problem. The other side may
 then use its own threats and take the ko again; a ko taken again from the same position is
 forbidden there.
+
+A ko the side winning every ko can take back but never end is no ko. In gp-62169, after
+B5, W B4, B A6, White's group has one eye, at D4. White can retake at B6 whenever Black
+takes at B5, but filling at B5 leaves the group a single liberty. So the group is dead as
+it stands, not dead in ko: Black never has to take. Taking gains Black nothing either,
+since White takes back.
+
+Such a dead ko is found on the board: after the take back, filling the point would leave
+the stones there one liberty, and none of the taker's stones next to the ko can be captured
+at once. Without threats, KataGo is sure of winning the ko, and plays elsewhere while White
+pushes at C7 and B8 against A6 and A7. With White winning every ko, those stones would be
+lost. So while a dead ko is on the board, the taker may not take it anywhere in KataGo's
+search, not just as the first move. KataGo answers the pushes instead, and its evaluation
+still sees the shape as dead. When a dead ko comes up partway along KataGo's line, the walk
+plays to there and searches again with the take barred.
+
+KataGo can only bar a point. So a dead ko is barred only where taking it can never capture
+more than the one stone: the other stones next to it have no liberty the taker could fill.
+In gp-32711, after B T16, Black can take T17 at T18. But once Black fills S19, T18 captures
+T19 and S18 too, and barring the point would bar that capture. Barring a ko the taker needs
+does no harm, since with the other side winning every ko the taker could not keep it
+anyway: gp-62080's D1 is barred, and B1 still comes out a ko.
+
+Leaving dead kos to the taker, with no exchange for the other side, was tried and dropped.
+It hands the taker kos it needs to win, as in gp-32711's S16: White can never fill T19, but
+Black needs the point as an eye.
 
 ### Stakes
 
@@ -181,13 +211,20 @@ the first six moves of the line each side may deviate:
 
 - the solver, when the line falls short, with KataGo's next moves there;
 - the side that wins every ko, with moves offering the other side a ko to take (a throw-in
-  that makes a ko, say), which KataGo passes over;
+  that makes a ko, say), which KataGo passes over, and while a ko is open with KataGo's next
+  moves too: KataGo, expecting that ko lost for want of threats, gives up a fight the regime
+  lets it win. In gp-62080 White retakes the ko at C1 and KataGo then plays elsewhere for
+  it, though G1 and E2 live, so Black's B1 there is only a ko;
 - the opponent, with KataGo's next moves, at its turns before a ko it took and lost or
   before the solver found a way out. Its moves there were KataGo's guesses on the way to a
   line KataGo misjudged.
 
-A move KataGo plays away from the problem on its line counts as a turn too: in gp-36582
-White's S19, offering Black the ko, comes where KataGo plays elsewhere. Single deviations
+A move KataGo plays away from the problem on its line counts as a turn too, before a ko on
+the walk's line as after where the walk settles. Only the walker's own exchanges are no
+one's turn: right after a ko take, each side fills an eye of its own fill. Before a ko,
+KataGo may play elsewhere because it expects to win the ko, which the regime then takes
+away. In gp-36582 White's S19, offering Black the ko, comes where KataGo plays elsewhere.
+Single deviations
 are tried at every turn before deviations within them, the earliest turns first, and when a
 deviation changes the result the line is gone over again, since the other side may now do
 better earlier. All of it is held to a fixed number of fresh KataGo analyses (16 for a
@@ -207,6 +244,8 @@ up (KataGo prior and visits, human policy, distance to the stones at stake), whe
 problem has the move on a wrong line, how it plays out and the generated lines. For each
 accepted move that falls short, it shows the level the move reaches and the answer that
 holds it there. Each position checked also gets a line with every judged move by level.
+Every suggestion, missing move or accepted move that falls short, carries a
+[confidence](#confidence).
 
 `missing_variations/<problem>_missing.sgf` is the problem with the lines added at their
 position. The new move is commented `MISSING VARIATION (autoprob)` and the lines end
@@ -228,6 +267,39 @@ the found lines as generated only, so the new moves stand out. Clicking the posi
 its decision: every candidate measured there and the moves the rule counts as working. The
 generated lines have their decisions too. Judgments made there are saved to the case
 library like any other review (add `review.port=8766` to run it next to a redo review).
+
+### Confidence
+
+Suggestions are meant to go to the site as edit suggestions for people to review, so each
+one says how far to trust it, as a band and the reasons for and against: "probably right
+(65-85%). For it: ... Against it: ...". It is in the console report, the SGF comment, the
+review notes and the JSON (`confidence`: `low`, `high`, `label`, `reasons`).
+
+It is a heuristic, not a measured rate. A missing move starts at 75, an accepted move that
+falls short at 70, since telling the author a move is wrong is the bolder claim. The band
+then moves:
+
+| Evidence | Change |
+|---|---|
+| the line that shows the result goes through a ko, settled by giving one side every threat | -15 |
+| against some of the opponent's answers, the result came from the search's deviations, not KataGo's own line | -10 (-15 for three or more) |
+| the stones at stake end the solver's way only narrowly (ownership of the deciding one under 0.7) | -10 |
+| the move takes a ko, or comes right after a ko capture | -5 |
+| missing move: it is more than 2.5 lines from every stone (more like a tenuki), or else out in the open, with lines to the edge on three sides | -10, or -5 |
+| missing move: the problem has it on a wrong line, so the author looked at it and rejected it | -15 |
+| move that falls short: the problem answers it this way too and still accepts it | -10 |
+| the isolation had to be adjusted (stakes on a retry, komi rebalanced, stakes settled under kos) | -5 each, up to -15 |
+| the move's line reaches a position on the author's correct lines | +15 |
+| the author plays the same move on a correct line elsewhere in the problem | +5 |
+| it is KataGo's own first choice there | +5 |
+| the author's accepted moves reach the same result, so the isolation reads the problem as the author does | +5 |
+
+The band is the score plus or minus 5, and 5 more for each kind of evidence against it, up
+to 25. Its middle names it: likely right from 80, probably right from 60, uncertain from 40,
+doubtful below. The first two reviewed findings sit where they should: gp-62070's R19, which
+review confirmed, comes out likely right; gp-62080's B1, which review rejected (the author
+had it as wrong, and its line went through a ko), would have come out uncertain. The weights
+are a starting point to fit to reviews once there are enough of them in the case library.
 
 ## Caveats
 

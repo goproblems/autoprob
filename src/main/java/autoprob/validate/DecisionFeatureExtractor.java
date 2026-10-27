@@ -15,6 +15,7 @@ import autoprob.KataBrain;
 import autoprob.NodeAnalyzer;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
+import autoprob.katastruct.AllowMove;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.MoveInfo;
 import autoprob.validate.ProblemIsolator.IsolatedProblem;
@@ -75,6 +76,12 @@ public class DecisionFeatureExtractor {
     // the same, with points the first move may not be played at
     public KataAnalysisResult analyzeNear(Node node, int v, Set<String> avoid) throws Exception {
         return na.analyzeNode(brain, node, v, nearDist, true, iso.filledStones, iso.threats, avoid);
+    }
+
+    // the same, with moves one side may not play anywhere in the search before deep's
+    // untilDepth (null for none)
+    public KataAnalysisResult analyzeNear(Node node, int v, Set<String> avoid, AllowMove deep) throws Exception {
+        return na.analyzeNode(brain, node, v, nearDist, true, iso.filledStones, iso.threats, avoid, deep);
     }
 
     // solver to move: katago's top moves, plus moves a human would naturally try. with

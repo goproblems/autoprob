@@ -60,6 +60,36 @@ class MissingVariationFinderTest {
     }
 
     @Test
+    void theAuthorsMovesElsewhereOnItsCorrectLines() throws Exception {
+        Node root = new Parser().parse(SGF);
+        assertEquals(Set.of("B C17", "B A18"), MissingVariationFinder.authorMovesElsewhere(root, List.of(), "B"));
+        assertEquals(Set.of("B A19", "B A18"), MissingVariationFinder.authorMovesElsewhere(root, List.of("B A19", "W B18"), "B"));
+    }
+
+    @Test
+    void aKoTakeAndAMoveOnTheOutside() throws Exception {
+        ProblemIsolator.IsolatedProblem iso = new ProblemIsolator.IsolatedProblem();
+        iso.problem = new Node(null);
+        iso.problem.defaultToMoveColor = autoprob.go.Intersection.BLACK;
+        // a ko on the top edge: black's C18 takes white's B18; and a lone white stone at K10
+        for (String b : new String[]{"B19", "A18", "B17"}) put(iso, b, autoprob.go.Intersection.BLACK);
+        for (String w : new String[]{"C19", "D18", "C17", "B18", "K10"}) put(iso, w, autoprob.go.Intersection.WHITE);
+        assertTrue(MissingVariationFinder.takesKo(iso.problem, autoprob.go.Intersection.gtp2point("C18")));
+        assertFalse(MissingVariationFinder.takesKo(iso.problem, autoprob.go.Intersection.gtp2point("L10")));
+        // beside the lone stone, three of the four directions run open to the edge
+        java.awt.Point beside = autoprob.go.Intersection.gtp2point("L10");
+        assertEquals(3, MissingVariationFinder.emptyShots(iso, iso.problem, beside));
+        assertEquals(1.0, MissingVariationFinder.nearestStone(iso, iso.problem, beside), 1e-9);
+        // the ko point is shut in on every side
+        assertEquals(0, MissingVariationFinder.emptyShots(iso, iso.problem, autoprob.go.Intersection.gtp2point("C18")));
+    }
+
+    private static void put(ProblemIsolator.IsolatedProblem iso, String gtp, int color) {
+        java.awt.Point q = autoprob.go.Intersection.gtp2point(gtp);
+        iso.problem.board.board[q.x][q.y].stone = color;
+    }
+
+    @Test
     void onlyStandardLifeAndDeathProblemsAreChecked() {
         Problem p = new Problem();
         p.genre = "tesuji";

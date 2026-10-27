@@ -86,6 +86,8 @@ public class GoTool {
             new autoprob.validate.review.ReviewServer(props).run();
         } else if (command.equals("missing-variations")) {
             new autoprob.validate.MissingVariationFinder(props).run();
+        } else if (command.equals("levels")) {
+            new autoprob.validate.LevelChecker(props).run();
         } else {
             throw new RuntimeException("unknown command: " + command);
         }

@@ -1,0 +1,34 @@
+# the levels moves reach, as reviewed: what the missing-variations finder's classifier
+# should make of them. check with: bash gotool.sh cmd=levels [problem=gp-62169]
+# problem | position (moves from the start, or start) | move expected, ...
+# expected: CLEAN, SEKI, KO, FAIL, !CLEAN (anything but clean) or ? (just report)
+# gp-32711 move 11 on the T19 line: S16 lives only through a ko; T17 and T19 live outright (adam)
+gp-32711 | B Q19,W O18,B T16,W T18,B T19,W S19,B S18,W T14,B R19,W T15 | B S16 KO, B T17 CLEAN, B T19 CLEAN
+# gp-32711 O18 line move 5: T15 lets W T17 start a ko (adam); T16 is clean
+gp-32711 | B O18,W N18,B Q19,W O19 | B T16 CLEAN, B T15 !CLEAN
+# gp-32711 the T15 line's end: after T16, white P19 makes a seki (adam)
+gp-32711 | B O18,W N18,B Q19,W O19,B T15,W T14,B S17,W S19,B R19,W T18,B T17,W S16 | B T16 !CLEAN
+# gp-10330: Q3 kills cleanly; after N3 white Q3 makes a ko (adam)
+gp-10330 | start | B Q3 CLEAN, B N3 !CLEAN, B R1 ?, B N2 ?
+# gp-36582: the author's S17 kills by ko; Q18 lets black live (S17 refutes it)
+gp-36582 | start | W S17 KO, W Q18 !CLEAN
+# gp-8142: both answers kill cleanly at each position
+gp-8142 | W P18,B O18,W O17,B N17 | W N16 CLEAN, W P17 CLEAN
+gp-8142 | W P18,B P17,W Q18,B O18,W O17,B N17,W N16,B O17 | W O19 CLEAN, W N18 CLEAN
+# gp-32711: the author's three answers at the S17 position all live
+gp-32711 | B Q19,W O18,B T16,W R19 | B S17 CLEAN, B T18 CLEAN, B S18 CLEAN
+# gp-32711 start: the author's Q19; O18 unknown
+gp-32711 | start | B Q19 CLEAN, B O18 ?
+# gp-19150: S5 was about 8 points worse than Q4, likely wrong
+gp-19150 | B P5,W Q5,B R5,W P4 | B Q4 CLEAN, B S5 ?
+# gp-38368: the author marks N12 and N14 wrong; their lines took a ko
+gp-38368 | start | W P15 CLEAN, W N12 ?, W N14 ?
+# gp-16482: C1 and D3 transpose
+gp-16482 | start | W C1 ?, W D3 ?
+# gp-62080 (13x13, rows +6): after B1, W F2, black's D1 is only a ko (adam's review): F2 is the author's clean kill
+gp-62080 | B F1,W E1,B C2,W C1 | B F2 CLEAN, B B1 !CLEAN
+# gp-62070 (13x13, columns +6): R19 kills as well as the author's R16 (adam's review)
+gp-62070 | B S16,W S15,B R16,W S17 | B R16 CLEAN, B R19 CLEAN
+# gp-62169 (13x13, lower left): B5 kills; after W B4, B A6 leaves white dead as it stands, a ko white can retake but never fill (adam)
+gp-62169 | start | B B5 CLEAN
+gp-62169 | B B5,W B4 | B A6 CLEAN

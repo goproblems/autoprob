@@ -342,6 +342,7 @@ with a replay (`cmd=cases` with the setting on the command line) before adopting
 | Path | Committed | Contents |
 |---|---|---|
 | `cases/<problem>.json` | yes | the case library |
+| `cases/levels.txt` | yes | the levels moves reach, as reviewed, for the missing-variations finder (`cmd=levels`, see missing-variations.md) |
 | `redo_runs/<id>/` | no | run records from `redo` |
 | `cases_results/<id>.json` | no | replay results |
 | `src/main/java/autoprob/validate/cases/` | | seeding, replay, export, tune |

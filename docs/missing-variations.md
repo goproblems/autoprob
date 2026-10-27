@@ -301,6 +301,28 @@ review confirmed, comes out likely right; gp-62080's B1, which review rejected (
 had it as wrong, and its line went through a ko), would have come out uncertain. The weights
 are a starting point to fit to reviews once there are enough of them in the case library.
 
+## Checking the levels
+
+`cases/levels.txt` holds positions with the levels their moves reach, as reviewed. Each line
+gives the problem, the moves from the start (or `start`), and each move with its level:
+
+```
+gp-62169 | B B5,W B4 | B A6 CLEAN
+```
+
+The level is `CLEAN`, `SEKI`, `KO`, `FAIL`, `!CLEAN` (anything but clean) or `?` (just
+report), and a `#` line above says why. To judge every move with the finder's own
+classifier and count how many come out as expected:
+
+```
+bash gotool.sh cmd=levels
+bash gotool.sh cmd=levels problem=gp-62169,gp-62080
+```
+
+The problems come from `sample_problems/`. A full run takes about 25 minutes. Run it after
+any change to how moves are judged. gp-10330's Q3 misses in some runs (see
+[Caveats](#caveats)).
+
 ## Caveats
 
 The verdict is KataGo's, on the isolated position, so look at each finding before adding

@@ -39,6 +39,14 @@ Each problem comes to one of:
 | `error` | the finder failed: tried again, `crawl.attempts` (2) times in all |
 | `stale` | its sgf changed on the site after its suggestion was made: judged again first |
 
+Above each problem it judges, the console says how many problems the run has looked at so
+far, in how long, and what they came to, the finds first:
+
+```
+crawled so far this run: 37 in 2 h 14 min (1 found, 4 clean, 2 deferred, 30 skipped)
+=== gp-62657 (8 kyu) ===
+```
+
 The finder takes about five minutes a problem, so about 290 a day. About half the site's
 50,000 problems are life and death.
 

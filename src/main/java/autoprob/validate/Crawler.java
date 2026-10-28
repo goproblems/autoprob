@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
 import com.google.gson.JsonElement;
@@ -49,7 +50,8 @@ public class Crawler {
     }
 
     interface Analyzer {
-        MissingVariationFinder.Outcome analyze(String name, String sgf, String difficulty) throws Exception;
+        // heading: a line for the console above the problem's own
+        MissingVariationFinder.Outcome analyze(String name, String sgf, String difficulty, String heading) throws Exception;
     }
 
     static class State {
@@ -67,6 +69,8 @@ public class Crawler {
     private final int maxAttempts;
     private final Set<String> recheck;
     private final boolean includeSandbox;
+    // the time, for how long a run has gone and crawl.hours: a test sets its own
+    LongSupplier clock = System::currentTimeMillis;
 
     public Crawler(Properties props) {
         this.props = props;
@@ -130,7 +134,8 @@ public class Crawler {
         int newest = site.newestId();
         state.newest = newest;
         state.runs++;
-        long end = hours > 0 ? System.currentTimeMillis() + (long) (hours * 3_600_000) : Long.MAX_VALUE;
+        long start = clock.getAsLong();
+        long end = hours > 0 ? start + (long) (hours * 3_600_000) : Long.MAX_VALUE;
         // problems changed on the site since their suggestion was made go first; a problem
         // whose suggestion went to the site is never judged again here
         List<Integer> stale = new ArrayList<>();
@@ -139,8 +144,11 @@ public class Crawler {
         System.out.println("crawling goproblems.com from problem " + newest + " down, in " + dir + ": " + index.entries().size()
                 + " looked at before" + (stale.isEmpty() ? "" : ", " + stale.size() + " changed on the site to judge again first"));
         int judged = 0, nextStale = 0, cursor = newest;
+        // what this run has looked at so far, shown above each problem judged
+        int crawled = 0;
+        Map<String, Integer> thisRun = new TreeMap<>();
         while (true) {
-            if ((max > 0 && judged >= max) || System.currentTimeMillis() > end) {
+            if ((max > 0 && judged >= max) || clock.getAsLong() > end) {
                 System.out.println("stopping after " + judged + " problem" + (judged == 1 ? "" : "s") + " judged; the next run goes on from here");
                 break;
             }
@@ -159,7 +167,7 @@ public class Crawler {
             }
             CrawlIndex.Entry e;
             try {
-                e = look(id, site, analyzer, index.get(id));
+                e = look(id, site, analyzer, index.get(id), progress(crawled, thisRun, (clock.getAsLong() - start) / 1000));
             } catch (Exception ex) {
                 // one problem going wrong does not stop the crawl
                 ex.printStackTrace();
@@ -172,6 +180,8 @@ public class Crawler {
             }
             index.append(e);
             if (e.version != null) judged++;
+            crawled++;
+            thisRun.merge(e.status, 1, Integer::sum);
             state.counts.merge(e.status, 1, Integer::sum);
             state.updated = LocalDateTime.now().toString();
             RunRecorder.writeAtomically(new File(dir, "state.json"), RunRecorder.GSON.toJson(state));
@@ -180,8 +190,26 @@ public class Crawler {
         }
     }
 
-    // what one problem comes to
-    CrawlIndex.Entry look(int id, Site site, Analyzer analyzer, CrawlIndex.Entry before) throws Exception {
+    // the line above each problem judged: how many problems this run has looked at so far, in
+    // how long, and what they came to, the finds first
+    static String progress(int crawled, Map<String, Integer> counts, long seconds) {
+        List<String> parts = new ArrayList<>();
+        for (String s : List.of("found", "unsuggested", "clean", "deferred", "skipped", "error")) {
+            if (counts.containsKey(s)) parts.add(counts.get(s) + " " + s);
+        }
+        return "crawled so far this run: " + crawled + " in " + duration(seconds)
+                + (parts.isEmpty() ? "" : " (" + String.join(", ", parts) + ")");
+    }
+
+    // "40 s", "12 min", "2 h 14 min"
+    static String duration(long seconds) {
+        if (seconds < 60) return seconds + " s";
+        if (seconds < 3600) return seconds / 60 + " min";
+        return seconds / 3600 + " h " + seconds % 3600 / 60 + " min";
+    }
+
+    // what one problem comes to. heading: the line for the console above it, if it is judged
+    CrawlIndex.Entry look(int id, Site site, Analyzer analyzer, CrawlIndex.Entry before, String heading) throws Exception {
         CrawlIndex.Entry e = new CrawlIndex.Entry();
         e.id = id;
         e.time = LocalDateTime.now().toString();
@@ -209,7 +237,7 @@ public class Crawler {
         Files.deleteIfExists(new File(dir, "suggestions/" + name + ".json").toPath());
         retire(name);
         long t0 = System.currentTimeMillis();
-        MissingVariationFinder.Outcome o = analyzer.analyze(name, sgf, e.difficulty);
+        MissingVariationFinder.Outcome o = analyzer.analyze(name, sgf, e.difficulty, heading);
         e.seconds = (System.currentTimeMillis() - t0) / 1000;
         e.positions = o.positions;
         if ("error".equals(o.status)) return error(e, o.reason);

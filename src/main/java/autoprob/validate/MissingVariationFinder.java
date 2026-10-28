@@ -327,12 +327,17 @@ public class MissingVariationFinder {
 
     // check one problem; a problem that cannot be checked is an outcome, not an exception
     Outcome check(String name, String sgf, String difficulty) {
+        return check(name, sgf, difficulty, null);
+    }
+
+    // heading: a line for the console above the problem's own, or null (the crawl's progress)
+    Outcome check(String name, String sgf, String difficulty, String heading) {
         Outcome o = new Outcome();
         o.problem = name;
         long start = System.currentTimeMillis();
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
-                o.finding = find(name, sgf, difficulty, o);
+                o.finding = find(name, sgf, difficulty, heading, o);
                 if (o.status == null) o.status = o.finding != null ? "found" : "clean";
                 break;
             } catch (Exception e) {
@@ -361,8 +366,9 @@ public class MissingVariationFinder {
         return o;
     }
 
-    private Finding find(String name, String sgf, String difficulty, Outcome o) throws Exception {
+    private Finding find(String name, String sgf, String difficulty, String heading, Outcome o) throws Exception {
         System.out.println();
+        if (heading != null) System.out.println(heading);
         System.out.println("=== " + name + (difficulty != null ? " (" + difficulty + ")" : "") + " ===");
         // a problem on a smaller board is checked, and written out, in the matching corner of
         // a full one

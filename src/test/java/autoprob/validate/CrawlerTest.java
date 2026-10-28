@@ -56,10 +56,12 @@ class CrawlerTest {
     // the finder: R19 missing in the problems listed, nothing in the others
     static class FakeAnalyzer implements Crawler.Analyzer {
         final List<String> judged = new ArrayList<>();
+        final List<String> headings = new ArrayList<>();
         final List<String> finds = new ArrayList<>();
 
-        public MissingVariationFinder.Outcome analyze(String name, String sgf, String difficulty) {
+        public MissingVariationFinder.Outcome analyze(String name, String sgf, String difficulty, String heading) {
             judged.add(name);
+            headings.add(heading);
             MissingVariationFinder.Outcome o = new MissingVariationFinder.Outcome();
             o.problem = name;
             o.positions = 5;
@@ -113,6 +115,36 @@ class CrawlerTest {
     }
 
     @Test
+    void eachProblemJudgedIsHeadedByWhatTheRunHasCrawledSoFar() throws Exception {
+        FakeSite site = new FakeSite();
+        site.add(10, "life and death", true, false, 0);
+        site.add(9, "tesuji", true, false, 0);
+        site.add(8, "life and death", true, false, 1);
+        site.add(6, "life and death", true, false, 0);
+        site.add(5, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        finder.finds.add("gp-6");
+        Crawler c = crawler();
+        c.clock = () -> 0;
+        c.crawl(site, finder);
+        // gp-7 is no problem on the site, skipped like the tesuji
+        assertEquals(List.of("crawled so far this run: 0 in 0 s",
+                "crawled so far this run: 4 in 0 s (1 clean, 1 deferred, 2 skipped)",
+                "crawled so far this run: 5 in 0 s (1 found, 1 clean, 1 deferred, 2 skipped)"), finder.headings);
+        // a later run counts from nothing again
+        site.add(11, "life and death", true, false, 0);
+        finder.headings.clear();
+        c = crawler();
+        c.clock = () -> 0;
+        c.crawl(site, finder);
+        assertEquals(List.of("crawled so far this run: 0 in 0 s"), finder.headings);
+        // and a long run says how long in hours
+        assertEquals("crawled so far this run: 290 in 26 h 5 min (3 found, 287 skipped)",
+                Crawler.progress(290, Map.of("skipped", 287, "found", 3), 26 * 3600 + 5 * 60 + 59));
+        assertEquals("47 min", Crawler.duration(47 * 60 + 30));
+    }
+
+    @Test
     void aLaterRunJudgesOnlyWhatIsNewOrWaitedAndStopsWhenAsked() throws Exception {
         FakeSite site = new FakeSite();
         for (int id = 1; id <= 5; id++) site.add(id, "life and death", true, false, 0);
@@ -162,8 +194,8 @@ class CrawlerTest {
         // through its refutation: no suggestion can carry it
         FakeAnalyzer finder = new FakeAnalyzer() {
             @Override
-            public MissingVariationFinder.Outcome analyze(String name, String sgf, String difficulty) {
-                MissingVariationFinder.Outcome o = super.analyze(name, sgf, difficulty);
+            public MissingVariationFinder.Outcome analyze(String name, String sgf, String difficulty, String heading) {
+                MissingVariationFinder.Outcome o = super.analyze(name, sgf, difficulty, heading);
                 if (name.equals("gp-3")) {
                     o.findings.add(SuggestionDraftTest.finding(List.of(), List.of("B S16"), "B S15", List.of("B S15")));
                     o.status = "found";

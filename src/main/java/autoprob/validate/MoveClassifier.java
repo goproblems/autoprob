@@ -157,6 +157,21 @@ public class MoveClassifier {
         return v;
     }
 
+    // the level the position after the moves comes to: both regimes walked out from there,
+    // with no sweep of every answer, for a generated line that has to show the level its move
+    // was judged to reach where it ends
+    public Level levelAfter(List<String> moves) throws Exception {
+        int opponent = iso.solverColor == Intersection.BLACK ? Intersection.WHITE : Intersection.BLACK;
+        StatusJudge.Status clean = search(moves, moves.size(), opponent, ownVisits, DEPTH, new int[]{BUDGET}).status();
+        if (clean == StatusJudge.Status.SUCCESS) return Level.CLEAN;
+        if (clean == StatusJudge.Status.SEKI && !kills) return Level.SEKI;
+        StatusJudge.Status ko = search(moves, moves.size(), iso.solverColor, ownVisits, DEPTH, new int[]{BUDGET}).status();
+        StatusJudge.Status best = ko.compareTo(clean) >= 0 ? ko : clean;
+        if (best == StatusJudge.Status.SUCCESS) return Level.KO;
+        if (best == StatusJudge.Status.SEKI) return kills ? Level.SEKI : Level.KO;
+        return Level.FAIL;
+    }
+
     private void evidence(Verdict v, Worst w) throws Exception {
         v.kos = walker.kos(v.line);
         v.searched = w.searched();

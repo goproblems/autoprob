@@ -10,9 +10,11 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.text.DecimalFormat;
 import java.time.LocalDateTime;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -53,7 +55,7 @@ public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
     // (crawl.recheck): goes up with every change to how moves are judged
-    static final int JUDGING_VERSION = 3;
+    static final int JUDGING_VERSION = 4;
 
     private final Properties props;
     private final ChoiceParams params;
@@ -568,8 +570,7 @@ public class MissingVariationFinder {
             }
         }
         if (missing.isEmpty() && wrong.isEmpty()) {
-            System.out.println("  " + where + ": nothing missing (best " + level(best) + "; the problem accepts "
-                    + String.join(", ", pos.correct().stream().map(MissingVariationFinder::pt).toList()) + ")");
+            nothingMissing(where, best, pos);
             return null;
         }
 
@@ -586,7 +587,16 @@ public class MissingVariationFinder {
         rec.reason = choice.reason;
         f.decision = rec;
         Set<String> inFile = sgfMoves(root, pos.at());
+        // the moves that reach the best level here: a found move that only puts an exchange in
+        // before one of them is no answer of its own
+        Set<String> working = new HashSet<>();
+        for (MoveClassifier.Verdict v : verdicts.values()) if (v.level == top) working.add(v.move);
         for (MoveClassifier.Verdict v : missing) {
+            String worse = best == MoveClassifier.Level.KO ? worseKo(j, node, pos, verdicts, v) : null;
+            if (worse != null) {
+                System.out.println("  " + where + ": " + pt(v.move) + " " + worse + ", so it is not suggested");
+                continue;
+            }
             FoundMove m = new FoundMove();
             m.move = v.move;
             m.level = v.level;
@@ -611,6 +621,12 @@ public class MissingVariationFinder {
                 boolean covered = m.lines.stream().anyMatch(l -> l.size() > 1 && l.get(1).equals(answer));
                 if (!covered) m.lines.addAll(linesFrom(iso, node, pos.at(), List.of(v.move, answer), null, m.decisions));
             }
+            String not = insertedExchange(iso, node, m.lines.isEmpty() ? List.of() : m.lines.get(0), working);
+            if (not == null) not = lineFallsShort(j, pos, v, m.lines);
+            if (not != null) {
+                System.out.println("  " + where + ": " + pt(v.move) + " " + not + ", so it is not suggested");
+                continue;
+            }
             m.confidence = confidence(j, root, node, pos, rec, best, verdicts, v, m.lines, true);
             f.moves.add(m);
         }
@@ -622,6 +638,10 @@ public class MissingVariationFinder {
             w.line = withoutExchanges(v.line, iso);
             w.confidence = confidence(j, root, node, pos, rec, best, verdicts, v, List.of(), false);
             f.wrong.add(w);
+        }
+        if (f.moves.isEmpty() && f.wrong.isEmpty()) {
+            nothingMissing(where, best, pos);
+            return null;
         }
         if (!allPositions) {
             f.sgf = writeSgf(name, sgf, f).getPath();
@@ -699,6 +719,121 @@ public class MissingVariationFinder {
         if (own.isEmpty()) return null;
         Point p = own.get(own.size() - 1);
         return IsolationRecord.colorLetter(iso.solverColor) + " " + Intersection.toGTPloc(p.x, p.y, 19);
+    }
+
+    private static void nothingMissing(String where, MoveClassifier.Level best, Position pos) {
+        System.out.println("  " + where + ": nothing missing (best " + level(best) + "; the problem accepts "
+                + String.join(", ", pos.correct().stream().map(MissingVariationFinder::pt).toList()) + ")");
+    }
+
+    // why a found move's ko is a worse one than the author's, or null. the site splits ko
+    // results by who takes the ko first, and one the solver has to take back is the worse. on
+    // the board without threats a ko goes to whoever takes it first, so a move that comes to
+    // less there than the best of the author's ko answers has the worse ko (gp-62851: after
+    // R19, W S18, black can only take back the ko white takes at T19, or settle for the seki
+    // of B T19, where the author's R18 takes the ko first)
+    private String worseKo(Judging j, Node node, Position pos, Map<String, MoveClassifier.Verdict> verdicts,
+                           MoveClassifier.Verdict v) throws Exception {
+        String whose = null;
+        StatusJudge.Status theirs = null;
+        for (String a : pos.correct()) {
+            MoveClassifier.Verdict av = verdicts.get(a);
+            if (av == null || av.level != MoveClassifier.Level.KO) continue;
+            StatusJudge.Status s = plainStatus(j, node, a);
+            if (theirs == null || s.compareTo(theirs) > 0) {
+                theirs = s;
+                whose = a;
+            }
+        }
+        if (whose == null) return null;
+        StatusJudge.Status mine = plainStatus(j, node, v.move);
+        if (mine.compareTo(theirs) >= 0) return null;
+        return "reaches ko too, but a worse one: on the board without threats, where a ko goes to whoever takes it first, it "
+                + plain(mine) + " and " + pt(whose) + " " + plain(theirs);
+    }
+
+    private static String plain(StatusJudge.Status s) {
+        return switch (s) {
+            case SUCCESS -> "succeeds";
+            case SEKI -> "comes to seki";
+            case FAIL -> "fails";
+        };
+    }
+
+    // why a found move is only an exchange put in before a move that works there anyway, or
+    // null: its line goes on, after the opponent's answer, with a move that reaches the best
+    // level at the position as it was. a stone the answer captures at once is lost for
+    // nothing, and an exchange where neither stone takes part in the fight does not affect the
+    // problem, so neither is another answer (adam's review: gp-62839's E1, which F1 captures
+    // before the author's E3, and gp-62700's peep at M5, answered at M4 before the author's
+    // H2). a move inside the fight before one of the author's is another order of play, and
+    // counts (gp-62668's Q17 before O18, gp-62856's D4 before G1)
+    static String insertedExchange(ProblemIsolator.IsolatedProblem iso, Node node, List<String> line, Set<String> working)
+            throws Exception {
+        if (line.size() < 3 || !working.contains(line.get(2))) return null;
+        Point x = Intersection.gtp2point(line.get(0).substring(2));
+        Point y = Intersection.gtp2point(line.get(1).substring(2));
+        if (!node.legalMove(x)) return null;
+        boolean xFights = inFight(iso, node, x);
+        Node afterX = node.addBasicMove(x.x, x.y);
+        try {
+            if (!afterX.legalMove(y)) return null;
+            boolean yFights = inFight(iso, afterX, y);
+            Node afterY = afterX.addBasicMove(y.x, y.y);
+            String then = pt(line.get(2));
+            if (afterY.board.board[x.x][x.y].stone == Intersection.EMPTY) {
+                return "is captured at once by " + pt(line.get(1)) + ": a stone lost before " + then + ", which works without it";
+            }
+            if (!xFights && !yFights) {
+                return "and the answer at " + pt(line.get(1)) + " are an exchange outside the fight before " + then
+                        + ", which works without it";
+            }
+            return null;
+        } finally {
+            node.removeChildNode(afterX);
+        }
+    }
+
+    // whether a point takes part in the fight: next to a stone at stake, or in an empty region
+    // the stones close off (an eye space), rather than in the open ground that runs out to the
+    // fill around the problem
+    static boolean inFight(ProblemIsolator.IsolatedProblem iso, Node node, Point p) {
+        for (Point s : iso.stakes) {
+            if (Math.abs(s.x - p.x) + Math.abs(s.y - p.y) == 1 && node.board.board[s.x][s.y].stone != Intersection.EMPTY) return true;
+        }
+        boolean[][] seen = new boolean[19][19];
+        Deque<Point> todo = new ArrayDeque<>();
+        todo.add(p);
+        seen[p.x][p.y] = true;
+        while (!todo.isEmpty()) {
+            Point c = todo.poll();
+            for (int[] d : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+                int x = c.x + d[0], y = c.y + d[1];
+                if (x < 0 || y < 0 || x >= 19 || y >= 19 || seen[x][y]) continue;
+                if (iso.isFilled(x, y)) return false;
+                seen[x][y] = true;
+                if (node.board.board[x][y].stone == Intersection.EMPTY) todo.add(new Point(x, y));
+            }
+        }
+        return true;
+    }
+
+    // why the generated lines do not show the level the move was judged to reach, or null. a
+    // line ends where the generator sees the problem settled, and the generator plays without
+    // threats, so it can settle for less than a ko the move reaches only by winning it. a
+    // suggestion has to show what it claims (gp-62851: R19 reaches ko when black wins every
+    // ko, but its line ended in the seki of B T19)
+    private static String lineFallsShort(Judging j, Position pos, MoveClassifier.Verdict v, List<List<String>> lines)
+            throws Exception {
+        for (List<String> line : lines) {
+            List<String> full = new ArrayList<>(pos.at());
+            full.addAll(line);
+            MoveClassifier.Level reached = j.quick().levelAfter(full);
+            if (j.quick().rank(reached) < j.quick().rank(v.level)) {
+                return "has a line that ends in " + level(reached) + ", short of " + level(v.level) + " (" + String.join(" ", line) + ")";
+            }
+        }
+        return null;
     }
 
     // whether the move at the point takes a ko

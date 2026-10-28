@@ -81,6 +81,24 @@ coordinates; the console says how far the problem moved.
    B F2, W F1, E1 and D2 are miai: Black can play elsewhere once and keep the seki, and
    the scan found twenty points around White's group that keep it at a quick look.
 
+   A found move that only puts an exchange in before a move that works anyway is not
+   another answer either. Its line goes on, after the opponent's answer, with a move that
+   reaches the best level at the position as it was. Either the answer captures the move
+   at once, a stone lost for nothing, or neither stone touches a stone at stake or an
+   enclosed eye space, so the exchange does not affect the problem. Review rejected both
+   kinds (in the site's coordinates): in gp-62839 Black's E1 is captured by F1 before the
+   author's E3, and in gp-62700 Black's peep at M5, answered at M4, came before the
+   author's moves at nine positions. A move inside the fight before one of the author's is
+   another order of play, and counts: gp-62668's Q17 before O18 and gp-62856's D4 before
+   G1 were approved.
+
+   Where the best is a ko, a found move whose ko is worse than the author's is not missing.
+   The site splits ko results by who takes the ko first (see [Levels](#levels)), and on
+   the board without threats a ko goes to whoever takes it first, so a move that comes to
+   less there than the author's best ko answer has the worse ko. In gp-62851 the author's
+   R18 takes the ko first; after R19, W S18, Black can only take back the ko White takes at
+   T19, or settle for the seki of B T19.
+
    The author's moves are judged first. Once some move reaches a level, a move the
    problem does not accept only matters if it reaches that level too, so one that falls
    short of a clean result in the regime where the opponent wins every ko is not played
@@ -99,6 +117,12 @@ coordinates; the console says how far the problem moved.
    `redo`'s lines do (`redo.response_criterion`): by default with the try a human is most
    likely to get wrong, not KataGo's strongest one, which may be a move nobody plays.
 
+   Each line has to show the level its move was judged to reach: the position where it
+   ends is walked out under both regimes, and a move with a line that falls short is not
+   suggested, since a suggestion has to show what it claims. The generator plays without
+   threats, so it can settle for less than a ko the move reaches only by winning it:
+   gp-62851's R19 line ended in the seki of B T19.
+
 ## Levels
 
 goproblems ranks the results of a standard problem by life status, not points
@@ -113,7 +137,8 @@ losing a stone or two is not wrong:
 | failure | failure |
 
 The site splits the ko results further, by how many steps a ko has and who takes it first.
-Here every result that needs the solver to win a ko is one level.
+Here every result that needs the solver to win a ko is one level, except that a found move
+whose ko is worse than the author's is not offered (step 4 above).
 
 A problem is killing when most of the stones at stake are the opponent's. A capturing race
 goes by whichever side has more at stake.
@@ -378,8 +403,9 @@ any change to how moves are judged. gp-10330's Q3 misses in some runs (see
 
 The verdict is KataGo's, on the isolated position, so look at each finding before adding
 it to a problem. Moves that reach the result in a slower or less efficient way are reported
-on purpose, since the site counts them correct; positions the isolation misreads are
-skipped rather than reported, so some missing variations go unnoticed.
+on purpose, since the site counts them correct, but not an exchange put in before a move
+that works anyway (step 4 above); positions the isolation misreads are skipped rather than
+reported, so some missing variations go unnoticed.
 
 - Past the opponent's first answer, its resistance is KataGo's own, apart from the ko
   offers and lost kos above. A deeper try KataGo overlooks can make a move look better
@@ -387,7 +413,12 @@ skipped rather than reported, so some missing variations go unnoticed.
 - The deviations cover the first six moves of a line and three tries at each turn. A ko
   the solver walks into further on, which it could have avoided, is missed: gp-10330's Q3
   line reaches a ko ten moves on, and Q3 comes out a ko or worse in some runs.
-- Ko levels are not split by steps or by who takes first.
+- Ko levels are not split by steps. Who takes first only counts against a found move whose
+  ko is worse than the author's.
+- The exchange rule reads "touches the fight" off the board: next to a stone at stake, or
+  in an enclosed eye space. A key move out in the open, such as a net a step away from the
+  stones, followed by the author's move after an answer that also stays clear of them,
+  would be taken for an exchange.
 - A goal stated in the root comment ("make a ko", say) is not read: every problem is judged
   by the default goals, as the site does when there is none.
 - Positions the isolation misreads are skipped: when the problem relies on outside stones

@@ -103,6 +103,46 @@ class MissingVariationFinderTest {
         iso.problem.board.board[q.x][q.y].stone = color;
     }
 
+    // gp-62839 turned into the top right corner on the fortress board: black kills white's
+    // corner, whose stones are at stake. the author's answer is P17 (E3 there)
+    static ProblemIsolator.IsolatedProblem throwInProblem() {
+        ProblemIsolator.IsolatedProblem iso = new ProblemIsolator.IsolatedProblem();
+        iso.problem = new Node(null);
+        String[] white = {"Q19", "S19", "P18", "R18", "S18", "Q17", "Q16"};
+        for (String w : white) put(iso, w, Intersection.WHITE);
+        for (String b : new String[]{"T18", "O18", "O17", "R17", "S17", "P16", "P15", "Q15", "R15"}) put(iso, b, Intersection.BLACK);
+        new BalancedFortress().build(iso.problem.board, 4, iso.filledStones);
+        iso.solverColor = Intersection.BLACK;
+        iso.problem.defaultToMoveColor = Intersection.BLACK;
+        for (String w : white) iso.stakes.add(Intersection.gtp2point(w));
+        return iso;
+    }
+
+    @Test
+    void aStoneTheAnswerCapturesAtOnceIsNoAnswerOfItsOwn() throws Exception {
+        ProblemIsolator.IsolatedProblem iso = throwInProblem();
+        // black's throw-in at P19 (E1 there), which white's O19 captures, before the author's P17
+        String why = MissingVariationFinder.insertedExchange(iso, iso.problem, List.of("B P19", "W O19", "B P17"), Set.of("B P17"));
+        assertTrue(why != null && why.contains("captured at once by O19"), why);
+        // before a move that does not work there anyway, it is a line of its own
+        assertNull(MissingVariationFinder.insertedExchange(iso, iso.problem, List.of("B P19", "W O19", "B P17"), Set.of("B T19")));
+        assertTrue(iso.problem.babies.isEmpty(), "the position is left as it was");
+    }
+
+    @Test
+    void anExchangeOutsideTheFightIsNoAnswerOfItsOwn() throws Exception {
+        ProblemIsolator.IsolatedProblem iso = throwInProblem();
+        // a peep out in the open ground, answered there: neither stone touches white's at stake
+        assertFalse(MissingVariationFinder.inFight(iso, iso.problem, Intersection.gtp2point("N16")));
+        String why = MissingVariationFinder.insertedExchange(iso, iso.problem, List.of("B N16", "W N17", "B P17"), Set.of("B P17"));
+        assertTrue(why != null && why.contains("outside the fight"), why);
+        // a move next to them is in the fight, another order of play before the author's move
+        assertTrue(MissingVariationFinder.inFight(iso, iso.problem, Intersection.gtp2point("P17")));
+        assertNull(MissingVariationFinder.insertedExchange(iso, iso.problem, List.of("B P17", "W N19", "B N17"), Set.of("B N17")));
+        // and a line that ends before the solver's next move puts nothing in before anything
+        assertNull(MissingVariationFinder.insertedExchange(iso, iso.problem, List.of("B N16", "W N17"), Set.of("B P17")));
+    }
+
     @Test
     void onlyStandardLifeAndDeathProblemsAreChecked() {
         Problem p = new Problem();

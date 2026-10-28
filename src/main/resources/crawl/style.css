@@ -38,6 +38,10 @@ h3 { font-size: 14px; margin: 14px 0 6px; }
 figure { margin: 0; }
 figcaption { text-align: center; color: var(--muted); margin-top: 4px; }
 figcaption button { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 4px; cursor: pointer; }
+.step { display: grid; grid-template-columns: 1fr 9em 1fr; align-items: center; }
+.step button:first-child { justify-self: end; }
+.step button:last-child { justify-self: start; }
+figure.on .goban { outline: 2px solid var(--accent); outline-offset: 2px; }
 .goban .wood { fill: var(--wood); }
 .goban line { stroke: var(--grid); stroke-width: 1; }
 .goban .coord { font-size: 10px; fill: var(--grid); text-anchor: middle; }

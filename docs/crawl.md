@@ -70,7 +70,8 @@ For each one it shows:
 
 - each position on the problem's own board: the missing moves (blue squares) and the moves
   the problem accepts there (green);
-- each line it adds, to step through move by move;
+- each line it adds, to step through move by move with the arrows under it. Stepping a line
+  selects it, and then the arrow keys step it too;
 - the confidence and the reasons for and against it;
 - the comment that goes with it, which can be edited.
 

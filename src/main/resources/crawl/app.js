@@ -127,7 +127,8 @@ function renderItem() {
   $('next').onclick = () => move(1);
 }
 
-// a line added at a position, after its k-th move, with buttons to step through it
+// a line added at a position, after its k-th move, with buttons to step through it. Stepping
+// selects the line, and then the arrow keys step it too
 function showStep(i, j, k) {
   const p = S.item.places[i], l = p.lines[j];
   const rows = k === 0 ? p.rows : l.steps[k - 1].rows;
@@ -138,9 +139,13 @@ function showStep(i, j, k) {
   if (k > 0) marks.push({x: l.steps[k - 1].x, y: l.steps[k - 1].y, kind: 'last'});
   const f = $(`line-${i}-${j}`);
   f.innerHTML = board(rows, S.item.columns, marks)
-    + `<figcaption><button data-k="${Math.max(0, k - 1)}">◀</button> ${k === 0 ? 'line' : esc(l.moves[k - 1])}
-       ${k === l.steps.length ? '(right)' : ''} <button data-k="${Math.min(l.steps.length, k + 1)}">▶</button></figcaption>`;
-  for (const b of f.querySelectorAll('button')) b.onclick = () => showStep(i, j, +b.dataset.k);
+    + `<figcaption class="step"><button data-k="${Math.max(0, k - 1)}">◀</button>
+       <span>${k === 0 ? 'line' : esc(l.moves[k - 1])}${k === l.steps.length ? ' (right)' : ''}</span>
+       <button data-k="${Math.min(l.steps.length, k + 1)}">▶</button></figcaption>`;
+  for (const b of f.querySelectorAll('button')) b.onclick = () => {
+    for (const g of $('item').querySelectorAll('figure')) g.classList.toggle('on', g === f);
+    showStep(i, j, +b.dataset.k);
+  };
 }
 
 async function decide(decision) {
@@ -173,6 +178,12 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'r' && !$('reject').disabled) decide('rejected');
   else if (e.key === 'j') move(1);
   else if (e.key === 'k') move(-1);
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    const f = $('item').querySelector('figure.on');
+    if (!f) return;
+    e.preventDefault();
+    f.querySelectorAll('button')[e.key === 'ArrowLeft' ? 0 : 1].click();
+  }
 });
 
 window.onhashchange = () => select(location.hash.slice(1));

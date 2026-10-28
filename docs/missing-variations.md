@@ -57,7 +57,8 @@ coordinates; the console says how far the problem moved.
    found from KataGo's ownership after its best first move and after a pass. The board has
    no ko threats: kos are settled by playing them out (see [Kos](#kos)). Then the stakes
    are settled with the solver winning every ko, since a problem whose answer is a ko is
-   about the stones the ko decides (see [Stakes](#stakes)).
+   about the stones the ko decides (see [Stakes](#stakes)). A problem with nothing at stake
+   is skipped: no move could fail in it, and a line would have nothing to settle.
 2. Every position on the author's correct lines (the lines ending RIGHT) where the solver
    is to play is checked, the start first, then deeper.
 3. At each, the candidate moves come up as in `redo` ([redo.md](redo.md)): KataGo's top
@@ -123,6 +124,14 @@ What a position comes to is read from KataGo's ownership (`StatusJudge`):
   A group of the opponent's own that lived in the solved position too is no pocket. In
   gp-8142, Black's corner lives beside the white stones White is saving whatever White
   plays.
+- **A seki inside the opponent's area**: in a killing problem, the opponent's stones at
+  stake live, but only because the solver's stones inside their area do too, sharing
+  liberties with them. That is a seki, not a failure: the solver's stones alive on points
+  the opponent owned with the solver passing, enclosed with a point neither side owns (a
+  shared liberty), reaching no fill stone. Stones the solver plays inside that the
+  opponent kills are the opponent's, and the solver's wall around the area was the
+  solver's when it passed, so neither makes a seki. In gp-62860, after B E2, W E3, Black's
+  F2 leaves White alive only in seki, and E1 or D2 leaves White alive outright.
 
 ### Kos
 
@@ -181,6 +190,13 @@ stake; they never decide what a move comes to. In gp-36582 the author's line put
 corner at stake, and the answer comes out as a ko. This also steadies the isolation, since
 KataGo's search at the start does not always find the answer: some runs of gp-10330 had
 only Black's stones inside White's group at stake, and not the group Black's answer kills.
+
+When the answer is a seki, no stone swings: the opponent's stones live either way, and
+only their eye space changes hands. In gp-62860 nothing came out at stake, so no move
+could fail, every move came out a seki, and the generated lines wandered off to the outside
+(B E6). So when no stone swings, the empty points the solver gains in the solved state are
+followed through what the opponent owns with the solver passing, and the opponent's stones
+reached are at stake: there, both of White's strings around the eye space.
 
 ### Komi
 
@@ -288,7 +304,7 @@ then moves:
 | missing move: it is more than 2.5 lines from every stone (more like a tenuki), or else out in the open, with lines to the edge on three sides | -10, or -5 |
 | missing move: the problem has it on a wrong line, so the author looked at it and rejected it | -15 |
 | move that falls short: the problem answers it this way too and still accepts it | -10 |
-| the isolation had to be adjusted (stakes on a retry, komi rebalanced, stakes settled under kos) | -5 each, up to -15 |
+| the isolation had to be adjusted (stakes on a retry, komi rebalanced, stakes settled under kos, only the opponent's area at stake) | -5 each, up to -15 |
 | the move's line reaches a position on the author's correct lines | +15 |
 | the author plays the same move on a correct line elsewhere in the problem | +5 |
 | it is KataGo's own first choice there | +5 |
@@ -365,8 +381,6 @@ skipped rather than reported, so some missing variations go unnoticed.
 - The deviations cover the first six moves of a line and three tries at each turn. A ko
   the solver walks into further on, which it could have avoided, is missed: gp-10330's Q3
   line reaches a ko ten moves on, and Q3 comes out a ko or worse in some runs.
-- When the opponent's stones at stake live in seki in a killing problem, that comes out as
-  failure, not as the seki level.
 - Ko levels are not split by steps or by who takes first.
 - A goal stated in the root comment ("make a ko", say) is not read: every problem is judged
   by the default goals, as the site does when there is none.

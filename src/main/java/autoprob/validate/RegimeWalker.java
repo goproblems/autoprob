@@ -102,6 +102,7 @@ public class RegimeWalker {
         KataAnalysisResult kar = null;
         List<String> pv = List.of();
         StatusJudge.Status status = StatusJudge.Status.FAIL;
+        double margin = 0;
         for (int step = 0; step < MAX_STEPS; step++) {
             Node first = null;
             try {
@@ -116,6 +117,7 @@ public class RegimeWalker {
                 kar = analyzeAt(node, line, visits, forbidden.getOrDefault(key, Set.of()), dead, favoredColor);
                 if (kar.isError()) return new Walk(StatusJudge.Status.FAIL, line, List.of(), kar, exchanges, 0);
                 status = judge.status(node, kar);
+                margin = judge.margin(node, kar);
 
                 // the first ko the other side takes on katago's line, or the first place on it
                 // where a dead ko comes up, which katago's search here was free to take
@@ -173,7 +175,7 @@ public class RegimeWalker {
                 if (first != null) iso.problem.removeChildNode(first);
             }
         }
-        return new Walk(status, line, pv, kar, exchanges, judge.margin(kar));
+        return new Walk(status, line, pv, kar, exchanges, margin);
     }
 
     // whether a move is played inside the problem area, rather than an exchange in the fill

@@ -53,7 +53,7 @@ public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
     // (crawl.recheck): goes up with every change to how moves are judged
-    static final int JUDGING_VERSION = 1;
+    static final int JUDGING_VERSION = 2;
 
     private final Properties props;
     private final ChoiceParams params;
@@ -387,6 +387,13 @@ public class MissingVariationFinder {
         }
         Judging judging = judging(brain, root, refs);
         ProblemIsolator.IsolatedProblem iso = judging.iso();
+        if (iso.stakes.isEmpty()) {
+            // with nothing at stake no move can fail, and a line has nothing to settle: the
+            // isolation does not read the problem
+            o.status = "skipped";
+            o.reason = "nothing at stake in the isolation";
+            return null;
+        }
         for (Position pos : authorPositions(refs, IsolationRecord.colorLetter(iso.solverColor))) {
             o.positions++;
             if (skipKo) {
@@ -665,6 +672,7 @@ public class MissingVariationFinder {
             else if (w.startsWith("no stones seem to be at stake")) e.isolation.add("no stones seemed to be at stake");
             else if (w.startsWith("komi rebalanced")) e.isolation.add("komi was rebalanced");
             else if (w.startsWith("with the solver winning every ko")) e.isolation.add("the stakes were settled with the solver winning every ko");
+            else if (w.startsWith("only the opponent's area swings")) e.isolation.add("only the opponent's area seemed to be at stake, as in a seki");
         }
         return Confidence.of(e);
     }

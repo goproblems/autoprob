@@ -2,7 +2,9 @@ package autoprob.validate;
 
 import java.awt.Point;
 import java.text.DecimalFormat;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Properties;
@@ -124,6 +126,13 @@ public class ProblemIsolator {
                     sb.append(Intersection.toGTPloc(x, y, 19));
                 }
             }
+        if (iso.stakes.isEmpty()) {
+            for (Point p : areaStakes(iso, karEnd, karPass, threshold)) {
+                iso.stakes.add(p);
+                if (sb.length() > 0) sb.append(" ");
+                sb.append(Intersection.toGTPloc(p.x, p.y, 19));
+            }
+        }
         double drift = karEnd.blackScore() - iso.targetLead;
         setKomi(iso, iso.komi + drift);
         System.out.println("recalibrated: komi " + iso.komi + ", stakes (" + iso.stakes.size() + "): " + sb
@@ -284,6 +293,7 @@ public class ProblemIsolator {
                 iso.warnings.add("stakes only settled on deeper retry, consider higher redo.visits_root");
             }
         }
+        if (iso.stakes.isEmpty()) areaStakes(iso);
         if (iso.stakes.isEmpty()) {
             String warning = "no stones seem to be at stake -- position may already be settled";
             System.out.println("WARNING: " + warning);
@@ -300,6 +310,60 @@ public class ProblemIsolator {
             System.out.println(note);
             iso.warnings.add(note);
         }
+    }
+
+    // a seki takes the opponent's eye space but leaves its stones alive, so when the answer is
+    // a seki no stone swings between the solved state and the solver passing, only the area
+    // does: then the stakes are the opponent's stones whose area it is (gp-62860, where black's
+    // E2 leaves white alive only in seki). the judge tells the seki from the opponent living
+    // outright (StatusJudge.seki)
+    private void areaStakes(IsolatedProblem iso) {
+        double threshold = Double.parseDouble(props.getProperty("redo.stake_threshold", "1.3"));
+        List<Point> stakes = areaStakes(iso, iso.solvedKar, iso.passKar, threshold);
+        if (stakes.isEmpty()) return;
+        iso.stakes.addAll(stakes);
+        StringBuilder sb = new StringBuilder();
+        for (Point p : stakes) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append(Intersection.toGTPloc(p.x, p.y, 19));
+        }
+        String note = "only the opponent's area swings, as in a seki: its stones around it are at stake ("
+                + stakes.size() + "): " + sb;
+        System.out.println(note);
+        iso.warnings.add(note);
+    }
+
+    // the opponent's stones reached from the empty points the solver gains, through what the
+    // opponent owns when the solver passes
+    static List<Point> areaStakes(IsolatedProblem iso, KataAnalysisResult solved, KataAnalysisResult pass, double threshold) {
+        List<Point> out = new ArrayList<>();
+        if (solved == null || pass == null || solved.ownership == null || pass.ownership == null) return out;
+        int sign = iso.solverColor == Intersection.BLACK ? 1 : -1;
+        int opponent = iso.solverColor == Intersection.BLACK ? Intersection.WHITE : Intersection.BLACK;
+        boolean[][] seen = new boolean[19][19];
+        Deque<Point> todo = new ArrayDeque<>();
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                if (iso.problem.board.board[x][y].stone != Intersection.EMPTY || iso.isFilled(x, y)) continue;
+                if (sign * (solved.ownership.get(x + y * 19) - pass.ownership.get(x + y * 19)) <= threshold) continue;
+                seen[x][y] = true;
+                todo.add(new Point(x, y));
+            }
+        while (!todo.isEmpty()) {
+            Point p = todo.poll();
+            for (int[] d : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+                int x = p.x + d[0], y = p.y + d[1];
+                if (x < 0 || y < 0 || x >= 19 || y >= 19 || seen[x][y] || iso.isFilled(x, y)) continue;
+                if (sign * pass.ownership.get(x + y * 19) > -StatusJudge.OWNED) continue; // not the opponent's
+                seen[x][y] = true;
+                todo.add(new Point(x, y));
+            }
+        }
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++) {
+                if (seen[x][y] && iso.problem.board.board[x][y].stone == opponent) out.add(new Point(x, y));
+            }
+        return out;
     }
 
     // returns the score swing between the solved state and the solver passing

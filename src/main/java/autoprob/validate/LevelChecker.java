@@ -57,7 +57,10 @@ public class LevelChecker {
                 try {
                     String sgf = Files.readString(new File(dir, p.getKey() + ".sgf").toPath());
                     Node root = new Parser().parse(SmallBoard.toNineteen(sgf).sgf());
-                    MoveClassifier classifier = finder.judging(brain, root, MovePath.extractRightPaths(root)).quick();
+                    MissingVariationFinder.Judging judging = finder.judging(brain, root, MovePath.extractRightPaths(root));
+                    // the finder passes over a problem with nothing at stake: no move could fail
+                    if (judging.iso().stakes.isEmpty()) throw new IllegalStateException("nothing at stake in the isolation");
+                    MoveClassifier classifier = judging.quick();
                     for (Entry e : p.getValue()) {
                         String position = e.at().isEmpty() ? "start" : String.join(",", e.at());
                         if (position.length() > 28) position = "..." + position.substring(position.length() - 25);

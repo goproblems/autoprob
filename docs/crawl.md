@@ -34,7 +34,7 @@ Each problem comes to one of:
 | `found` | correct moves missing: `suggestions/gp-<id>.json` holds the suggestion |
 | `unsuggested` | correct moves missing, but none could go into a suggestion (a line ending on the problem's own wrong line, with none through its refutation); the reason says why |
 | `clean` | nothing missing (accepted moves that fall short are noted, not suggested) |
-| `skipped` | no such problem, another genre, not standard, deleted, in the sandbox (`crawl.include_sandbox=true` takes those), or a board the finder cannot play |
+| `skipped` | no such problem, another genre, not standard, deleted, in the sandbox (`crawl.include_sandbox=true` takes those), a board the finder cannot play, or nothing at stake in the isolation |
 | `deferred` | a suggestion is open on it on the site: looked at again on later runs |
 | `error` | the finder failed: tried again, `crawl.attempts` (2) times in all |
 | `stale` | its sgf changed on the site after its suggestion was made: judged again first |

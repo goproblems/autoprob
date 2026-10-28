@@ -32,3 +32,6 @@ gp-62070 | B S16,W S15,B R16,W S17 | B R16 CLEAN, B R19 CLEAN
 # gp-62169 (13x13, lower left): B5 kills; after W B4, B A6 leaves white dead as it stands, a ko white can retake but never fill (adam)
 gp-62169 | start | B B5 CLEAN
 gp-62169 | B B5,W B4 | B A6 CLEAN
+# gp-62860 (13x13, rows +6): the answer is a seki; after E2, W E3, F2 makes it, while black's E1 and D2 leave white alive outright (adam)
+gp-62860 | start | B E2 SEKI
+gp-62860 | B E2,W E3 | B F2 SEKI, B E1 FAIL, B D2 FAIL

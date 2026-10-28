@@ -301,6 +301,32 @@ review confirmed, comes out likely right; gp-62080's B1, which review rejected (
 had it as wrong, and its line went through a ko), would have come out uncertain. The weights
 are a starting point to fit to reviews once there are enough of them in the case library.
 
+## Suggesting a finding to the site
+
+```
+bash gotool.sh cmd=suggest finding=missing_variations/easy/gp-62070_missing.json
+bash gotool.sh cmd=suggest finding=missing_variations/easy/gp-62070_missing.json suggest.post=true
+```
+
+This offers a finding's missing moves to goproblems.com as a suggested edit, which the
+author or an editor approves or rejects. Without `suggest.post=true` it is a dry run that
+prints the comment and both SGFs. The site's API (`POST /api/v2/suggested_problem_edits`,
+with `problemId`, `comment`, `originalSgf` and `suggestedSgf`) checks none of them. Approving
+a suggestion replaces the problem's SGF with the suggested one, and creating one notifies
+the author and goes out on the site's public feed. So the command checks first:
+
+- the problem on the site is still the one the finder read (`suggest.source`, by default
+  `sample_problems/<problem>.sgf`, whose `DI` is set aside);
+- no suggestion is open on the problem, since approving either of two would undo the other
+  (`suggest.force=true` goes on anyway);
+- no suggestion made before, approved or rejected, has the lines already.
+
+The suggested SGF is the site's own with the finding's lines added at their position, moved
+back to the problem's board, each ending `C[RIGHT]`. Nothing else changes, since the site
+shows reviewers every node that differs. The finder's own SGF is on 19x19 and does not do
+for this. The comment names the position, the move, the line and the confidence;
+`suggest.comment=...` replaces it. gp-62070's R19 went in as suggestion #851.
+
 ## Checking the levels
 
 `cases/levels.txt` holds positions with the levels their moves reach, as reviewed. Each line

@@ -53,7 +53,7 @@ public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
     // (crawl.recheck): goes up with every change to how moves are judged
-    static final int JUDGING_VERSION = 2;
+    static final int JUDGING_VERSION = 3;
 
     private final Properties props;
     private final ChoiceParams params;
@@ -534,13 +534,28 @@ public class MissingVariationFinder {
             return null;
         }
 
+        // a position the solver may leave and still reach the best level is settled: every
+        // move that does not throw the result away reaches it there, so none is missing
+        // (gp-62860 after B E2, W E3, B F2, W F1: E1 and D2 are miai, and black may play
+        // elsewhere once and keep the seki: twenty points around white's group keep it at a
+        // quick look)
+        MoveClassifier.Level top = best;
+        boolean settled = false;
+        if (verdicts.values().stream().anyMatch(v -> !pos.correct().contains(v.move) && v.level == top)) {
+            String away = elsewhere(iso);
+            if (away != null && j.quick().rank(j.quick().classify(pos.at(), away).level) >= j.quick().rank(best)) {
+                settled = true;
+                System.out.println("  " + where + ": settled, playing elsewhere reaches " + level(best) + " too, so nothing is missing");
+            }
+        }
+
         // correct moves the problem lacks, and moves it accepts that fall short, each judged
         // again with the deeper search before it counts
         List<MoveClassifier.Verdict> missing = new ArrayList<>();
         List<MoveClassifier.Verdict> wrong = new ArrayList<>();
         for (MoveClassifier.Verdict v : verdicts.values()) {
             boolean accepted = pos.correct().contains(v.move);
-            if (!accepted && v.level == best) {
+            if (!accepted && v.level == best && !settled) {
                 MoveClassifier.Verdict deep = j.deep().classify(pos.at(), v.move);
                 if (deep.level == best) missing.add(deep);
                 else System.out.println("  " + where + ": " + pt(v.move) + " looked " + level(best) + " but the deeper look says "
@@ -675,6 +690,15 @@ public class MissingVariationFinder {
             else if (w.startsWith("only the opponent's area swings")) e.isolation.add("only the opponent's area seemed to be at stake, as in a seki");
         }
         return Confidence.of(e);
+    }
+
+    // the solver playing elsewhere: a move in its own fill, where it is worth nothing (the
+    // last such point, since the ko exchanges take the first), or null when there is none
+    static String elsewhere(ProblemIsolator.IsolatedProblem iso) {
+        List<Point> own = RegimeWalker.neutralPoints(iso, RegimeWalker.zone(iso), iso.solverColor);
+        if (own.isEmpty()) return null;
+        Point p = own.get(own.size() - 1);
+        return IsolationRecord.colorLetter(iso.solverColor) + " " + Intersection.toGTPloc(p.x, p.y, 19);
     }
 
     // whether the move at the point takes a ko

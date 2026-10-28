@@ -5,12 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.Point;
 import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
 import autoprob.api.Problem;
+import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.parse.Parser;
 
@@ -36,6 +38,18 @@ class MissingVariationFinderTest {
         assertEquals(List.of(List.of("B A19", "W B18", "B C17"), List.of("B A19", "W B19", "B A18")),
                 positions.get(0).lines());
         assertEquals(List.of(List.of("B C17")), positions.get(1).lines());
+    }
+
+    @Test
+    void playingElsewhereIsAMoveInTheSolversOwnFill() {
+        ProblemIsolator.IsolatedProblem iso = StatusJudgeTest.sekiProblem();
+        String away = MissingVariationFinder.elsewhere(iso);
+        assertTrue(away.startsWith("B "), away);
+        Point p = Intersection.gtp2point(away.substring(2));
+        assertFalse(RegimeWalker.zone(iso)[p.x][p.y], "outside the problem area");
+        // a point of black's own fill, the last: the ko exchanges take the first
+        List<Point> own = RegimeWalker.neutralPoints(iso, RegimeWalker.zone(iso), Intersection.BLACK);
+        assertEquals(own.get(own.size() - 1), p);
     }
 
     @Test

@@ -75,6 +75,12 @@ coordinates; the console says how far the problem moved.
    `redo.visits`) before it counts. When no move reaches anything, even winning every
    ko, the isolation misreads the position and it is skipped.
 
+   A position the solver could leave and still reach the best level is settled: every
+   move that does not throw the result away reaches it there, so no move is missing.
+   Playing elsewhere is a move in the solver's own fill. In gp-62860, after B E2, W E3,
+   B F2, W F1, E1 and D2 are miai: Black can play elsewhere once and keep the seki, and
+   the scan found twenty points around White's group that keep it at a quick look.
+
    The author's moves are judged first. Once some move reaches a level, a move the
    problem does not accept only matters if it reaches that level too, so one that falls
    short of a clean result in the regime where the opponent wins every ko is not played

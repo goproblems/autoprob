@@ -52,6 +52,20 @@ public class SgfEditTest {
     }
 
     @Test
+    void aWrongLineGoesOnPastItsRefutationToARightEnd() {
+        SgfEdit edit = SgfEdit.parse(GP62070);
+        // B le is wrong at the start, W ld its refutation; a line on through it ends right
+        assertFalse(edit.has(List.of(), List.of("B le")));
+        assertEquals(1, edit.addLine(List.of(), List.of("B le", "W ld", "B kd")));
+        assertTrue(GP62070.replace("(;B[le];W[ld])", "(;B[le];W[ld];B[kd]C[RIGHT])").equals(edit.write()), edit.write());
+        // and then the move alone is there: a right line goes on from it
+        assertTrue(edit.has(List.of(), List.of("B le")));
+        assertEquals(0, edit.addLine(List.of(), List.of("B le")));
+        // a line already on the author's correct lines, at the start: B ld leads to right
+        assertTrue(edit.has(List.of(), List.of("B ld")));
+    }
+
+    @Test
     void movesAndRightAreReadFromTheProperties() {
         SgfEdit edit = SgfEdit.parse(GP62070);
         assertEquals("B ka", edit.at(List.of("B ka")).move());

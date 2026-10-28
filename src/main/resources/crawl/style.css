@@ -1,0 +1,66 @@
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --text: #22201c; --muted: #6b665d; --line: #dcd8cf;
+  --accent: #2f6fd6; --good: #2e8b57; --bad: #c0392b; --wood: #e3c27a; --grid: #5a4520;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1a18; --panel: #24221f; --text: #ebe7df; --muted: #a39d92; --line: #3a3732;
+    --accent: #6ea3ff; --good: #5cc28a; --bad: #ef6b5e; --wood: #c9a65d; --grid: #3d2e12;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+h1 { font-size: 17px; margin: 0; }
+.keys { margin-left: auto; color: var(--muted); font-size: 12px; }
+nav button { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 14px; padding: 3px 10px; margin-right: 4px; cursor: pointer; }
+nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+nav button span { opacity: .75; }
+main { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 50px); }
+aside { border-right: 1px solid var(--line); overflow-y: auto; max-height: calc(100vh - 50px); background: var(--panel); }
+.row { display: block; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--text); text-decoration: none; }
+.row small { display: block; color: var(--muted); }
+.row.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.row.approved b { color: var(--good); }
+.row.rejected b { color: var(--bad); }
+.row.sent b { color: var(--accent); }
+#item { padding: 16px 20px; overflow-y: auto; max-height: calc(100vh - 50px); }
+h2 { margin: 0 0 10px; font-size: 19px; }
+h2 small { color: var(--muted); font-weight: normal; font-size: 13px; }
+h2 a { color: var(--accent); }
+h3 { font-size: 14px; margin: 14px 0 6px; }
+.place, .confidence, .decide { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; }
+.legend { color: var(--muted); margin: 0 0 6px; }
+.key-new, .key-accepted { display: inline-block; width: 10px; height: 10px; margin: 0 4px 0 8px; vertical-align: -1px; }
+.key-new { border: 2px solid var(--accent); }
+.key-accepted { border-radius: 50%; background: var(--good); }
+.boards { display: flex; gap: 16px; flex-wrap: wrap; }
+figure { margin: 0; }
+figcaption { text-align: center; color: var(--muted); margin-top: 4px; }
+figcaption button { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 4px; cursor: pointer; }
+.goban .wood { fill: var(--wood); }
+.goban line { stroke: var(--grid); stroke-width: 1; }
+.goban .coord { font-size: 10px; fill: var(--grid); text-anchor: middle; }
+.goban .black { fill: #111; }
+.goban .white { fill: #fafafa; stroke: #333; stroke-width: 1; }
+.goban .mark-new { fill: none; stroke: var(--accent); stroke-width: 3; }
+.goban .mark-accepted { fill: var(--good); }
+.goban .mark-last { fill: none; stroke: #e0402f; stroke-width: 2.5; }
+.goban .label { font-size: 11px; text-anchor: middle; fill: #111; font-weight: 600; }
+.goban .label.on-black { fill: #fff; }
+.confidence ul { margin: 0; padding-left: 18px; }
+.confidence li.for::marker { content: "+  "; color: var(--good); }
+.confidence li.against::marker { content: "−  "; color: var(--bad); }
+.decide label { display: block; color: var(--muted); margin-bottom: 8px; }
+.decide textarea, .decide input { display: block; width: 100%; margin-top: 4px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.buttons { display: flex; gap: 8px; }
+.buttons button { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; font: inherit; }
+.buttons .approve { background: var(--good); border-color: var(--good); color: #fff; }
+.buttons .reject { background: var(--bad); border-color: var(--bad); color: #fff; }
+.buttons button:disabled { opacity: .45; cursor: default; }
+.status, .error { color: var(--bad); }
+.empty { color: var(--muted); padding: 12px; }
+@media (max-width: 700px) {
+  main { grid-template-columns: 1fr; }
+  aside { max-height: 35vh; border-right: none; border-bottom: 1px solid var(--line); }
+}

@@ -90,6 +90,16 @@ public class GoTool {
             new autoprob.validate.LevelChecker(props).run();
         } else if (command.equals("suggest")) {
             new autoprob.validate.SuggestionSubmitter(props).run();
+        } else if (command.equals("crawl")) {
+            new autoprob.validate.Crawler(props).run();
+        } else if (command.equals("crawl-redraft")) {
+            new autoprob.validate.Crawler(props).redraft();
+        } else if (command.equals("crawl-review")) {
+            new autoprob.validate.CrawlReviewServer(props).run();
+        } else if (command.equals("crawl-submit")) {
+            new autoprob.validate.CrawlSubmitter(props).submit();
+        } else if (command.equals("crawl-sync")) {
+            new autoprob.validate.CrawlSubmitter(props).sync();
         } else {
             throw new RuntimeException("unknown command: " + command);
         }

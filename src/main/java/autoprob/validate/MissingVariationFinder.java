@@ -51,6 +51,9 @@ import autoprob.katastruct.KataAnalysisResult;
 // the site are only checked when they are life and death and marked standard.
 public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
+    // what judged a problem, for the crawl to tell an older judging from the current one
+    // (crawl.recheck): goes up with every change to how moves are judged
+    static final int JUDGING_VERSION = 1;
 
     private final Properties props;
     private final ChoiceParams params;
@@ -61,6 +64,7 @@ public class MissingVariationFinder {
     private final int verifyVisits;  // the deeper walks, and everything reported is judged again with them
     private final int replyDist;     // answers this close to a stone at stake or the move are tried
     private final boolean skipKo;
+    private final boolean allPositions;
     private KataBrain brain;
 
     // a position on the author's correct lines where the solver is to play, and the moves
@@ -90,6 +94,8 @@ public class MissingVariationFinder {
         int koSkipped; // of those, passed over because the author's line goes through a ko
         long seconds;
         Finding finding;
+        // with missing.all_positions, the finding at every position that has one
+        transient List<Finding> findings = new ArrayList<>();
     }
 
     // the first position where the problem disagrees with what the position allows
@@ -150,6 +156,19 @@ public class MissingVariationFinder {
         this.replyDist = Integer.parseInt(props.getProperty("missing.reply_dist", "2"));
         // with skip_ko, positions whose own line goes through a ko are passed over
         this.skipKo = Boolean.parseBoolean(props.getProperty("missing.skip_ko", "false"));
+        // with all_positions (the crawl), a problem's every position is checked rather than
+        // up to the first finding, and the caller writes the findings out
+        this.allPositions = Boolean.parseBoolean(props.getProperty("missing.all_positions", "false"));
+    }
+
+    // the engine, for a caller that checks problems itself (the crawl)
+    void start() throws Exception {
+        brain = new KataBrain(props);
+    }
+
+    synchronized void stop() {
+        if (brain != null) brain.stopKataBrain();
+        brain = null;
     }
 
     public void run() throws Exception {
@@ -330,6 +349,7 @@ public class MissingVariationFinder {
                 o.positions = 0;
                 o.status = null;
                 o.reason = null;
+                o.findings.clear();
             }
         }
         o.seconds = (System.currentTimeMillis() - start) / 1000;
@@ -386,6 +406,10 @@ public class MissingVariationFinder {
             Finding f = findAt(name, sgf, root, judging, pos);
             if (f != null) {
                 f.difficulty = difficulty;
+                if (allPositions) {
+                    o.findings.add(f);
+                    continue;
+                }
                 try {
                     f.review = writeReview(name, sgf, f);
                 } catch (Exception e) {
@@ -394,7 +418,7 @@ public class MissingVariationFinder {
                 return f;
             }
         }
-        return null;
+        return o.findings.isEmpty() ? null : o.findings.get(0);
     }
 
     // where the problem disagrees with what the position allows at one position, or null
@@ -577,8 +601,10 @@ public class MissingVariationFinder {
             w.confidence = confidence(j, root, node, pos, rec, best, verdicts, v, List.of(), false);
             f.wrong.add(w);
         }
-        f.sgf = writeSgf(name, sgf, f).getPath();
-        Files.writeString(new File(dir, name + "_missing.json").toPath(), RunRecorder.GSON.toJson(f) + "\n");
+        if (!allPositions) {
+            f.sgf = writeSgf(name, sgf, f).getPath();
+            Files.writeString(new File(dir, name + "_missing.json").toPath(), RunRecorder.GSON.toJson(f) + "\n");
+        }
         return f;
     }
 

@@ -327,6 +327,9 @@ shows reviewers every node that differs. The finder's own SGF is on 19x19 and do
 for this. The comment names the position, the move, the line and the confidence;
 `suggest.comment=...` replaces it. gp-62070's R19 went in as suggestion #851.
 
+[The crawl](crawl.md) does all this for the whole site: it judges problems newest first,
+writes their suggestions, and sends only the ones a person approved.
+
 ## Checking the levels
 
 `cases/levels.txt` holds positions with the levels their moves reach, as reviewed. Each line

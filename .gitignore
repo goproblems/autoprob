@@ -45,3 +45,5 @@ redo_runs/
 redo_out/
 cases_results/
 missing_variations/
+# the crawl's working folder: its index, drafts, reviews and what went to the site
+/crawl/

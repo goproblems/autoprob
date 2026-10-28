@@ -39,6 +39,15 @@ public class SgfEdit {
             }
             return null;
         }
+
+        // whether a line through the node ends right: the node itself or one below it
+        boolean leadsRight() {
+            if (right()) return true;
+            for (SgfNode c : children) {
+                if (c.leadsRight()) return true;
+            }
+            return false;
+        }
     }
 
     private final SgfNode root;
@@ -85,7 +94,8 @@ public class SgfEdit {
         return node;
     }
 
-    // whether the problem already has the line after the moves, ending right
+    // whether the problem already has the line after the moves as correct: it reaches a node
+    // that ends right, or that a longer correct line goes on from
     public boolean has(List<String> at, List<String> line) {
         SgfNode node = at(at);
         if (node == null) return false;
@@ -93,14 +103,18 @@ public class SgfEdit {
             node = node.child(m);
             if (node == null) return false;
         }
-        return node.right();
+        return node.leadsRight();
     }
 
     // adds the line after the moves, marked right at its end, reusing what the problem already
-    // has of it. how many nodes it added
+    // has of it; a line the problem has already adds nothing. a line that ends on a node of the
+    // problem's that leads only to wrong endings is refused: marking it right would leave its
+    // wrong answers below it, so a line through those answers has to come first. how many
+    // nodes it added
     public int addLine(List<String> at, List<String> line) {
         SgfNode node = at(at);
         if (node == null) throw new IllegalArgumentException("the problem does not have the position " + String.join(" ", at));
+        if (has(at, line)) return 0;
         int added = 0;
         for (int i = 0; i < line.size(); i++) {
             String m = line.get(i);
@@ -111,8 +125,8 @@ public class SgfEdit {
                 next = new SgfNode(cp[0] + "[" + cp[1] + "]" + (last ? "C[RIGHT]" : ""));
                 node.children.add(next);
                 added++;
-            } else if (last && !next.right()) {
-                throw new IllegalArgumentException("the line ends on " + m + ", which the problem has but not as right");
+            } else if (last) {
+                throw new IllegalArgumentException("the line ends on " + m + ", which the problem has on a wrong line");
             }
             node = next;
         }

@@ -334,10 +334,14 @@ public class Crawler {
         return out;
     }
 
-    // a review of an earlier draft for the problem no longer holds: it is kept aside
+    // a review of an earlier draft for the problem no longer holds: it is kept aside, with any
+    // edits made to the draft by hand
     private void retire(String name) throws IOException {
         File approval = new File(dir, "approvals/" + name + ".json");
         if (approval.exists()) Files.move(approval.toPath(), new File(dir, "approvals/" + name + ".old.json").toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        File edit = ReviewEdit.file(dir, name);
+        if (edit.exists()) Files.move(edit.toPath(), new File(dir, "edits/" + name + ".old.json").toPath(),
                 java.nio.file.StandardCopyOption.REPLACE_EXISTING);
     }
 

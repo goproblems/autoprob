@@ -66,6 +66,23 @@ public class SgfEditTest {
     }
 
     @Test
+    void aNodeGoesInByHandWhereThePositionIs() {
+        List<String> at = List.of("B ld", "W le", "B kd", "W lc");
+        SgfEdit edit = SgfEdit.parse(GP62070);
+        edit.add(at, "B ka", false);
+        edit.add(List.of("B ld", "W le", "B kd", "W lc", "B ka"), "W la", false);
+        edit.add(List.of("B ld", "W le", "B kd", "W lc", "B ka", "W la"), "B kd", true);
+        // node by node, the same as the line in one go
+        SgfEdit line = SgfEdit.parse(GP62070);
+        line.addLine(at, List.of("B ka", "W la", "B kd"));
+        assertEquals(line.write(), edit.write());
+        assertThrows(IllegalArgumentException.class, () -> edit.add(List.of("B ld", "W lc"), "B kd", true));
+        assertThrows(IllegalArgumentException.class, () -> edit.add(List.of(), "B ld", true));
+        assertThrows(IllegalArgumentException.class, () -> edit.add(List.of(), "B zz", true));
+        assertEquals(List.of("W le"), edit.at(List.of("B ld")).children().stream().map(SgfEdit.SgfNode::move).toList());
+    }
+
+    @Test
     void movesAndRightAreReadFromTheProperties() {
         SgfEdit edit = SgfEdit.parse(GP62070);
         assertEquals("B ka", edit.at(List.of("B ka")).move());

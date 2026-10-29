@@ -27,14 +27,16 @@ import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.action.MoveAction;
 import autoprob.go.parse.Parser;
+import autoprob.go.parse.SgfEdit;
 import autoprob.go.parse.SmallBoard;
 
 // cmd=crawl-review: a local page for going through the crawl's suggestions (crawl.dir) before
 // any goes to the site: each with the problem's tree as it would leave it, its positions on the
 // problem's own board, the lines it adds to step through, how far to trust it and why, and its
 // comment to edit. approving or rejecting one writes approvals/gp-<id>.json, which
-// cmd=crawl-submit sends from. review.port (8770), review.by the name kept with each decision
-// (the login name). no engine needed.
+// cmd=crawl-submit sends from; edits to the tree made on the page go to edits/gp-<id>.json
+// (ReviewEdit). review.port (8770), review.by the name kept with each decision (the login
+// name). no engine needed.
 public class CrawlReviewServer {
     private static final String COLUMNS = "ABCDEFGHJKLMNOPQRST";
 
@@ -47,6 +49,22 @@ public class CrawlReviewServer {
         String decision; // approved, rejected, or pending to take one back
         String comment;
         String note;
+    }
+
+    // the request body for edits to a suggestion's tree: every node the suggestion is to add,
+    // parents first, each with the moves to it from the start (sgf, on the problem's board);
+    // or revert, to go back to the draft as made. base is the draft the page had (Crawler.hash
+    // of its suggested sgf)
+    static class Edit {
+        String base;
+        List<Added> added = new ArrayList<>();
+        boolean revert;
+    }
+
+    static class Added {
+        List<String> at = new ArrayList<>();
+        String move;
+        boolean right;
     }
 
     public CrawlReviewServer(Properties props) {
@@ -63,6 +81,7 @@ public class CrawlReviewServer {
         server.createContext("/api/list", ex -> handle(ex, this::list));
         server.createContext("/api/item", ex -> handle(ex, () -> item(query(ex).get("name"))));
         server.createContext("/api/decide", ex -> handle(ex, () -> decide(query(ex).get("name"), body(ex))));
+        server.createContext("/api/edit", ex -> handle(ex, () -> edit(query(ex).get("name"), body(ex))));
         server.createContext("/", this::serveStatic);
         server.start();
         System.out.println("reviewing the suggestions in " + dir + ": open http://localhost:" + port + "/  (ctrl-c to stop)");
@@ -77,7 +96,8 @@ public class CrawlReviewServer {
             for (String n : names) {
                 if (!n.matches("gp-\\d+\\.json")) continue;
                 String name = n.substring(0, n.length() - 5);
-                SuggestionDraft d = draft(name);
+                ReviewEdit edit = ReviewEdit.read(dir, name);
+                SuggestionDraft made = draft(name), d = ReviewEdit.apply(edit, made);
                 CrawlSubmitter.Approval a = approval(name);
                 CrawlSubmitter.Submitted s = submitted(name);
                 String state = s != null ? "sent" : a == null ? "pending" : a.decision;
@@ -91,6 +111,7 @@ public class CrawlReviewServer {
                 for (SuggestionDraft.Place p : d.places) for (String m : d.points(p.moves)) moves.add(m.substring(2));
                 e.put("moves", moves);
                 e.put("positions", d.places.size());
+                if (d != made) e.put("edited", true);
                 if (s != null) e.put("sent", s);
                 entries.add(e);
                 counts.merge(state, 1, Integer::sum);
@@ -112,9 +133,14 @@ public class CrawlReviewServer {
     // move by move
     Object item(String name) throws Exception {
         check(name);
-        SuggestionDraft d = draft(name);
+        // the draft with the edits made to it by hand, if any
+        SuggestionDraft made = draft(name);
+        ReviewEdit edit = ReviewEdit.read(dir, name);
+        SuggestionDraft d = ReviewEdit.apply(edit, made);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("draft", d);
+        out.put("base", Crawler.hash(made.suggestedSgf));
+        if (d != made) out.put("edited", Map.of("by", edit.by, "time", edit.time));
         out.put("approval", approval(name));
         out.put("submitted", submitted(name));
         out.put("url", "https://www.goproblems.com/problems/" + d.problemId);
@@ -221,6 +247,57 @@ public class CrawlReviewServer {
         f.getParentFile().mkdirs();
         RunRecorder.writeAtomically(f, RunRecorder.GSON.toJson(a));
         return Map.of("ok", true);
+    }
+
+    // edits to a suggestion's tree, made by hand on the page: written to edits/gp-<id>.json, to
+    // be shown and sent in place of the draft's own. only a suggestion waiting for review can be
+    // edited, so a decision is always on what it decided
+    Object edit(String name, String body) throws Exception {
+        check(name);
+        if (submitted(name) != null) throw new IllegalStateException(name + " went to the site already");
+        CrawlSubmitter.Approval a = approval(name);
+        if (a != null) throw new IllegalStateException(name + " is " + a.decision + ": take it back to pending to edit it");
+        Edit req = RunRecorder.GSON.fromJson(body, Edit.class);
+        SuggestionDraft d = draft(name);
+        if (!Crawler.hash(d.suggestedSgf).equals(req.base)) throw new IllegalStateException("the suggestion changed since the page was loaded: reload it");
+        File f = ReviewEdit.file(dir, name);
+        String edited = null;
+        if (!req.revert) {
+            SgfEdit sgf = SgfEdit.parse(d.originalSgf);
+            for (Added n : req.added) sgf.add(n.at, n.move, n.right);
+            edited = sgf.write();
+            playable(edited, d);
+        }
+        if (edited == null || edited.equals(d.suggestedSgf)) {
+            Files.deleteIfExists(f.toPath());
+            return Map.of("ok", true);
+        }
+        ReviewEdit e = new ReviewEdit();
+        e.base = d.suggestedSgf;
+        e.sgf = edited;
+        e.by = by;
+        e.time = LocalDateTime.now().toString();
+        f.getParentFile().mkdirs();
+        RunRecorder.writeAtomically(f, RunRecorder.GSON.toJson(e));
+        return Map.of("ok", true);
+    }
+
+    // that every move the problem does not have can be played where the sgf has it: on an empty
+    // point, and keeping a liberty
+    private static void playable(String sgf, SuggestionDraft d) throws Exception {
+        playable(new Parser().parse(sgf), new Parser().parse(d.originalSgf), d);
+    }
+
+    private static void playable(Node node, Node was, SuggestionDraft d) {
+        for (Node c : node.babies) {
+            Node w = was == null ? null : sameMove(was, c);
+            MoveAction m = c.getMoveAction();
+            if (w == null && m != null && node.board.inBoard(m.loc.x, m.loc.y)
+                    && (node.board.board[m.loc.x][m.loc.y].stone != Intersection.EMPTY || c.board.board[m.loc.x][m.loc.y].stone != m.stone)) {
+                throw new IllegalArgumentException(COLUMNS.charAt(m.loc.x) + "" + (d.boardSize - m.loc.y) + " cannot be played there");
+            }
+            playable(c, w, d);
+        }
     }
 
     // the moves (sgf, on the problem's board) played on from the node, on the 19x19 board the

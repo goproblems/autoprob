@@ -1,7 +1,9 @@
 package autoprob.go.parse;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 // an sgf as written, for adding lines to it and nothing else: every node keeps its properties
 // exactly as the text has them, so what comes out differs from what came in only by what was
@@ -33,15 +35,20 @@ public class SgfEdit {
             return false;
         }
 
-        SgfNode child(String move) {
+        // the child that plays the move, or null
+        public SgfNode child(String move) {
             for (SgfNode c : children) {
-                if (move.equals(c.move())) return c;
+                if (Objects.equals(move, c.move())) return c;
             }
             return null;
         }
 
+        public List<SgfNode> children() {
+            return Collections.unmodifiableList(children);
+        }
+
         // whether a line through the node ends right: the node itself or one below it
-        boolean leadsRight() {
+        public boolean leadsRight() {
             if (right()) return true;
             for (SgfNode c : children) {
                 if (c.leadsRight()) return true;
@@ -82,6 +89,21 @@ public class SgfEdit {
             write(c, sb);
             sb.append(')');
         }
+    }
+
+    public SgfNode root() {
+        return root;
+    }
+
+    // adds a node after the moves that plays the move, marked right or not, as an edit by hand
+    // does; the problem has to have the position, and not the move there yet
+    public void add(List<String> at, String move, boolean right) {
+        SgfNode node = at(at);
+        if (node == null) throw new IllegalArgumentException("the problem does not have the position " + String.join(" ", at));
+        if (node.child(move) != null) throw new IllegalArgumentException(move + " is there already after " + String.join(" ", at));
+        String[] cp = move.split(" ");
+        if (cp.length != 2 || !cp[0].matches("[BW]") || !cp[1].matches("[a-s]{2}")) throw new IllegalArgumentException("not a move: " + move);
+        node.children.add(new SgfNode(cp[0] + "[" + cp[1] + "]" + (right ? "C[RIGHT]" : "")));
     }
 
     // the node the moves reach from the root, or null when the problem does not have them

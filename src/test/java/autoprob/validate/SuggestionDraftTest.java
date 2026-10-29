@@ -2,6 +2,7 @@ package autoprob.validate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -10,6 +11,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import autoprob.go.parse.SgfEdit;
 import autoprob.go.parse.SgfEditTest;
 import autoprob.go.parse.SmallBoard;
 
@@ -92,6 +94,84 @@ class SuggestionDraftTest {
         assertNull(SuggestionDraft.build(62070, GP62070, List.of(alone), 3, notes));
         assertEquals(1, notes.size());
         assertTrue(notes.get(0).contains("on a wrong line"), notes.get(0));
+    }
+
+    @Test
+    void anEditedTreeIsReadBackIntoPositionsAndLines() {
+        SuggestionDraft d = SuggestionDraft.build(62070, GP62070, List.of(r19()), 3);
+        // unedited, it is the draft as made
+        SuggestionDraft same = d.edited(d.suggestedSgf);
+        assertEquals(d.addedNodes, same.addedNodes);
+        assertEquals(d.places.get(0).lines, same.places.get(0).lines);
+        assertEquals(d.places.get(0).moves, same.places.get(0).moves);
+        assertEquals(d.comment, same.comment);
+        // the line cut short, its new end marked right: the same position, what the finder knew
+        // there kept
+        List<String> at = d.places.get(0).at;
+        SgfEdit cut = SgfEdit.parse(GP62070);
+        cut.add(at, "B ka", true);
+        SuggestionDraft shorter = d.edited(cut.write());
+        assertEquals(1, shorter.addedNodes);
+        assertEquals(List.of(List.of("B ka")), shorter.places.get(0).lines);
+        assertTrue(shorter.comment.startsWith("After B M10, W M9, B L10, W M11, Black's L13 works too, with the same result as L10. "
+                + "Line added: B L13. Found by autoprob"), shorter.comment);
+        // every line cut: nothing to add
+        SuggestionDraft none = d.edited(GP62070);
+        assertEquals(0, none.addedNodes);
+        assertTrue(none.places.isEmpty());
+    }
+
+    @Test
+    void cuttingAMoveLeavesHowSureTheOthersAre() {
+        MissingVariationFinder.Finding f = r19();
+        Confidence.Evidence sure = new Confidence.Evidence();
+        sure.missing = true;
+        sure.authorAgrees = true;
+        MissingVariationFinder.FoundMove n19 = new MissingVariationFinder.FoundMove();
+        n19.move = "B N19";
+        n19.lines.add(List.of("B N19"));
+        n19.confidence = Confidence.of(sure);
+        f.moves.add(n19);
+        Confidence r19 = f.moves.get(0).confidence;
+        assertNotEquals(r19.low, n19.confidence.low);
+        SuggestionDraft d = SuggestionDraft.build(62070, GP62070, List.of(f), 3);
+        assertEquals(Math.min(r19.low, n19.confidence.low), d.places.get(0).confidence.low);
+        // R19's line cut, N19's (G13 on the problem's board) left
+        SgfEdit e = SgfEdit.parse(GP62070);
+        e.add(d.places.get(0).at, "B ga", true);
+        SuggestionDraft edited = d.edited(e.write());
+        assertEquals(List.of("B ga"), edited.places.get(0).moves);
+        assertEquals(n19.confidence.low, edited.places.get(0).confidence.low);
+    }
+
+    @Test
+    void aLineAddedByHandElsewhereMakesAPositionOfItsOwn() {
+        SuggestionDraft d = SuggestionDraft.build(62070, GP62070, List.of(r19()), 3);
+        SgfEdit e = SgfEdit.parse(d.suggestedSgf);
+        e.add(List.of(), "B ma", true);
+        // and an answer to a white move the problem lacks, after M10
+        e.add(List.of("B ld"), "W lc", false);
+        e.add(List.of("B ld", "W lc"), "B le", true);
+        SuggestionDraft edited = d.edited(e.write());
+        assertEquals(6, edited.addedNodes);
+        // the draft's position first, then the new ones in the tree's order
+        assertEquals(3, edited.places.size());
+        assertEquals(List.of("B ld"), edited.places.get(1).at);
+        assertEquals(List.of("W lc"), edited.places.get(1).moves);
+        assertEquals(List.of(), edited.places.get(2).at);
+        assertEquals(List.of("B ma"), edited.places.get(2).moves);
+        assertTrue(edited.comment.contains(" After B M10, White's M11 is answered too. Line added: W M11, B M9. "
+                + "At the start, Black's N13 works too. Line added: B N13. Found by autoprob"), edited.comment);
+    }
+
+    @Test
+    void anEditedLineThroughTheProblemsWrongMoveStillSaysSo() {
+        MissingVariationFinder.Finding f = finding(List.of(), List.of("B S16", "B R19"), "B S15", List.of("B S15", "W S16", "B R16"));
+        f.moves.get(0).inFileAsWrong = true;
+        SuggestionDraft d = SuggestionDraft.build(62070, GP62070, List.of(f), 3);
+        SuggestionDraft same = d.edited(d.suggestedSgf);
+        assertEquals(List.of("B le"), same.places.get(0).markedWrong);
+        assertEquals(d.comment, same.comment);
     }
 
     @Test

@@ -82,10 +82,38 @@ For each one it shows:
 - each line it adds, to step through move by move with the arrows under it. Stepping a line
   selects it, and then the arrow keys step it too (until the tree is clicked);
 - the confidence and the reasons for and against it;
-- the comment that goes with it, which can be edited.
+- the comment that goes with it, which can be edited;
+- buttons under the tree to edit its lines by hand (below).
 
 Approving or rejecting one (`a`, `r`; `j` and `k` move on) writes `approvals/gp-<id>.json`, with
 the comment as it stands and a note kept only here. A rejected suggestion is never sent.
+
+### Editing the tree
+
+A suggestion waiting for review can be edited by hand under the tree:
+
+- **Mark right** puts a right mark on the selected move, or takes it off. **Cut branch** cuts
+  it and everything after it. Both work on the moves the suggestion adds, not the problem's
+  own.
+- **Add moves** lets a click on an empty point of the board play a move at the position shown,
+  for the side to play there. The move goes into the suggestion and is selected, so the next
+  can follow it. Esc stops adding.
+
+Edits not saved yet are light blue. A cut branch stays as a light blue ghost until it is saved,
+and **Restore branch** brings it back. Moves the edits turn back into the problem's own wrong
+line go light blue too. The selected node is marked in amber, so it never looks like an edit.
+
+**Save** writes `edits/gp-<id>.json`; **Discard** drops what is not saved, and **Undo all
+edits** goes back to the lines as the checker made them. Saved edits are what the page shows
+and what `cmd=crawl-submit` sends. The positions, lines and comment are worked out again from
+the edited tree. A line added where the suggestion had none makes a position of its own.
+Comment text typed before saving is kept.
+
+A suggestion with a decision cannot be edited: take it back to pending first, so that a
+decision is always on what it decided. With edits not saved, approving or rejecting waits
+until they are saved or discarded, and leaving them asks first. A judging or redraft that
+changes the draft sets its edits aside with its review
+(`edits/gp-<id>.old.json`). Once edits leave nothing to add, the suggestion is not sent.
 
 ## Sending
 

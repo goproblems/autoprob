@@ -2,12 +2,14 @@
   --bg: #f6f5f2; --panel: #ffffff; --text: #22201c; --muted: #6b665d; --line: #dcd8cf;
   --accent: #2f6fd6; --good: #2e8b57; --bad: #c0392b; --wood: #e3c27a; --grid: #5a4520;
   --t-right: #65a30d; --t-wrong: #dc2626; --tree-bg: #f6f5f2; --t-black-edge: #000; --t-fade: .55;
+  --t-edit: #38bdf8; --t-edit-text: #0369a1; --t-sel: #fcd34d;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #1b1a18; --panel: #24221f; --text: #ebe7df; --muted: #a39d92; --line: #3a3732;
     --accent: #6ea3ff; --good: #5cc28a; --bad: #ef6b5e; --wood: #c9a65d; --grid: #3d2e12;
     --t-right: #84cc16; --t-wrong: #f87171; --tree-bg: #34312c; --t-black-edge: #a39d92; --t-fade: .75;
+    --t-edit: #7dd3fc; --t-edit-text: #7dd3fc; --t-sel: #ca8a04;
   }
 }
 * { box-sizing: border-box; }
@@ -80,7 +82,7 @@ h3 .to-tree { border: 1px solid var(--line); background: transparent; border-rad
 .tree .edge.wrong { stroke: var(--t-wrong); stroke-opacity: .55; }
 .tree .halo.right { fill: var(--t-right); }
 .tree .halo.added { fill: var(--accent); }
-.tree .tsel { fill: #7dd3fc; }
+.tree .tsel { fill: var(--t-sel); }
 .tree .house { fill: var(--muted); }
 .tree .tpass { fill: none; stroke: var(--muted); stroke-width: 1.5; }
 .tree .tbg { fill: var(--tree-bg); }
@@ -107,3 +109,21 @@ h3 .to-tree { border: 1px solid var(--line); background: transparent; border-rad
   main { grid-template-columns: 1fr; }
   aside { max-height: 35vh; border-right: none; border-bottom: 1px solid var(--line); }
 }
+/* edits to the tree not saved yet are light blue */
+.legend .sw.edit { border-color: var(--t-edit); }
+h3 .edited { margin-left: 8px; font-weight: normal; font-size: 12px; color: var(--t-edit-text); }
+.tree .edge.fresh, .tree .edge.pend { stroke: var(--t-edit); stroke-opacity: 1; }
+.tree .edge.ghost { stroke: var(--t-edit); stroke-dasharray: 3 4; stroke-opacity: .8; }
+.tree .tstone.ghost { opacity: .35; }
+.tree .halo.pend { fill: var(--t-edit); }
+.tree .unhalo { fill: none; stroke: var(--t-edit); stroke-width: 2; stroke-dasharray: 3 2; }
+.goban .mark-next.fresh, .goban .mark-next.pend { stroke: var(--t-edit); }
+.goban .mark-next.ghost { stroke: var(--t-edit); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.goban.adding { cursor: crosshair; }
+.tree-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.tree-edit button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; font: inherit; font-size: 13px; }
+.tree-edit button:disabled { opacity: .45; cursor: default; }
+.tree-edit button.on { background: var(--t-edit); border-color: var(--t-edit); color: #0b2537; }
+.tree-edit .save:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tree-edit .ed-state { margin-left: auto; color: var(--t-edit-text); font-size: 13px; }
+.tree-edit .ed-msg { flex-basis: 100%; margin: 0; min-height: 1.45em; color: var(--muted); font-size: 13px; }

@@ -22,7 +22,8 @@ import com.google.gson.JsonObject;
 // problem's sgf is still the one the suggestion was made from, no suggestion is open on it, and
 // none made before has its lines. a dry run unless crawl.post=true; crawl.only=gp-1,gp-2 limits
 // it to those. a problem whose sgf changed on the site is marked stale, its review kept aside
-// (approvals/gp-<id>.stale.json), and the next crawl judges it again.
+// (approvals/gp-<id>.stale.json), and the next crawl judges it again. a suggestion edited by
+// hand in review (ReviewEdit) goes as edited.
 //
 // cmd=crawl-sync reads back what became of the sent ones: open, approved or rejected, and what
 // the reviewer said.
@@ -81,7 +82,13 @@ public class CrawlSubmitter {
             System.out.println(name + ": approved, but its suggestion is gone; judge it again");
             return "gone";
         }
-        SuggestionDraft draft = RunRecorder.GSON.fromJson(Files.readString(draftFile.toPath()), SuggestionDraft.class);
+        SuggestionDraft asMade = RunRecorder.GSON.fromJson(Files.readString(draftFile.toPath()), SuggestionDraft.class);
+        // edited by hand in review, it goes as edited
+        SuggestionDraft draft = ReviewEdit.apply(ReviewEdit.read(dir, name), asMade);
+        if (draft.addedNodes == 0 || draft.places.isEmpty()) {
+            System.out.println(name + ": approved, but its edits leave nothing to add; reject it, or take it back to pending");
+            return "empty";
+        }
         Approval a = read(new File(dir, "approvals/" + name + ".json"), Approval.class);
         String comment = a.comment != null && !a.comment.isBlank() ? a.comment : draft.comment;
         JsonObject live = site.problem(draft.problemId);
@@ -106,7 +113,8 @@ public class CrawlSubmitter {
             System.out.println(name + ": " + blocked + "; it waits");
             return "blocked";
         }
-        System.out.println(name + ": " + draft.addedNodes + " node" + (draft.addedNodes == 1 ? "" : "s") + " added; " + comment);
+        System.out.println(name + ": " + draft.addedNodes + " node" + (draft.addedNodes == 1 ? "" : "s") + " added"
+                + (draft != asMade ? " (edited in review)" : "") + "; " + comment);
         if (!post) return "ready";
         JsonObject made = site.create(draft.payload(comment));
         Submitted s = new Submitted();

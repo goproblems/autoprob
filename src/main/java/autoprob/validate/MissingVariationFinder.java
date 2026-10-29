@@ -55,7 +55,9 @@ public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
     // (crawl.recheck): goes up with every change to how moves are judged
-    static final int JUDGING_VERSION = 5;
+    static final int JUDGING_VERSION = 6;
+    // how many lines past the problem's stones and the author's moves a suggested line may play
+    static final int OUTSIDE = 1;
 
     private final Properties props;
     private final ChoiceParams params;
@@ -628,6 +630,7 @@ public class MissingVariationFinder {
                 if (!covered) m.lines.addAll(linesFrom(iso, node, pos.at(), List.of(v.move, answer), null, m.decisions));
             }
             String not = insertedExchange(iso, node, m.lines.isEmpty() ? List.of() : m.lines.get(0), working);
+            if (not == null) not = leaksOut(root, m.lines);
             if (not == null) not = lineFallsShort(j, pos, v, m.lines);
             if (not != null) {
                 System.out.println("  " + where + ": " + pt(v.move) + " " + not + ", so it is not suggested");
@@ -822,6 +825,52 @@ public class MissingVariationFinder {
             }
         }
         return true;
+    }
+
+    // why a generated line runs out of the problem, or null: a move more than OUTSIDE lines past
+    // the box around the problem's stones and every move of the author's tree, right and wrong.
+    // a path that leaks out to the side is never something to add to a problem, and out there
+    // the fill around the isolation, which lives, decides the fight (adam's review: in
+    // gp-62395, after B D1 W F2, black's E1 crawled along the first line under white's G2, H2,
+    // J2 and joined the black wall at N1, where white just extends at K2 and black goes
+    // nowhere; gp-62448's E1 crawled the same way to L1)
+    static String leaksOut(Node root, List<List<String>> lines) {
+        int[] box = area(root);
+        for (List<String> line : lines) {
+            for (String m : line) {
+                Point p = Intersection.gtp2point(m.substring(2));
+                int out = Math.max(Math.max(box[0] - p.x, p.x - box[2]), Math.max(box[1] - p.y, p.y - box[3]));
+                if (out > OUTSIDE) {
+                    return "has a line that runs out of the problem, to " + pt(m) + ", " + out
+                            + " lines past its stones and the author's moves (" + String.join(" ", line) + ")";
+                }
+            }
+        }
+        return null;
+    }
+
+    // the box around the problem's stones and every move of the author's tree: the least x
+    // and y, then the greatest
+    static int[] area(Node root) {
+        int[] box = {19, 19, -1, -1};
+        Deque<Node> todo = new ArrayDeque<>(List.of(root));
+        for (int x = 0; x < 19; x++)
+            for (int y = 0; y < 19; y++)
+                if (root.board.board[x][y].stone != Intersection.EMPTY) grow(box, x, y);
+        while (!todo.isEmpty()) {
+            Node n = todo.poll();
+            Point p = n.findMove();
+            if (p != null && p.x >= 0 && p.y >= 0 && p.x < 19 && p.y < 19) grow(box, p.x, p.y);
+            todo.addAll(n.babies);
+        }
+        return box;
+    }
+
+    private static void grow(int[] box, int x, int y) {
+        box[0] = Math.min(box[0], x);
+        box[1] = Math.min(box[1], y);
+        box[2] = Math.max(box[2], x);
+        box[3] = Math.max(box[3], y);
     }
 
     // why the generated lines do not show the level the move was judged to reach, or null. a

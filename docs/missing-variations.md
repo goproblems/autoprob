@@ -123,6 +123,18 @@ coordinates; the console says how far the problem moved.
    threats, so it can settle for less than a ko the move reaches only by winning it:
    gp-62851's R19 line ended in the seki of B T19.
 
+   A move with a line that runs out of the problem is not suggested either: a move more than
+   a line (`OUTSIDE`) past the box around the problem's stones and every move of the
+   author's tree, right and wrong. A path that leaks out to the side is never something to
+   add to a problem, and out there the [fill](#caveats) around the isolation decides the
+   fight. In gp-62395, after B D1, W F2, Black's E1 came out a clean kill: White crawled
+   along the second line from G2 and Black blocked under it on the first, and Black's
+   first-line stones reached the black wall at N1 and lived. On the board White just
+   extends at K2, and the crawl goes nowhere; the line went to W L1, three lines past the
+   problem. Review rejected gp-62448's E1, crawling the same way to L1, and gp-62509's J4
+   line, with its forcing moves on the outside out to M4. Every line approved so far stays
+   within a line of the problem.
+
 ## Levels
 
 goproblems ranks the results of a standard problem by life status, not points
@@ -455,3 +467,10 @@ reported, so some missing variations go unnoticed.
 - Positions the isolation misreads are skipped: when the problem relies on outside stones
   being strong (gp-62114's black stones below the corner), the fortress fill can leave
   them weak, and then every move fails.
+- The fill lives, so stones that reach it live too. Its wall stands `redo.gap` (4) lines
+  past the problem's stones, and a fight that runs out that far is judged on the fill, not
+  the open board: gp-62395's E1 came out a clean kill only because Black's first-line crawl
+  joined the wall at N1. With the wall at 8 lines, E1 failed and the author's G2 still
+  killed, but at 10 the fill could not be balanced (komi past ±150), so a wider gap is no
+  general answer. A found move with a line that runs out of the problem is not suggested
+  (step 5), but a level can still rest on the fill, an accepted move's included.

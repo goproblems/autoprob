@@ -1,5 +1,6 @@
 package autoprob.validate;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -141,6 +142,20 @@ class MissingVariationFinderTest {
         assertNull(MissingVariationFinder.insertedExchange(iso, iso.problem, List.of("B P17", "W N19", "B N17"), Set.of("B N17")));
         // and a line that ends before the solver's next move puts nothing in before anything
         assertNull(MissingVariationFinder.insertedExchange(iso, iso.problem, List.of("B N16", "W N17"), Set.of("B P17")));
+    }
+
+    @Test
+    void aLineThatRunsOutOfTheProblemIsNoSuggestion() throws Exception {
+        // stones from A1 to C3, and the author's moves out to D1 and A4, on a wrong line too
+        Node root = new Parser().parse("(;SZ[19]AB[as][bs][br]AW[cs][cr][cq](;B[ds];W[ap])(;B[bq]C[RIGHT]))");
+        assertArrayEquals(new int[]{0, 15, 3, 18}, MissingVariationFinder.area(root));
+        // a line past the problem by a line, on the side, above or both, stays in it
+        assertNull(MissingVariationFinder.leaksOut(root, List.of(List.of("B E1", "W B5", "B E5"))));
+        // two lines past it runs out of it, in any line of the move's
+        String why = MissingVariationFinder.leaksOut(root, List.of(List.of("B B3"), List.of("B E1", "W F1")));
+        assertTrue(why != null && why.contains("to F1, 2 lines past"), why);
+        why = MissingVariationFinder.leaksOut(root, List.of(List.of("B B3", "W A6")));
+        assertTrue(why != null && why.contains("to A6"), why);
     }
 
     @Test

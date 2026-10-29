@@ -55,7 +55,7 @@ public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
     // (crawl.recheck): goes up with every change to how moves are judged
-    static final int JUDGING_VERSION = 4;
+    static final int JUDGING_VERSION = 5;
 
     private final Properties props;
     private final ChoiceParams params;

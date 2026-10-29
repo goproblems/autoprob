@@ -8,6 +8,7 @@ import java.awt.Point;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -139,6 +140,63 @@ class RegimeWalkerTest {
         Point d5 = Intersection.gtp2point("D5");
         assertEquals(Set.of(Intersection.gtp2point("D6"), Intersection.gtp2point("C5")),
                 RegimeWalker.liberties(iso.problem.board, d5.x, d5.y));
+    }
+
+    @Test
+    void aKoTheOtherSideCouldTakeIsOneToTakeUnlessItIsDead() throws Exception {
+        // white to play, winning every ko: black could take at E4, and white would take back at
+        // D4 and could fill E4, so the ko is real. katago playing white elsewhere here may be
+        // giving it up, and the walk searches again from white's turn
+        ProblemIsolator.IsolatedProblem iso = new ProblemIsolator.IsolatedProblem();
+        iso.problem = new Node(null);
+        iso.problem.defaultToMoveColor = Intersection.WHITE;
+        for (String s : new String[]{"D5", "C4", "D3"}) put(iso, s, Intersection.BLACK);
+        for (String s : new String[]{"E5", "F4", "E3", "D4"}) put(iso, s, Intersection.WHITE);
+        RegimeWalker walker = new RegimeWalker(iso, null, null);
+        assertTrue(walker.koToTake(iso.problem, Intersection.WHITE));
+        // with black winning every ko, white has none to take
+        assertFalse(walker.koToTake(iso.problem, Intersection.BLACK));
+        // gp-62169 after B5 W B4 B A6: black's take at B5 is a dead ko, which is no ko at all
+        ProblemIsolator.IsolatedProblem dead = problem();
+        Node node = Positions.play(dead, moves("B B5,W B4,B A6"));
+        assertFalse(new RegimeWalker(dead, null, null).koToTake(node, Intersection.WHITE));
+    }
+
+    @Test
+    void aPointBannedByTheKoJustTakenIsNoEye() throws Exception {
+        // gp-62623 after B E18 W D16 B F15 W B19: black takes at D19, white takes back at E19,
+        // black's A19 puts B19 and C19 in atari, white takes it at A18, black takes at D19
+        // again and white takes back. black could take A18 at A19, and white could take that
+        // back but never fill A19; but D19, banned to black for this one move, would capture
+        // B19 and C19 too, so A19 is no dead ko
+        ProblemIsolator.IsolatedProblem iso = fromFile("gp-62623");
+        RegimeWalker walker = new RegimeWalker(iso, null, null);
+        boolean[][] zone = RegimeWalker.zone(iso);
+        List<Point> w = RegimeWalker.neutralPoints(iso, zone, Intersection.WHITE);
+        List<Point> b = RegimeWalker.neutralPoints(iso, zone, Intersection.BLACK);
+        Node node = Positions.play(iso, moves("B E18,W D16,B F15,W B19,B D19," + exchange(w.get(0), b.get(0))
+                + ",W E19,B A19,W A18,B D19," + exchange(w.get(1), b.get(1)) + ",W E19"));
+        Point a19 = Intersection.gtp2point("A19");
+        assertFalse(node.legalMove(Intersection.gtp2point("D19")));
+        assertTrue(RegimeWalker.neverEnds(node, a19));
+        assertFalse(RegimeWalker.onlyAKo(node, a19));
+        assertEquals(Set.of(), walker.deadKos(node, Intersection.WHITE));
+    }
+
+    private static String exchange(Point mine, Point theirs) {
+        return "W " + Intersection.toGTPloc(mine.x, mine.y, 19) + ",B " + Intersection.toGTPloc(theirs.x, theirs.y, 19);
+    }
+
+    @Test
+    void twoKosTakenFromOnePositionAreADoubleKo() {
+        // the other side's takes, by the position taken from: taking the same ko again from
+        // there is only a repeat, but with another ko taken from there too it is a double ko
+        Set<String> taken = new HashSet<>(Set.of("here|B D19"));
+        assertFalse(RegimeWalker.anotherKo(taken, "here", "B D19"));
+        taken.add("there|B A19");
+        assertFalse(RegimeWalker.anotherKo(taken, "here", "B D19"));
+        taken.add("here|B A19");
+        assertTrue(RegimeWalker.anotherKo(taken, "here", "B D19"));
     }
 
     @Test

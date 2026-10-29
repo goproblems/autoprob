@@ -36,6 +36,24 @@ import autoprob.katastruct.MoveInfo;
 // again; when it takes the same ko again from the same position, that capture is forbidden
 // there and it has to play something else.
 //
+// unless it has taken another ko from that position as well: then it can take one whenever
+// the favored side takes back the other, needing no threat, and the favored side never gets
+// the move to end either. like a ko the favored side could take back but never fill (see
+// below), such a double ko goes against it: the line ends with the other side's take, as
+// katago sees the position there, with the favored side to play and no threat. in gp-62623,
+// after B E18 W D16 B F15 W B19, black takes at D19 and white takes back at E19; black's A19
+// puts B19 and C19 in atari, and white takes it at A18; then black takes at D19 again, and
+// when white takes back, takes A18 at A19.
+//
+// katago can also give up a ko the favored side has taken back: sure of losing it for want of
+// threats, it plays the favored side elsewhere, and its view of the position counts the ko
+// lost. so when the favored side's first move on katago's line, after the other side's, is
+// away from the problem while the other side has a ko to take, the line is played to there and
+// searched again from the favored side's turn, where katago weighs its moves in full. in
+// gp-62613, after white takes back the ko at A4, katago's line went on B C2 with white
+// elsewhere and black killing; searched from white's turn, white answers at A2 or C4, black
+// has to take the ko again, and white wins it.
+//
 // a ko the favored side could take back but never end is no ko (deadKos): the stones it
 // decides are dead as they stand, and taking it gains the other side nothing either, since
 // the favored side takes it back. katago, sure of winning it on a board without threats,
@@ -103,7 +121,8 @@ public class RegimeWalker {
         List<String> pv = List.of();
         StatusJudge.Status status = StatusJudge.Status.FAIL;
         double margin = 0;
-        for (int step = 0; step < MAX_STEPS; step++) {
+        boolean settle = false; // a double ko: the line ends where the next look sees it
+        for (int step = 0; step < MAX_STEPS || settle; step++) {
             Node first = null;
             try {
                 Node node = iso.problem;
@@ -118,20 +137,31 @@ public class RegimeWalker {
                 if (kar.isError()) return new Walk(StatusJudge.Status.FAIL, line, List.of(), kar, exchanges, 0);
                 status = judge.status(node, kar);
                 margin = judge.margin(node, kar);
+                pv = bestLine(node, kar);
+                if (settle) break;
 
                 // the first ko the other side takes on katago's line, or the first place on it
-                // where a dead ko comes up, which katago's search here was free to take
-                pv = bestLine(node, kar);
+                // where a dead ko comes up, which katago's search here was free to take, or
+                // where the favored side gives up a ko the other side could take
                 int k = -1;
                 int d = -1;
+                int a = -1;
                 String from = null;
                 Node cur = node;
                 Node pvFirst = null;
+                boolean favoredMoved = false;
                 try {
                     for (int i = 0; i < pv.size(); i++) {
                         String m = pv.get(i);
                         Point p = Intersection.gtp2point(m.substring(2));
                         if (!cur.legalMove(p)) break;
+                        if (m.startsWith(favored) && !favoredMoved) {
+                            favoredMoved = true;
+                            if (i > 0 && !inZone(m) && koToTake(cur, favoredColor)) {
+                                a = i;
+                                break;
+                            }
+                        }
                         String before = zoneKey(cur);
                         cur = cur.addBasicMove(p.x, p.y);
                         if (pvFirst == null) pvFirst = cur;
@@ -153,9 +183,21 @@ public class RegimeWalker {
                     line.addAll(pv.subList(0, d + 1));
                     continue;
                 }
+                if (a >= 0) {
+                    // play to the favored side's turn and search again from there
+                    line.addAll(pv.subList(0, a));
+                    continue;
+                }
                 if (k < 0) break; // no ko the other side keeps: this is where the line settles
 
                 if (!taken.add(from + "|" + pv.get(k))) {
+                    if (anotherKo(taken, from, pv.get(k))) {
+                        // a double ko: the favored side never gets the move to end either ko,
+                        // so the line ends with this take, the favored side without a threat
+                        line.addAll(pv.subList(0, k + 1));
+                        settle = true;
+                        continue;
+                    }
                     // taking it again from the same position: the favored side would take it
                     // back every time, so the other side has to play something else there
                     line.addAll(pv.subList(0, k));
@@ -317,6 +359,34 @@ public class RegimeWalker {
         }
     }
 
+    // whether the side not favored, were it its turn at the node, could take a ko the favored
+    // side would have to take back: one that is not dead
+    boolean koToTake(Node node, int favoredColor) throws Exception {
+        Node at = node;
+        Node pass = null;
+        if (node.getToMove() == favoredColor) {
+            pass = node.addBasicMove(19, 19);
+            at = pass;
+        }
+        try {
+            Set<String> takes = koTakes(at);
+            takes.removeAll(deadKos(node, favoredColor));
+            return !takes.isEmpty();
+        } finally {
+            if (pass != null) node.removeChildNode(pass);
+        }
+    }
+
+    // whether the other side has taken another ko from the same position as the take: the
+    // favored side took each back to it, so the other side can take one whenever it takes back
+    // the other, a double ko
+    static boolean anotherKo(Set<String> taken, String from, String take) {
+        for (String t : taken) {
+            if (t.startsWith(from + "|") && !t.equals(from + "|" + take)) return true;
+        }
+        return false;
+    }
+
     // the points where the side to play at the node would take a ko
     private Set<String> koTakes(Node node) throws Exception {
         Set<String> out = new HashSet<>();
@@ -386,7 +456,10 @@ public class RegimeWalker {
     // whether the side to play at the node can only ever take the ko at k there: the other
     // stones next to k have no liberty but k the taker could fill, only eyes it may not play
     // in, so taking there never captures more than the one stone. in gp-32711, after B T16,
-    // black takes T17 at T18, but once it fills S19, T18 captures T19 and S18 as well
+    // black takes T17 at T18, but once it fills S19, T18 captures T19 and S18 as well. a point
+    // banned only by a ko just taken is no eye: the ban is over a move later. in gp-62623,
+    // once white takes back at E19, black's take at A19 captures only A18, but D19, banned to
+    // black for that one move, would capture B19 and C19 next to it
     static boolean onlyAKo(Node node, Point k) {
         for (int[] dir : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
             int x = k.x + dir[0], y = k.y + dir[1];
@@ -396,10 +469,19 @@ public class RegimeWalker {
             Set<Point> libs = liberties(node.board, x, y);
             if (libs.size() == 1) continue; // the stone the ko takes
             for (Point l : libs) {
-                if (!l.equals(k) && node.legalMove(l)) return false;
+                if (!l.equals(k) && playable(node, l)) return false;
             }
         }
         return true;
+    }
+
+    // whether the side to play at the node could play at p, but for a ban by the ko just taken
+    static boolean playable(Node node, Point p) {
+        try {
+            return ((Board) node.board.clone()).makeMove(p.x, p.y, node.getToMove());
+        } catch (CloneNotSupportedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     // the liberties of the group with a stone at (x0, y0)

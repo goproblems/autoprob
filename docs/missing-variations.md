@@ -175,7 +175,18 @@ fills an eye of its own, worth nothing under area scoring) and takes the ko back
 not left to decide the retake: it would weigh it as if that exchange were the last threat,
 and pass it up whenever the other side has threats near the problem. The other side may
 then use its own threats and take the ko again; a ko taken again from the same position is
-forbidden there.
+forbidden there, unless the other side has taken another ko from there too (a double ko,
+below).
+
+KataGo can also give up a ko the winning side has taken back. Sure of losing it for want of
+threats, it plays that side elsewhere, and its view of the position counts the ko lost. So
+when that side's first move on KataGo's line comes after the other side's and is away from
+the problem, while the other side has a ko to take, the walk plays to there and searches
+again from that side's turn. In gp-62613, after B B4, W B5, Black's C6 was judged clean.
+After W C5, B B1, W A4, B A3, W A6, Black takes the ko at A5, and once White had taken it
+back at A4, KataGo's line went on B C2 with White elsewhere and Black killing. Searched from
+White's turn, White answers at A2 or C4, Black has to take the ko again, and C6 is only a
+ko, as the author has it.
 
 A ko the side winning every ko can take back but never end is no ko. In gp-62169, after
 B5, W B4, B A6, White's group has one eye, at D4. White can retake at B6 whenever Black
@@ -198,6 +209,22 @@ In gp-32711, after B T16, Black can take T17 at T18. But once Black fills S19, T
 T19 and S18 too, and barring the point would bar that capture. Barring a ko the taker needs
 does no harm, since with the other side winning every ko the taker could not keep it
 anyway: gp-62080's D1 is barred, and B1 still comes out a ko.
+
+Two kos can make a double ko. In gp-62623 (on the site six rows lower: E12, D10, F9, B13),
+after B E18, W D16, B F15, W B19, Black takes at D19 and White takes back at E19. Black's
+A19 then puts B19 and C19 in atari, and White has to take it at A18. Now Black takes at D19
+again without a threat, since White's last capture was at A18, and when White takes back
+at E19, Black takes A18 at A19. Black can take one ko whenever White takes back the other,
+so White never gets the move to fill either. Like a ko it can take back but never fill, the
+double ko goes against White: F15 kills cleanly, as B19 and D19 do. The walk sees a double
+ko when the other side has taken two different kos from the same position, each taken back
+to it, and ends the line with the other side's take, as KataGo sees the position there,
+with the winning side to play and no threat.
+
+Right after White's retake at E19, D19 is banned to Black for that one move. So the dead-ko
+test counts a point banned only by the ko just taken as one the taker could fill. Otherwise
+A19 would look like a dead ko there, since White can never fill it, and barring it would
+take Black's second ko away.
 
 Leaving dead kos to the taker, with no exchange for the other side, was tried and dropped.
 It hands the taker kos it needs to win, as in gp-32711's S16: White can never fill T19, but
@@ -396,7 +423,7 @@ bash gotool.sh cmd=levels problem=gp-62169,gp-62080
 ```
 
 The problems come from `sample_problems/`. A full run takes about 25 minutes. Run it after
-any change to how moves are judged. gp-10330's Q3 misses in some runs (see
+any change to how moves are judged. gp-10330's Q3 and gp-62623's D19 miss in some runs (see
 [Caveats](#caveats)).
 
 ## Caveats
@@ -413,6 +440,10 @@ reported, so some missing variations go unnoticed.
 - The deviations cover the first six moves of a line and three tries at each turn. A ko
   the solver walks into further on, which it could have avoided, is missed: gp-10330's Q3
   line reaches a ko ten moves on, and Q3 comes out a ko or worse in some runs.
+- KataGo, sure of winning a ko for want of threats, can play elsewhere while the other
+  side fills its liberties, and the deviations do not always find the answer. gp-62623's
+  D19 came out a ko in one run of five, through W G19, though Black's E19 and D17 both
+  kill against it.
 - Ko levels are not split by steps. Who takes first only counts against a found move whose
   ko is worse than the author's.
 - The exchange rule reads "touches the fight" off the board: next to a stone at stake, or

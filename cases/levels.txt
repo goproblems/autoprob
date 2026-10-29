@@ -35,3 +35,8 @@ gp-62169 | B B5,W B4 | B A6 CLEAN
 # gp-62860 (13x13, rows +6): the answer is a seki; after E2, W E3, F2 makes it, while black's E1 and D2 leave white alive outright (adam)
 gp-62860 | start | B E2 SEKI
 gp-62860 | B E2,W E3 | B F2 SEKI, B E1 FAIL, B D2 FAIL
+# gp-62613 (13x13, lower left): after B4, W B5, A5 kills cleanly; C6 is only a ko: W C5, B B1, W A4, B A3, W A6, and white wins the ko at A5 (adam)
+gp-62613 | B B4,W B5 | B A5 CLEAN, B C6 !CLEAN
+# gp-62623 (13x13, upper left: the site's E12 is E18 here): after E18, W D16, F15 kills as well as B19 and D19 (adam approved it in the crawl review): against W B19, black's D19 and A19 make a double ko white can never end
+# D19 came out a ko in one run of five, through W G19, though black's E19 and D17 both kill against it
+gp-62623 | B E18,W D16 | B F15 CLEAN, B B19 CLEAN, B D19 CLEAN

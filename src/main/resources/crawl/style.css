@@ -1,11 +1,13 @@
 :root {
   --bg: #f6f5f2; --panel: #ffffff; --text: #22201c; --muted: #6b665d; --line: #dcd8cf;
   --accent: #2f6fd6; --good: #2e8b57; --bad: #c0392b; --wood: #e3c27a; --grid: #5a4520;
+  --t-right: #65a30d; --t-wrong: #dc2626; --tree-bg: #f6f5f2; --t-black-edge: #000; --t-fade: .55;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #1b1a18; --panel: #24221f; --text: #ebe7df; --muted: #a39d92; --line: #3a3732;
     --accent: #6ea3ff; --good: #5cc28a; --bad: #ef6b5e; --wood: #c9a65d; --grid: #3d2e12;
+    --t-right: #84cc16; --t-wrong: #f87171; --tree-bg: #34312c; --t-black-edge: #a39d92; --t-fade: .75;
   }
 }
 * { box-sizing: border-box; }
@@ -52,6 +54,43 @@ figure.on .goban { outline: 2px solid var(--accent); outline-offset: 2px; }
 .goban .mark-last { fill: none; stroke: #e0402f; stroke-width: 2.5; }
 .goban .label { font-size: 11px; text-anchor: middle; fill: #111; font-weight: 600; }
 .goban .label.on-black { fill: #fff; }
+.goban .next { cursor: pointer; }
+.goban .mark-next { fill: none; stroke-width: 3; }
+.goban .mark-next.right { stroke: var(--t-right); }
+.goban .mark-next.added, .goban .mark-next.changed { stroke: var(--accent); }
+.goban .mark-next.changed { stroke-dasharray: 4 3; }
+.goban .mark-next.wrong { stroke: var(--t-wrong); stroke-width: 1.2; }
+h3 .to-tree, h3 .wrong-toggle { margin-left: 10px; font-weight: normal; font-size: 12px; color: var(--muted); }
+h3 .to-tree { border: 1px solid var(--line); background: transparent; border-radius: 4px; padding: 1px 7px; cursor: pointer; }
+.legend .sw { display: inline-block; width: 16px; border-top: 3px solid; margin: 0 4px 0 8px; vertical-align: 3px; }
+.legend .sw.right { border-color: var(--t-right); }
+.legend .sw.added { border-color: var(--accent); }
+.legend .sw.changed { border-color: var(--accent); border-top-style: dashed; }
+.legend .sw.wrong { border-color: var(--t-wrong); opacity: .6; }
+.legend .sw.end { width: 10px; height: 10px; border: none; border-radius: 50%; background: var(--t-right); vertical-align: -1px; }
+.tree-wrap { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.tree { flex: 1 1 260px; min-width: 0; overflow: auto; background: var(--tree-bg); border: 1px solid var(--line); border-radius: 6px; }
+.tree svg { display: block; }
+.tree .tnode { cursor: pointer; }
+.tree .edge { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tree .edge.thick { stroke-width: 4.5; }
+.tree .edge.right { stroke: var(--t-right); }
+.tree .edge.added, .tree .edge.changed { stroke: var(--accent); }
+.tree .edge.changed { stroke-dasharray: 5 5; }
+.tree .edge.wrong { stroke: var(--t-wrong); stroke-opacity: .55; }
+.tree .halo.right { fill: var(--t-right); }
+.tree .halo.added { fill: var(--accent); }
+.tree .tsel { fill: #7dd3fc; }
+.tree .house { fill: var(--muted); }
+.tree .tpass { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.tree .tbg { fill: var(--tree-bg); }
+.tree .tstone { stroke-width: .8; }
+.tree .tstone.b { fill: #1f1f1f; stroke: var(--t-black-edge); }
+@media (prefers-color-scheme: dark) { .tree .tstone.b { stroke-width: 1.3; } }
+.tree .tstone.w { fill: #f2f2f2; stroke: #838383; }
+.tree .tstone.wrong { opacity: var(--t-fade); }
+.tree-note { color: var(--muted); margin: 6px 0 0; min-height: 1.45em; }
+.tree-note q { color: var(--text); }
 .confidence ul { margin: 0; padding-left: 18px; }
 .confidence li.for::marker { content: "+  "; color: var(--good); }
 .confidence li.against::marker { content: "−  "; color: var(--bad); }

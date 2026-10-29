@@ -68,10 +68,19 @@ it as wrong.
 `cmd=crawl-review` serves a page (`review.port`, 8770) with the suggestions, the surest first.
 For each one it shows:
 
+- the problem's tree as the suggestion leaves it, laid out like the redo review's (depth runs
+  right, branches stack downward): green lines lead to a correct end and red ones only to
+  wrong ends, blue is what the suggestion adds, and dashed blue is the problem's own move on a
+  wrong line that the suggestion carries on to a correct end (a move the problem had as
+  wrong). A halo marks the end of a correct line. Next to the tree is the board at the
+  selected node, with the next moves circled in the same colors, and under it the node's
+  comment. Click a node or a circle to go there; ←/→ walk the thick line, which follows what
+  the suggestion adds unless ↑/↓ pick another branch. It starts at the first position the
+  suggestion adds lines at, and the problem's wrong lines can be hidden;
 - each position on the problem's own board: the missing moves (blue squares) and the moves
-  the problem accepts there (green);
+  the problem accepts there (green), and a button to select it in the tree;
 - each line it adds, to step through move by move with the arrows under it. Stepping a line
-  selects it, and then the arrow keys step it too;
+  selects it, and then the arrow keys step it too (until the tree is clicked);
 - the confidence and the reasons for and against it;
 - the comment that goes with it, which can be edited.
 

@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.TreeMap;
 
@@ -24,14 +25,16 @@ import com.sun.net.httpserver.HttpServer;
 
 import autoprob.go.Intersection;
 import autoprob.go.Node;
+import autoprob.go.action.MoveAction;
 import autoprob.go.parse.Parser;
 import autoprob.go.parse.SmallBoard;
 
 // cmd=crawl-review: a local page for going through the crawl's suggestions (crawl.dir) before
-// any goes to the site: each with its positions on the problem's own board, the lines it adds
-// to step through, how far to trust it and why, and its comment to edit. approving or rejecting
-// one writes approvals/gp-<id>.json, which cmd=crawl-submit sends from. review.port (8770),
-// review.by the name kept with each decision (the login name). no engine needed.
+// any goes to the site: each with the problem's tree as it would leave it, its positions on the
+// problem's own board, the lines it adds to step through, how far to trust it and why, and its
+// comment to edit. approving or rejecting one writes approvals/gp-<id>.json, which
+// cmd=crawl-submit sends from. review.port (8770), review.by the name kept with each decision
+// (the login name). no engine needed.
 public class CrawlReviewServer {
     private static final String COLUMNS = "ABCDEFGHJKLMNOPQRST";
 
@@ -147,7 +150,54 @@ public class CrawlReviewServer {
         }
         out.put("places", places);
         out.put("columns", COLUMNS.substring(0, d.boardSize));
+        try {
+            List<Map<String, Object>> tree = new ArrayList<>();
+            tree(new Parser().parse(d.suggestedSgf), new Parser().parse(d.originalSgf), -1, d, tree);
+            out.put("tree", tree);
+        } catch (Exception e) {
+            out.put("treeError", String.valueOf(e.getMessage()));
+        }
         return out;
+    }
+
+    // the problem's tree as the suggestion leaves it, on the problem's own board, node by node
+    // with each node's parent before it: its move, whether the suggestion adds it (was, the
+    // same node in the problem as the site has it, is null), whether it ends a correct line,
+    // its comment and the board there
+    private static void tree(Node node, Node was, int parent, SuggestionDraft d, List<Map<String, Object>> out) {
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("parent", parent);
+        MoveAction m = node.getMoveAction();
+        if (m != null) {
+            String color = m.stone == Intersection.BLACK ? "B " : m.stone == Intersection.WHITE ? "W " : "";
+            if (node.board.inBoard(m.loc.x, m.loc.y)) {
+                n.put("move", color + COLUMNS.charAt(m.loc.x) + (d.boardSize - m.loc.y));
+                n.put("x", m.loc.x);
+                n.put("y", m.loc.y);
+            } else {
+                n.put("move", color + "pass");
+            }
+        }
+        n.put("added", was == null);
+        n.put("right", node.result == Intersection.RIGHT);
+        if (node.comment != null && !node.comment.isBlank()) n.put("comment", node.comment.strip());
+        n.put("rows", rows(node, d.boardSize, 0, 0));
+        int index = out.size();
+        out.add(n);
+        for (Node c : node.babies) tree(c, was == null ? null : sameMove(was, c), index, d, out);
+    }
+
+    // the child of the node that plays the move the other node plays, or null
+    private static Node sameMove(Node node, Node other) {
+        for (Node c : node.babies) {
+            if (Objects.equals(moveKey(c), moveKey(other))) return c;
+        }
+        return null;
+    }
+
+    private static String moveKey(Node node) {
+        MoveAction m = node.getMoveAction();
+        return m == null ? null : m.stone + " " + m.loc.x + " " + m.loc.y;
     }
 
     Object decide(String name, String body) throws Exception {
@@ -187,11 +237,16 @@ public class CrawlReviewServer {
 
     // the problem's board at the node, a row of X, O and . each, top first
     private static List<String> rows(Node node, SuggestionDraft d) {
+        return rows(node, d.boardSize, d.dx, d.dy);
+    }
+
+    // the same for a board of the size that sits at dx, dy on the node's
+    private static List<String> rows(Node node, int size, int dx, int dy) {
         List<String> out = new ArrayList<>();
-        for (int y = 0; y < d.boardSize; y++) {
+        for (int y = 0; y < size; y++) {
             StringBuilder sb = new StringBuilder();
-            for (int x = 0; x < d.boardSize; x++) {
-                int s = node.board.board[x + d.dx][y + d.dy].stone;
+            for (int x = 0; x < size; x++) {
+                int s = node.board.board[x + dx][y + dy].stone;
                 sb.append(s == Intersection.BLACK ? 'X' : s == Intersection.WHITE ? 'O' : '.');
             }
             out.add(sb.toString());

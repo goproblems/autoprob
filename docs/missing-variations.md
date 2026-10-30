@@ -190,6 +190,15 @@ then use its own threats and take the ko again; a ko taken again from the same p
 forbidden there, unless the other side has taken another ko from there too (a double ko,
 below).
 
+The exchanges need eyes in each side's fill, so the fortress keeps eight for each color
+(`BalancedFortress.EYES`), splitting its fill the other way when that balances better. It
+once balanced the areas alone. In gp-62416 the empty zone counted to Black's wall, the whole
+fill went to White, and Black had no eye to answer a threat with. After Q19, W P19, Black's
+P18 took Q18 and White could never be given the ko back, so Q19 came out a clean kill. On the
+raw board KataGo leaves White's stones about half alive after Q19 and Q16, against the
+author's O17, which kills. With eyes for both sides, both come out a ko. Should the eyes still
+run out, a ko the solver took that the opponent could not be given back counts for nothing.
+
 KataGo can also give up a ko the winning side has taken back. Sure of losing it for want of
 threats, it plays that side elsewhere, and its view of the position counts the ko lost. So
 when that side's first move on KataGo's line comes after the other side's and is away from

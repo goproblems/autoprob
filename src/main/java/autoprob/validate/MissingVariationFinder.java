@@ -55,7 +55,7 @@ public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
     // (crawl.recheck): goes up with every change to how moves are judged
-    static final int JUDGING_VERSION = 6;
+    static final int JUDGING_VERSION = 7;
     // how many lines past the problem's stones and the author's moves a suggested line may play
     static final int OUTSIDE = 1;
 

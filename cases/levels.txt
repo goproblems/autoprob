@@ -40,3 +40,6 @@ gp-62613 | B B4,W B5 | B A5 CLEAN, B C6 !CLEAN
 # gp-62623 (13x13, upper left: the site's E12 is E18 here): after E18, W D16, F15 kills as well as B19 and D19 (adam approved it in the crawl review): against W B19, black's D19 and A19 make a double ko white can never end
 # D19 came out a ko in one run of five, through W G19, though black's E19 and D17 both kill against it
 gp-62623 | B E18,W D16 | B F15 CLEAN, B B19 CLEAN, B D19 CLEAN
+# gp-62416 (19x19, upper right): O17 kills cleanly; Q19 and Q16 only reach a ko (adam): W P19, and black's P18 takes Q18. the fill had no black eyes, so white could never be given the ko back, and it came out a clean kill. deep in the main line P18 kills too
+gp-62416 | start | B O17 CLEAN, B Q19 KO, B Q16 KO
+gp-62416 | B O17,W O18,B N17,W Q19,B Q16,W P16 | B P18 CLEAN, B N19 CLEAN

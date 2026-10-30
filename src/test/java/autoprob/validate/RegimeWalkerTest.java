@@ -163,6 +163,16 @@ class RegimeWalkerTest {
     }
 
     @Test
+    void eachSideKeepsEyesInTheFillForTheFreeExchanges() throws Exception {
+        // gp-62416: the empty zone counts to black's wall, so balancing the areas alone gave
+        // the whole fill to white, and white could never be given back a ko black took
+        ProblemIsolator.IsolatedProblem iso = fromFile("gp-62416");
+        boolean[][] zone = RegimeWalker.zone(iso);
+        assertTrue(RegimeWalker.neutralPoints(iso, zone, Intersection.BLACK).size() >= BalancedFortress.EYES);
+        assertTrue(RegimeWalker.neutralPoints(iso, zone, Intersection.WHITE).size() >= BalancedFortress.EYES);
+    }
+
+    @Test
     void aPointBannedByTheKoJustTakenIsNoEye() throws Exception {
         // gp-62623 after B E18 W D16 B F15 W B19: black takes at D19, white takes back at E19,
         // black's A19 puts B19 and C19 in atari, white takes it at A18, black takes at D19

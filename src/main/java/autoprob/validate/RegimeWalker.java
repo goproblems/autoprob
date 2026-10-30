@@ -34,7 +34,10 @@ import autoprob.katastruct.MoveInfo;
 // pass it up whenever the other side has threats near the problem (gp-36582, where white let
 // black keep the corner's ko). the other side may then use its own threats and take the ko
 // again; when it takes the same ko again from the same position, that capture is forbidden
-// there and it has to play something else.
+// there and it has to play something else. the fortress keeps each side a few eyes for the
+// exchanges (BalancedFortress.EYES); should they run out, a ko the solver took that the
+// opponent could not be given back is no result of the solver's (gp-62416, where the whole
+// fill was white, and black's take at P18 stood).
 //
 // unless it has taken another ko from that position as well: then it can take one whenever
 // the favored side takes back the other, needing no threat, and the favored side never gets
@@ -107,6 +110,9 @@ public class RegimeWalker {
         Map<String, Set<String>> forbidden = new HashMap<>(); // position -> ko captures not allowed there
         Set<String> taken = new HashSet<>();                  // kos the other side took, and from where
         int exchanges = 0;
+        // a ko the other side took that the favored side could not be given back, for want of a
+        // free exchange: it stands only in katago's line
+        boolean unanswered = false;
         // the last move may itself take a ko the favored side can take back
         if (!line.isEmpty() && !line.get(line.size() - 1).startsWith(favored) && takesKo(line)) {
             List<String> ex = exchange(line, favoredColor);
@@ -115,6 +121,8 @@ public class RegimeWalker {
                 line.addAll(ex);
                 exchanges++;
                 retake(line, favored, back);
+            } else {
+                unanswered = true;
             }
         }
         KataAnalysisResult kar = null;
@@ -207,7 +215,11 @@ public class RegimeWalker {
                 List<String> through = new ArrayList<>(line);
                 through.addAll(pv.subList(0, k + 1));
                 List<String> ex = exchange(through, favoredColor);
-                if (ex == null) break; // out of neutral points: the line stays where it is
+                if (ex == null) {
+                    // out of neutral points: the line stays where it is
+                    unanswered = true;
+                    break;
+                }
                 String back = koPoint(through);
                 line = through;
                 line.addAll(ex);
@@ -216,6 +228,12 @@ public class RegimeWalker {
             } finally {
                 if (first != null) iso.problem.removeChildNode(first);
             }
+        }
+        // the favored side wins every ko: one the solver took and kept only because the
+        // opponent could not be given it back is no result of the solver's
+        if (unanswered && favoredColor != iso.solverColor) {
+            status = StatusJudge.Status.FAIL;
+            margin = 0;
         }
         return new Walk(status, line, pv, kar, exchanges, margin);
     }

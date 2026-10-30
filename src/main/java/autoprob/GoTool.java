@@ -66,6 +66,8 @@ public class GoTool {
             runTestScenarioCommand(props);
         } else if (command.equals("testscenariocase")) {
             runTestScenarioCaseCommand(props);
+        } else if (List.of("analysishandler", "reviewhandler").contains(command)) {
+            new autoprob.analysis.AnalysisHandler(props).run();
         } else if (command.equals("scenariohandler")) {
             runScenarioHandlerCommand(props);
         } else if (command.equals("recalculatenodes")) {

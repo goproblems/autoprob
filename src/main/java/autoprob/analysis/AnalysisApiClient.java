@@ -1,0 +1,262 @@
+package autoprob.analysis;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+/** HTTP transport for the optional queue bridge; legacy ApiClient is unchanged. */
+public final class AnalysisApiClient {
+
+    private Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    private final AnalysisJwtAuthClient jwtAuthClient = new AnalysisJwtAuthClient();
+
+    public class ApiResponse<T> {
+        private int statusCode;
+        private T data;
+        private String rawContent;
+        private String errorMessage;
+        
+        public ApiResponse(int statusCode, T data, String rawContent) {
+            this.statusCode = statusCode;
+            this.data = data;
+            this.rawContent = rawContent;
+        }
+        
+        public ApiResponse(int statusCode, String errorMessage, String rawContent) {
+            this.statusCode = statusCode;
+            this.errorMessage = errorMessage;
+            this.rawContent = rawContent;
+        }
+        
+        public boolean isSuccess() {
+            return statusCode >= 200 && statusCode < 300;
+        }
+        
+        public int getStatusCode() {
+            return statusCode;
+        }
+        
+        public T getData() {
+            return data;
+        }
+        
+        public String getRawContent() {
+            return rawContent;
+        }
+        
+        public String getErrorMessage() {
+            return errorMessage;
+        }
+    }
+    
+    public String buildUrl(String endpointKey, Map<String, String> pathParams, String queryString, Properties props) {
+        String baseUrl = props.getProperty("baseurl");
+        String endpoint = props.getProperty(endpointKey);
+        
+        if (baseUrl == null || endpoint == null) {
+            throw new RuntimeException("Missing required properties: baseurl or " + endpointKey);
+        }
+        
+        if (pathParams != null) {
+            for (Map.Entry<String, String> entry : pathParams.entrySet()) {
+                endpoint = endpoint.replace("{" + entry.getKey() + "}", entry.getValue());
+            }
+        }
+        
+        String url = baseUrl + (endpoint.startsWith("/") ? endpoint.substring(1) : endpoint);
+        
+        if (queryString != null && !queryString.isEmpty()) {
+            url += queryString;
+        }
+        
+        return url;
+    }
+    
+    public <T> ApiResponse<T> makeApiRequest(String endpointKey, String method, 
+            Map<String, String> pathParams, String queryString, String requestBody, 
+            java.lang.reflect.Type responseType, Properties props) throws Exception {
+        boolean debug = Boolean.parseBoolean(props.getProperty("debug", "false"));
+        boolean printCurl = Boolean.parseBoolean(props.getProperty("curl", "false"));
+        String urlString = buildUrl(endpointKey, pathParams, queryString, props);
+
+        boolean josekiApi = endpointKey.startsWith("api.joseki.");
+        boolean jwtCredentialsConfigured = false;
+        String apiKey = "";
+        String bearerToken = "";
+        if (josekiApi) {
+            jwtCredentialsConfigured = jwtAuthClient.hasConfiguredCredentials(props);
+            if (!jwtCredentialsConfigured) {
+                throw new RuntimeException(
+                    "Missing Josekipedia credentials: configure api.joseki.username and api.joseki.password"
+                );
+            }
+            bearerToken = jwtAuthClient.getAccessToken(props);
+        } else {
+            apiKey = props.getProperty("apikey", "").trim();
+            if (apiKey.isEmpty()) {
+                throw new RuntimeException("Missing required property: apikey");
+            }
+        }
+        
+        if (Boolean.parseBoolean(props.getProperty("api.debug", "false"))) {
+            System.out.println("Calling API URL: " + urlString);
+        }
+
+        if (printCurl) {
+            StringBuilder curlCmd = new StringBuilder("curl -X " + method + " \\\n");
+            curlCmd.append("  \"" + urlString + "\" \\\n");
+            if (!apiKey.isEmpty()) {
+                curlCmd.append("  -H \"X-Api-Key: <redacted>\" \\\n");
+            }
+            if (!bearerToken.isEmpty()) {
+                curlCmd.append("  -H \"Authorization: Bearer <redacted>\" \\\n");
+            }
+            curlCmd.append("  -H \"Accept: application/json\" \\\n");
+            
+            if ("POST".equals(method) && requestBody != null && !requestBody.isEmpty()) {
+                curlCmd.append("  -H \"Content-Type: application/json\" \\\n");
+                curlCmd.append("  -d '" + requestBody + "'");
+            }
+            
+            System.out.println("\nEquivalent curl command:");
+            System.out.println(curlCmd.toString());
+            System.out.println();
+        }
+
+        ApiResponse<T> response = executeApiRequest(
+            method,
+            urlString,
+            requestBody,
+            responseType,
+            apiKey,
+            bearerToken,
+            debug,
+            props
+        );
+        if (response.getStatusCode() == 401 && jwtCredentialsConfigured) {
+            bearerToken = jwtAuthClient.refreshAfterUnauthorized(props, bearerToken);
+            response = executeApiRequest(
+                method,
+                urlString,
+                requestBody,
+                responseType,
+                apiKey,
+                bearerToken,
+                debug,
+                props
+            );
+        }
+
+        return response;
+    }
+
+    private <T> ApiResponse<T> executeApiRequest(
+            String method,
+            String urlString,
+            String requestBody,
+            java.lang.reflect.Type responseType,
+            String apiKey,
+            String bearerToken,
+            boolean debug, Properties props) throws Exception {
+        URL url = new URL(urlString);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod(method);
+        if (!apiKey.isEmpty()) {
+            connection.setRequestProperty("X-Api-Key", apiKey);
+        }
+        if (!bearerToken.isEmpty()) {
+            connection.setRequestProperty("Authorization", "Bearer " + bearerToken);
+        }
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setConnectTimeout(Integer.parseInt(props.getProperty("api.connect.timeout.ms", "60000")));
+        connection.setReadTimeout(Integer.parseInt(props.getProperty("api.read.timeout.ms", "60000")));
+        
+        if ("POST".equals(method)) {
+            if (debug) {
+                System.out.println("POST Request body: " + requestBody);
+            }
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setDoOutput(true);
+            
+            if (requestBody != null && !requestBody.isEmpty()) {
+                try (OutputStream os = connection.getOutputStream()) {
+                    byte[] input = requestBody.getBytes("utf-8");
+                    os.write(input, 0, input.length);
+                }
+            } else {
+                connection.getOutputStream().close();
+            }
+        }
+        
+        int responseCode = connection.getResponseCode();
+        if (debug) {
+            System.out.println("Response code: " + responseCode);
+        }
+        
+        String responseContent = readResponseContent(connection, responseCode);
+        if (debug) {
+            System.out.println("Request response: " + responseContent);
+        }
+
+        if (responseCode >= 200 && responseCode < 300) {
+            T parsedResponse = gson.fromJson(responseContent, responseType);
+            return new ApiResponse<>(responseCode, parsedResponse, responseContent);
+        } else {
+            String errorMessage = parseErrorMessage(responseContent);
+            return new ApiResponse<>(responseCode, errorMessage, responseContent);
+        }
+    }
+    
+    public <T> ApiResponse<T> makeGetRequest(String endpointKey, Map<String, String> pathParams, 
+            String queryString, Class<T> responseType, Properties props) throws Exception {
+        return makeApiRequest(endpointKey, "GET", pathParams, queryString, null, responseType, props);
+    }
+    
+    public <T> ApiResponse<T> makeGetRequest(String endpointKey, Map<String, String> pathParams, 
+            String queryString, java.lang.reflect.Type responseType, Properties props) throws Exception {
+        return makeApiRequest(endpointKey, "GET", pathParams, queryString, null, responseType, props);
+    }
+    
+    public <T> ApiResponse<T> makePostRequest(String endpointKey, Map<String, String> pathParams, 
+            String requestBody, Class<T> responseType, Properties props) throws Exception {
+        return makeApiRequest(endpointKey, "POST", pathParams, null, requestBody, responseType, props);
+    }
+    
+    public String readResponseContent(HttpURLConnection connection, int responseCode) throws Exception {
+        StringBuilder responseContent = new StringBuilder();
+        try (BufferedReader reader = (responseCode >= 200 && responseCode < 300) ? 
+             new BufferedReader(new InputStreamReader(connection.getInputStream())) : 
+             new BufferedReader(new InputStreamReader(connection.getErrorStream()))) {
+            
+            String line;
+            while ((line = reader.readLine()) != null) {
+                responseContent.append(line);
+            }
+        }
+        return responseContent.toString();
+    }
+    
+    public String parseErrorMessage(String errorContent) {
+        try {
+            JsonElement jsonElement = new JsonParser().parse(errorContent);
+            JsonObject errorJson = jsonElement.getAsJsonObject();
+            if (errorJson.has("message")) {
+                return errorJson.get("message").getAsString();
+            }
+        } catch (Exception e) {
+        }
+        return errorContent;
+    }
+}

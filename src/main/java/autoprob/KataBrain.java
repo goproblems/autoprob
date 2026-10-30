@@ -25,6 +25,12 @@ public class KataBrain {
 	public String modelPath;
 	private Thread thread;
 
+    /** Allows a separate engine transport to reuse the existing analyzer API. */
+    protected KataBrain() {
+        this.props = new Properties();
+        this.process = null;
+    }
+
 	public KataBrain(Properties props) throws Exception {
 		this(props, null);
 	}

@@ -28,6 +28,7 @@ import com.google.gson.Gson;
 
 import autoprob.ApiClient;
 import autoprob.KataBrain;
+import autoprob.QueryBuilder;
 import autoprob.api.Problem;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
@@ -36,6 +37,7 @@ import autoprob.go.action.MoveAction;
 import autoprob.go.parse.Parser;
 import autoprob.go.parse.SmallBoard;
 import autoprob.katastruct.KataAnalysisResult;
+import autoprob.katastruct.KataQuery;
 
 // cmd=missing-variations: checks a problem's correct moves against what the position allows,
 // and stops at the first position where they disagree. it walks every position on the
@@ -67,6 +69,9 @@ public class MissingVariationFinder {
     private final int replyVisits;   // the quick walk after each of the opponent's answers
     private final int verifyVisits;  // the deeper walks, and everything reported is judged again with them
     private final int replyDist;     // answers this close to a stone at stake or the move are tried
+    private final int rawVisits;     // katago's search on the raw board (RawBoard)
+    private final double rawGap;     // how much less of the stakes a found move may leave there
+    private final double rawGapKo;   // the same where the best is a ko or seki, the stakes half and half
     private final boolean skipKo;
     private final boolean allPositions;
     private KataBrain brain;
@@ -131,6 +136,11 @@ public class MissingVariationFinder {
         List<String> line;      // the walk that shows the result, ko exchanges taken out
         List<List<String>> lines = new ArrayList<>(); // generated lines from the position, starting with the move
         Confidence confidence;  // how far to trust it, for the review before it reaches the site
+        // on the raw board, without the fill: how much of the stakes the move leaves the solver,
+        // and the author's best move there, with how much it leaves (RawBoard)
+        Double raw;
+        String rawAuthorMove;
+        Double rawAuthor;
         // for the review tool: the generator's decisions behind the lines, at from the root
         transient List<DecisionRecord> decisions = new ArrayList<>();
     }
@@ -158,6 +168,9 @@ public class MissingVariationFinder {
         this.replyVisits = Integer.parseInt(props.getProperty("missing.reply_visits", "300"));
         this.verifyVisits = Integer.parseInt(props.getProperty("missing.verify_visits", String.valueOf(2 * visits)));
         this.replyDist = Integer.parseInt(props.getProperty("missing.reply_dist", "2"));
+        this.rawVisits = Integer.parseInt(props.getProperty("missing.raw_visits", "1000"));
+        this.rawGap = Double.parseDouble(props.getProperty("missing.raw_gap", "0.3"));
+        this.rawGapKo = Double.parseDouble(props.getProperty("missing.raw_gap_ko", "0.6"));
         // with skip_ko, positions whose own line goes through a ko are passed over
         this.skipKo = Boolean.parseBoolean(props.getProperty("missing.skip_ko", "false"));
         // with all_positions (the crawl), a problem's every position is checked rather than
@@ -382,6 +395,8 @@ public class MissingVariationFinder {
             o.reason = e.getMessage();
             return null;
         }
+        // the problem on its own board, for the raw-board check
+        Node own = new Parser().parse(sgf);
         if (embedded.moved()) {
             System.out.println("a " + embedded.size() + "x" + embedded.size() + " board, played in the corner of a 19x19 one"
                     + " (columns +" + embedded.dx() + ", rows +" + embedded.dy() + " from the top)");
@@ -420,7 +435,7 @@ public class MissingVariationFinder {
                     continue;
                 }
             }
-            Finding f = findAt(name, sgf, root, judging, pos);
+            Finding f = findAt(name, sgf, root, own, embedded, judging, pos);
             if (f != null) {
                 f.difficulty = difficulty;
                 if (allPositions) {
@@ -463,7 +478,8 @@ public class MissingVariationFinder {
                 new MoveClassifier(iso, walker, verifyVisits, visits, 2 * verifyVisits, replyDist));
     }
 
-    private Finding findAt(String name, String sgf, Node root, Judging j, Position pos) throws Exception {
+    private Finding findAt(String name, String sgf, Node root, Node own, SmallBoard.Embedded board, Judging j, Position pos)
+            throws Exception {
         ProblemIsolator.IsolatedProblem iso = j.iso();
         String where = pos.at().isEmpty() ? "at the start" : "after " + String.join(" ", pos.at());
         Node node;
@@ -599,6 +615,7 @@ public class MissingVariationFinder {
         // before one of them is no answer of its own
         Set<String> working = new HashSet<>();
         for (MoveClassifier.Verdict v : verdicts.values()) if (v.level == top) working.add(v.move);
+        RawBoard raw = new RawBoard(own, board, pos, iso, best == MoveClassifier.Level.CLEAN ? rawGap : rawGapKo);
         for (MoveClassifier.Verdict v : missing) {
             String worse = best == MoveClassifier.Level.KO ? worseKo(j, node, pos, verdicts, v) : null;
             if (worse != null) {
@@ -631,6 +648,7 @@ public class MissingVariationFinder {
             }
             String not = insertedExchange(iso, node, m.lines.isEmpty() ? List.of() : m.lines.get(0), working);
             if (not == null) not = leaksOut(root, m.lines);
+            if (not == null) not = raw.worse(m);
             if (not == null) not = lineFallsShort(j, pos, v, m.lines);
             if (not != null) {
                 System.out.println("  " + where + ": " + pt(v.move) + " " + not + ", so it is not suggested");
@@ -847,6 +865,99 @@ public class MissingVariationFinder {
             }
         }
         return null;
+    }
+
+    // the raw-board check: katago on the problem as it is, on its own board with no fill
+    // around it and a short search, after a found move and after the author's best move at
+    // the position. the isolation can misread a problem the raw board does not (adam's check,
+    // gp-62416: the isolation took Q19 and Q16 for clean kills, while on the raw board they
+    // leave white's stones about half alive, a ko, against the author's O17, which kills them).
+    // with both sides free to play elsewhere there, the numbers run lower than in the
+    // isolation, so only the two moves are compared: a found move that leaves the solver
+    // clearly less of the stakes than the author's does is not suggested. clearly is by gap:
+    // missing.raw_gap (0.3) where the best is clean, missing.raw_gap_ko (0.6) where it is a ko
+    // or seki, the stakes about half and half after any move. on the crawl's 70 found moves,
+    // the most an approved one gave away was 0.17 where the best is clean (gp-62554's C1) and
+    // 0.37 at a ko (gp-62668's Q18); gp-62416's Q19 gave away 0.39, its Q16 0.53
+    private final class RawBoard {
+        private final Node own;
+        private final SmallBoard.Embedded board;
+        private final Position pos;
+        private final ProblemIsolator.IsolatedProblem iso;
+        private final double gap;
+        private boolean looked;
+        private String best;      // the author's move there that leaves the solver the most
+        private Double bestOwned;
+
+        RawBoard(Node own, SmallBoard.Embedded board, Position pos, ProblemIsolator.IsolatedProblem iso, double gap) {
+            this.own = own;
+            this.board = board;
+            this.pos = pos;
+            this.iso = iso;
+            this.gap = gap;
+        }
+
+        // why the move is clearly worse on the raw board than the author's best, or null; the
+        // numbers go with the move
+        String worse(FoundMove m) throws Exception {
+            if (!looked) {
+                looked = true;
+                for (String a : pos.correct()) {
+                    Double o = rawOwnership(brain, own, board, plus(pos.at(), a), iso, rawVisits);
+                    if (o != null && (bestOwned == null || o > bestOwned)) {
+                        best = a;
+                        bestOwned = o;
+                    }
+                }
+            }
+            m.raw = rawOwnership(brain, own, board, plus(pos.at(), m.move), iso, rawVisits);
+            m.rawAuthorMove = best;
+            m.rawAuthor = bestOwned;
+            if (m.raw == null || bestOwned == null || bestOwned - m.raw <= gap) return null;
+            return String.format("leaves the solver %.2f of the stakes on the raw board, without the fill, against %.2f after %s",
+                    m.raw, bestOwned, pt(best));
+        }
+    }
+
+    // how much of the stakes the solver ends with on the raw board after the moves from the
+    // problem's start (on the 19x19 board the finder plays it on), by katago's ownership: on
+    // average, 1 when all go its way and -1 when none do; null when katago cannot say. the raw
+    // board is the problem's own (own, its root there), the size the site has: a 13x13 problem
+    // in a corner of 19x19 has open lines past its far edges that change the fight (gp-62468:
+    // on 19x19 the author's L13 looked the better move, on 13x13 the H11 review approved)
+    static Double rawOwnership(KataBrain brain, Node own, SmallBoard.Embedded board, List<String> moves,
+                               ProblemIsolator.IsolatedProblem iso, int visits) throws Exception {
+        if (iso.stakes.isEmpty() || moves.isEmpty()) return null;
+        Node node = own, first = null;
+        try {
+            for (String m : moves) {
+                Point p = Intersection.gtp2point(m.substring(2));
+                Point q = new Point(p.x - board.dx(), p.y - board.dy());
+                if (!node.legalMove(q)) return null;
+                node = node.addBasicMove(q.x, q.y);
+                if (first == null) first = node;
+            }
+            KataQuery query = new QueryBuilder().buildQueryFromMom(node);
+            query.boardXSize = board.size();
+            query.boardYSize = board.size();
+            query.id = "raw_" + Math.random();
+            query.maxVisits = visits;
+            brain.doQuery(query);
+            KataAnalysisResult kar = brain.getResult(query.id, query.analyzeTurns.get(0));
+            if (kar == null || kar.isError() || kar.ownership == null) return null;
+            int sign = iso.solverColor == Intersection.BLACK ? 1 : -1;
+            return iso.stakes.stream()
+                    .mapToDouble(s -> sign * kar.ownership.get((s.x - board.dx()) + (s.y - board.dy()) * board.size()))
+                    .average().orElse(0);
+        } finally {
+            if (first != null) own.removeChildNode(first);
+        }
+    }
+
+    private static List<String> plus(List<String> moves, String move) {
+        List<String> out = new ArrayList<>(moves);
+        out.add(move);
+        return out;
     }
 
     // the box around the problem's stones and every move of the author's tree: the least x
@@ -1309,6 +1420,11 @@ public class MissingVariationFinder {
             }
             if (m.inFileAsWrong) {
                 System.out.println("  the problem has " + pt(m.move) + ", but on a line that does not end RIGHT, so it is marked wrong");
+            }
+            if (m.raw != null && m.rawAuthor != null) {
+                System.out.println("  on the raw board, without the fill: " + new DecimalFormat("0.00").format(m.raw)
+                        + " of the stakes the solver's, against " + new DecimalFormat("0.00").format(m.rawAuthor)
+                        + " after " + pt(m.rawAuthorMove));
             }
             if (m.line != null && m.line.size() > f.at.size()) {
                 System.out.println("  played out: " + String.join(" ", m.line.subList(f.at.size(), m.line.size()).stream()

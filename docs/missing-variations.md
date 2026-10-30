@@ -135,6 +135,27 @@ coordinates; the console says how far the problem moved.
    line, with its forcing moves on the outside out to M4. Every line approved so far stays
    within a line of the problem.
 
+   A found move the raw board takes for clearly worse than the author's is not suggested
+   either. This is the check adam makes by hand. KataGo looks at the problem as it is, with
+   no fill and a short search (`missing.raw_visits`, 1000), after the found move and after
+   the author's best move at the position. Each move is scored by the solver's share of the
+   stakes: ownership averaged over the stones at stake, 1 when all go the solver's way.
+
+   With both sides free to play elsewhere on the raw board, the numbers run lower than in the
+   isolation, so only the two moves are compared. The found move may score up to
+   `missing.raw_gap` (0.3) less where the best is clean. Where the best is a ko or seki,
+   `missing.raw_gap_ko` (0.6) applies, since the stakes come out about half and half after any
+   move. gp-62416's Q19 and Q16 left White's stones 0.40 and 0.27 Black's, against 0.79 after
+   the author's O17.
+
+   On the crawl's 70 found moves, the check drops gp-62395's and gp-62448's E1 and most of
+   what review rejected, and nothing review approved. The most an approved move gave away was
+   0.17 where the best is clean (gp-62554's C1) and 0.37 at a ko (gp-62668's Q18).
+
+   The board has to be the problem's own, 13x13 for a 13x13 problem. On 19x19, the open lines
+   past its far edges change the fight: there gp-62468's L13, the author's, looked better than
+   the H11 review approved, while on 13x13 H11 scores 0.77 against 0.31.
+
 ## Levels
 
 goproblems ranks the results of a standard problem by life status, not points
@@ -476,6 +497,9 @@ reported, so some missing variations go unnoticed.
 - Positions the isolation misreads are skipped: when the problem relies on outside stones
   being strong (gp-62114's black stones below the corner), the fortress fill can leave
   them weak, and then every move fails.
+- The raw-board check only ever drops a move. The raw board can be wrong the other way: in
+  gp-62564 it rated the found moves above the author's A2, though review found they let White
+  live where the answer is a ko.
 - The fill lives, so stones that reach it live too. Its wall stands `redo.gap` (4) lines
   past the problem's stones, and a fight that runs out that far is judged on the fill, not
   the open board: gp-62395's E1 came out a clean kill only because Black's first-line crawl

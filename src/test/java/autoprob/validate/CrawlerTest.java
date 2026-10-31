@@ -246,6 +246,28 @@ class CrawlerTest {
     }
 
     @Test
+    void onlyTheProblemsAskedForAreJudgedAgain() throws Exception {
+        FakeSite site = new FakeSite();
+        for (int id = 1; id <= 4; id++) site.add(id, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        finder.finds.add("gp-3");
+        crawler().crawl(site, finder);
+        // gp-3 judged already by this version, gp-1's suggestion sent: only gp-3 again, with
+        // nothing else looked at, and its review of the old draft kept aside
+        Files.createDirectories(tmp.resolve("submitted"));
+        Files.writeString(tmp.resolve("submitted/gp-1.json"), "{\"suggestionId\":1}");
+        Files.createDirectories(tmp.resolve("approvals"));
+        Files.writeString(tmp.resolve("approvals/gp-3.json"), "{\"decision\":\"approved\"}");
+        site.add(5, "life and death", true, false, 0);
+        finder.judged.clear();
+        crawler("crawl.only=3,1").crawl(site, finder);
+        assertEquals(List.of("gp-3"), finder.judged);
+        assertTrue(Files.exists(tmp.resolve("suggestions/gp-3.json")));
+        assertTrue(Files.exists(tmp.resolve("approvals/gp-3.old.json")));
+        assertFalse(CrawlIndex.load(tmp.resolve("problems.jsonl").toFile()).entries().stream().anyMatch(e -> e.id == 5));
+    }
+
+    @Test
     void aProblemWhoseSuggestionWentToTheSiteIsLeftAlone() throws Exception {
         FakeSite site = new FakeSite();
         for (int id = 1; id <= 2; id++) site.add(id, "life and death", true, false, 0);

@@ -68,6 +68,7 @@ public class Crawler {
     private final double hours;
     private final int maxAttempts;
     private final Set<String> recheck;
+    private final List<Integer> only;
     private final boolean includeSandbox;
     // the time, for how long a run has gone and crawl.hours: a test sets its own
     LongSupplier clock = System::currentTimeMillis;
@@ -82,6 +83,9 @@ public class Crawler {
         // statuses to judge again when an older judging version gave them, e.g. found,clean
         this.recheck = Arrays.stream(props.getProperty("crawl.recheck", "").split(","))
                 .map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toSet());
+        // just these problems, judged again whatever the index has for them, e.g. 62299
+        this.only = Arrays.stream(props.getProperty("crawl.only", "").split(","))
+                .map(String::trim).filter(s -> !s.isEmpty()).map(Integer::parseInt).toList();
         this.includeSandbox = Boolean.parseBoolean(props.getProperty("crawl.include_sandbox", "false"));
     }
 
@@ -141,9 +145,13 @@ public class Crawler {
         List<Integer> stale = new ArrayList<>();
         for (CrawlIndex.Entry e : index.entries()) if (e.status.equals("stale")) stale.add(e.id);
         Set<Integer> submitted = submittedIds();
-        System.out.println("crawling goproblems.com from problem " + newest + " down, in " + dir + ": " + index.entries().size()
-                + " looked at before" + (stale.isEmpty() ? "" : ", " + stale.size() + " changed on the site to judge again first"));
-        int judged = 0, nextStale = 0, cursor = newest;
+        if (!only.isEmpty()) {
+            System.out.println("judging " + only.stream().map(id -> "gp-" + id).collect(Collectors.joining(", ")) + " again, in " + dir);
+        } else {
+            System.out.println("crawling goproblems.com from problem " + newest + " down, in " + dir + ": " + index.entries().size()
+                    + " looked at before" + (stale.isEmpty() ? "" : ", " + stale.size() + " changed on the site to judge again first"));
+        }
+        int judged = 0, nextStale = 0, nextOnly = 0, cursor = newest;
         // what this run has looked at so far, shown above each problem judged
         int crawled = 0;
         Map<String, Integer> thisRun = new TreeMap<>();
@@ -153,7 +161,16 @@ public class Crawler {
                 break;
             }
             int id;
-            if (nextStale < stale.size()) {
+            if (!only.isEmpty()) {
+                // crawl.only: those problems and no others, then the run ends; one whose
+                // suggestion went to the site is still left alone
+                if (nextOnly >= only.size()) break;
+                id = only.get(nextOnly++);
+                if (submitted.contains(id)) {
+                    System.out.println("gp-" + id + ": its suggestion went to the site, so it is not judged again");
+                    continue;
+                }
+            } else if (nextStale < stale.size()) {
                 id = stale.get(nextStale++);
             } else {
                 while (cursor >= 1 && (submitted.contains(cursor) || stale.contains(cursor)

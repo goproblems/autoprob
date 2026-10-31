@@ -52,7 +52,10 @@ The finder takes about five minutes a problem, so about 290 a day. About half th
 
 `MissingVariationFinder.JUDGING_VERSION` goes up with every change to how moves are judged.
 Each judged problem keeps the version that judged it, and `crawl.recheck=found` (or
-`found,clean`) judges again those an older version gave.
+`found,clean`) judges again those an older version gave. `crawl.only=62299` (or a list,
+`62299,62311`) judges just those problems again, whatever they came to before, and ends the
+run; its earlier suggestion and any review of it are replaced, as with any judging again. A
+problem whose suggestion went to the site is still left alone.
 
 A judged problem's findings stay in `findings/` with its sgf in `sgf/`. When only the drafting
 changes, `cmd=crawl-redraft` makes every suggestion again from them, with no engine, in

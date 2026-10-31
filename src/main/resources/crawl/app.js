@@ -512,6 +512,8 @@ function renderEditBar() {
   if (loose.length) hints.push(`${loose.map(m => m.move).join(', ')} ${loose.length === 1 ? 'ends a line' : 'end lines'} the suggestion adds without a right mark.`);
   if (S.adding && !why) hints.push('Click an empty point on the board to add a move at the position shown (Esc to stop).');
   $('tree-edit').innerHTML = `
+    <button id="ed-copy" class="copy" ${n.parent ? '' : 'disabled'}
+      title="Copy the moves from the start to the selected node">Copy Path</button>
     <button id="ed-right" ${why || !mine || n.ghost ? 'disabled' : ''}
       title="Mark the selected move as the end of a correct line, or take the mark off (moves the suggestion adds)">${mine && rightNow(n) ? 'Unmark right' : 'Mark right'}</button>
     <button id="ed-cut" ${why || !mine ? 'disabled' : ''}
@@ -523,6 +525,7 @@ function renderEditBar() {
     <button id="ed-discard" ${ch.total ? '' : 'disabled'} title="Drop the edits not saved">Discard</button>
     ${S.item.edited && !ch.total && !why ? '<button id="ed-revert" title="Go back to the lines as the checker made them">Undo all edits</button>' : ''}
     <p id="ed-msg" class="ed-msg">${esc(hints.join(' '))}</p>`;
+  $('ed-copy').onclick = copyPath;
   $('ed-right').onclick = markRight;
   $('ed-cut').onclick = cutBranch;
   $('ed-add').onclick = () => { S.adding = !S.adding; renderTree(); };
@@ -533,6 +536,26 @@ function renderEditBar() {
 
 function say(msg) {
   $('ed-msg').textContent = msg;
+}
+
+// the moves from the start to the selected node, as the page shows them ("B E12, W F12"), to
+// the clipboard
+async function copyPath() {
+  const text = pathOf(S.sel).filter(Boolean).join(', ');
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    // no clipboard api on a page served over http from other than localhost: copy a selection
+    const t = Object.assign(document.createElement('textarea'), {value: text});
+    t.style.position = 'fixed';
+    document.body.append(t);
+    t.select();
+    const done = document.execCommand('copy');
+    t.remove();
+    if (!done) return say(`Could not copy: ${text}`);
+  }
+  say(`Copied: ${text}`);
 }
 
 function markRight() {
@@ -552,6 +575,7 @@ function cutBranch() {
     let top = n;
     while (!top.cut) top = top.parent;
     delete top.cut;
+    unendLine(top.parent);
     return renderTree();
   }
   if (!(n.added || n.fresh)) return;
@@ -559,10 +583,31 @@ function cutBranch() {
     const gone = m => { m.gone = true; m.children.forEach(gone); };
     gone(n);
     n.parent.children.splice(n.parent.children.indexOf(n), 1);
+    endLine(n.parent);
     return selectNode(n.parent);
   }
   n.cut = true;
+  endLine(n.parent);
   renderTree();
+}
+
+// a move the suggestion adds that a cut leaves with nothing after it ends its line now, so it
+// is marked right: a cut only stops a line sooner. ended keeps the mark it had before, for
+// bringing the branch back
+function endLine(p) {
+  if (!(p.added || p.fresh) || rightNow(p) || p.children.some(c => !c.cut)) return;
+  p.ended = {was: p.pendRight};
+  p.pendRight = true;
+  if (p.pendRight === p.right) delete p.pendRight;
+}
+
+// a branch brought back: the move before it no longer ends a line, so the mark the cut put on
+// it comes off
+function unendLine(p) {
+  if (!p.ended) return;
+  if (p.ended.was === undefined) delete p.pendRight;
+  else p.pendRight = p.ended.was;
+  delete p.ended;
 }
 
 // the side to play at the node: the other side from its move, at the start the solver

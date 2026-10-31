@@ -76,7 +76,9 @@ For each one it shows:
   selected node, with the next moves circled in the same colors, and under it the node's
   comment. Click a node or a circle to go there; ←/→ walk the thick line, which follows what
   the suggestion adds unless ↑/↓ pick another branch. It starts at the first position the
-  suggestion adds lines at, and the problem's wrong lines can be hidden;
+  suggestion adds lines at, and the problem's wrong lines can be hidden. **Copy Path**, under
+  the tree, copies the moves from the start to the selected node as the page writes them
+  ("B M13, W M11, B M10");
 - each position on the problem's own board: the missing moves (blue squares) and the moves
   the problem accepts there (green), and a button to select it in the tree;
 - each line it adds, to step through move by move with the arrows under it. Stepping a line
@@ -94,14 +96,16 @@ A suggestion waiting for review can be edited by hand under the tree:
 
 - **Mark right** puts a right mark on the selected move, or takes it off. **Cut branch** cuts
   it and everything after it. Both work on the moves the suggestion adds, not the problem's
-  own.
+  own. A cut only stops a line sooner: when the move before the cut is one the suggestion adds
+  and the cut leaves nothing after it, it ends the line now and is marked right.
 - **Add moves** lets a click on an empty point of the board play a move at the position shown,
   for the side to play there. The move goes into the suggestion and is selected, so the next
   can follow it. Esc stops adding.
 
 Edits not saved yet are light blue. A cut branch stays as a light blue ghost until it is saved,
-and **Restore branch** brings it back. Moves the edits turn back into the problem's own wrong
-line go light blue too. The selected node is marked in amber, so it never looks like an edit.
+and **Restore branch** brings it back, taking off the right mark the cut put before it. Moves
+the edits turn back into the problem's own wrong line go light blue too. The selected node is
+marked in amber, so it never looks like an edit.
 
 **Save** writes `edits/gp-<id>.json`; **Discard** drops what is not saved, and **Undo all
 edits** goes back to the lines as the checker made them. Saved edits are what the page shows

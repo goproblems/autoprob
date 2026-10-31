@@ -48,7 +48,7 @@ function renderList() {
   $('list').innerHTML = items.length ? items.map(e => `
     <a href="#${e.name}" class="row ${e.state} ${e.name === S.name ? 'on' : ''}">
       <b>${e.name}</b> <span>${esc(e.difficulty)}</span>
-      <small>${esc(e.moves.join(', '))}${e.positions > 1 ? ` · ${e.positions} positions` : ''} · ${conf(e.confidence)}${e.edited ? ' · edited' : ''}</small>
+      <small>${esc(e.moves.join(', '))}${e.positions > 1 ? ` · ${e.positions} positions` : ''} · ${conf(e.confidence)}${e.cut ? ' · cut short' : ''}${e.edited ? ' · edited' : ''}</small>
     </a>`).join('') : '<p class="empty">nothing here</p>';
 }
 
@@ -168,8 +168,10 @@ function renderItem(path) {
     h += `<section class="place">
       <h3>${p.at.length ? 'After ' + esc(p.at.join(', ')) : 'At the start'}
         ${it.tree ? `<button class="to-tree" data-place="${i}" title="Select this position in the tree">in the tree</button>` : ''}</h3>
-      <p class="legend"><span class="key-new"></span> missing (${esc(p.lines.map(l => l.moves[0]).join(', '))})
+      <p class="legend"><span class="key-new"></span> missing (${esc([...new Set(p.lines.map(l => l.moves[0]))].join(', '))})
         <span class="key-accepted"></span> the problem accepts ${p.level ? `· ${p.level.toLowerCase()}` : ''}</p>
+      ${p.cut?.length ? `<div class="cut-note">Cut short at a limit, not followed further:<ul>${p.cut.map(c =>
+        `<li>${esc(c.moves.join(', '))} <small>(${esc(c.why)})</small></li>`).join('')}</ul></div>` : ''}
       <div class="boards">
         <figure>${board(p.rows, it.columns, marks)}<figcaption>the position</figcaption></figure>
         ${p.lines.map((l, j) => `<figure id="line-${i}-${j}"></figure>`).join('')}

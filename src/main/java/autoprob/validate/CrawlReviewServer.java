@@ -111,6 +111,7 @@ public class CrawlReviewServer {
                 for (SuggestionDraft.Place p : d.places) for (String m : d.points(p.moves)) moves.add(m.substring(2));
                 e.put("moves", moves);
                 e.put("positions", d.places.size());
+                if (d.places.stream().anyMatch(p -> p.cut != null && !p.cut.isEmpty())) e.put("cut", true);
                 if (d != made) e.put("edited", true);
                 if (s != null) e.put("sent", s);
                 entries.add(e);
@@ -172,6 +173,10 @@ public class CrawlReviewServer {
                 lines.add(Map.of("moves", d.points(l), "steps", steps));
             }
             place.put("lines", lines);
+            // the lines a limit stopped short, to say so beside them
+            List<Map<String, Object>> cut = new ArrayList<>();
+            if (p.cut != null) for (MissingVariationFinder.Cut c : p.cut) cut.add(Map.of("moves", d.points(c.line), "why", c.why));
+            place.put("cut", cut);
             places.add(place);
         }
         out.put("places", places);

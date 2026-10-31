@@ -292,9 +292,14 @@ public class Crawler {
         }
         RunRecorder.writeAtomically(draftFile, RunRecorder.GSON.toJson(draft));
         List<String> moves = new ArrayList<>();
-        for (SuggestionDraft.Place pl : draft.places) moves.addAll(draft.points(pl.moves));
+        int cut = 0;
+        for (SuggestionDraft.Place pl : draft.places) {
+            moves.addAll(draft.points(pl.moves));
+            cut += pl.cut.size();
+        }
         return status(e, "found", String.join(", ", moves) + " missing (" + draft.places.size() + " position"
-                + (draft.places.size() == 1 ? "" : "s") + ")" + (notes.isEmpty() ? "" : "; left out: " + String.join("; ", notes)));
+                + (draft.places.size() == 1 ? "" : "s") + ")" + (cut == 0 ? "" : "; " + cut + " line" + (cut == 1 ? "" : "s") + " cut short at a limit")
+                + (notes.isEmpty() ? "" : "; left out: " + String.join("; ", notes)));
     }
 
     // cmd=crawl-redraft: the suggestions made again from the findings already judged, with no

@@ -7,8 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Point;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
 
@@ -59,6 +61,21 @@ class MissingVariationFinderTest {
         assertEquals(Set.of("B A19", "B C19"), MissingVariationFinder.sgfMoves(root, List.of()));
         assertEquals(Set.of("W B18", "W B19"), MissingVariationFinder.sgfMoves(root, List.of("B A19")));
         assertEquals(Set.of(), MissingVariationFinder.sgfMoves(root, List.of("B T1")));
+    }
+
+    @Test
+    void aLineOnTheProblemsTreeTakesItsOwnAnswers() throws Exception {
+        // gp-62134 in short: the problem has black's A19 as wrong, answered by W B18 and then,
+        // after black's C17, by W C18. a line from A19 meets those answers on the problem's tree,
+        // the ones the site's computer plays, and none once it leaves the tree
+        Node root = new Parser().parse("(;SZ[19]AB[dd]AW[ee](;B[aa];W[bb](;B[cc];W[cb])(;B[ab];W[ba]))(;B[ca]C[RIGHT]))");
+        Function<List<String>, Collection<String>> own = MissingVariationFinder.ownAnswers(root, List.of());
+        assertEquals(Set.of("W B18"), own.apply(List.of("B A19")));
+        assertEquals(Set.of("W C18"), own.apply(List.of("B A19", "W B18", "B C17")));
+        assertEquals(Set.of(), own.apply(List.of("B A19", "W B18", "B F14")));
+        assertEquals(Set.of(), own.apply(List.of("B C19")));
+        // from a position further on, its moves come first
+        assertEquals(Set.of("W C18"), MissingVariationFinder.ownAnswers(root, List.of("B A19", "W B18")).apply(List.of("B C17")));
     }
 
     @Test
@@ -156,6 +173,51 @@ class MissingVariationFinderTest {
         assertTrue(why != null && why.contains("to F1, 2 lines past"), why);
         why = MissingVariationFinder.leaksOut(root, List.of(List.of("B B3", "W A6")));
         assertTrue(why != null && why.contains("to A6"), why);
+    }
+
+    @Test
+    void everyMoveThatWorksIsHeldToItsLineTheFoundMoveStaying() throws Exception {
+        // gp-62299 after its found S19 (M13 on the problem's 13x13 board): after W S17, B S16,
+        // W R15, black's T17 and S18 work as well as the line's S15
+        MissingVariationFinder.Position pos = new MissingVariationFinder.Position(List.of(), Set.of("B S16", "B S17"), List.of());
+        DecisionRecord d = new DecisionRecord();
+        d.at = List.of("B S19", "W S17", "B S16", "W R15");
+        d.role = DecisionRecord.SOLVER;
+        d.chose = "B S15";
+        d.alternatives = List.of("B T17", "B S18");
+        Set<List<String>> others = MissingVariationFinder.otherMoves(pos, List.of(d));
+        assertEquals(Set.of(List.of("B S19", "W S17", "B S16", "W R15", "B T17"), List.of("B S19", "W S17", "B S16", "W R15", "B S18")), others);
+        List<String> main = List.of("B S19", "W S17", "B S16", "W R15", "B S15", "W T17", "B S14");
+        List<String> t17 = List.of("B S19", "W S17", "B S16", "W R15", "B T17", "W T16", "B S18");
+        List<String> s18 = List.of("B S19", "W S17", "B S16", "W R15", "B S18", "W T17", "B T18");
+        List<String> s18b = List.of("B S19", "W S17", "B S16", "W R15", "B S18", "W S15", "B T17");
+        // a line through S18 that fails: S18 goes with everything after it
+        List<List<String>> lines = new java.util.ArrayList<>(List.of(main, t17, s18, s18b));
+        assertNull(MissingVariationFinder.check("at the start", lines, others, l -> l.contains("W S15") ? "falls short" : null));
+        assertEquals(List.of(main, t17), lines);
+        // the found move's own line failing is the found move's failure
+        assertEquals("falls short", MissingVariationFinder.check("at the start", lines, others, l -> l.equals(main) ? "falls short" : null));
+    }
+
+    @Test
+    void aLineALimitStoppedGoesInAsItIsSayingWhy() {
+        // gp-62299 after its found S19, the generator started after S19 and W S17 (made up): it
+        // stopped two branches at its limit of decisions, the second of them past a point the
+        // finder's line ends at anyway (where a ko starts, say), so only the first is cut short
+        List<String> t17 = List.of("B S19", "W S17", "B S16", "W R15", "B T17", "W T16", "B S18");
+        List<String> s18 = List.of("B S19", "W S17", "B S16", "W R15", "B S18");
+        List<SolutionPathGenerator.Cut> cuts = List.of(
+                new SolutionPathGenerator.Cut(t17.subList(2, t17.size()), "reached the tree limit of 60 decisions"),
+                new SolutionPathGenerator.Cut(List.of("B S16", "W R15", "B S18", "W T17", "B T18"), "reached the tree limit of 60 decisions"));
+        List<MissingVariationFinder.Cut> cut = MissingVariationFinder.cutLines(List.of("B S19", "W S17"), cuts, List.of(t17, s18));
+        assertEquals(1, cut.size());
+        assertEquals(t17, cut.get(0).line);
+        assertEquals("reached the tree limit of 60 decisions", cut.get(0).why);
+        // its end walked out short of the move's level, it stays with a note; any other line
+        // fails as before
+        assertTrue(MissingVariationFinder.noteIfCut(cut, t17, "walked out from there it comes to ko, short of clean"));
+        assertEquals("reached the tree limit of 60 decisions; walked out from there it comes to ko, short of clean", cut.get(0).why);
+        assertFalse(MissingVariationFinder.noteIfCut(cut, s18, "walked out from there it comes to ko, short of clean"));
     }
 
     @Test

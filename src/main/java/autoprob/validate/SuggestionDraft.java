@@ -31,6 +31,8 @@ public class SuggestionDraft {
         public List<String> markedWrong = new ArrayList<>(); // of those, the ones the problem has as wrong
         public List<String> accepted = new ArrayList<>();    // the moves the problem accepts there
         public List<List<String>> lines = new ArrayList<>(); // the lines added, each from the position
+        // of those, the ones a limit of the finder's generator stopped short, each with why
+        public List<MissingVariationFinder.Cut> cut = new ArrayList<>();
         public String level;                                 // what the moves reach, the best there
         public Confidence confidence;                        // the least sure of its moves'
         public Map<String, Confidence> confidences = new LinkedHashMap<>(); // each move's
@@ -80,21 +82,28 @@ public class SuggestionDraft {
             p.level = f.level == null ? null : f.level.name();
             for (MissingVariationFinder.FoundMove m : f.moves) {
                 List<List<String>> lines = new ArrayList<>(m.lines == null || m.lines.isEmpty() ? List.of(List.of(m.move)) : m.lines);
-                lines.sort((a, b) -> Integer.compare(b.size(), a.size()));
-                boolean adds = false;
-                for (List<String> l : lines) {
+                List<List<String>> longest = new ArrayList<>(lines);
+                longest.sort((a, b) -> Integer.compare(b.size(), a.size()));
+                List<List<String>> kept = new ArrayList<>();
+                for (List<String> l : longest) {
                     try {
-                        List<String> line = onBoard(l, board);
-                        int added = edit.addLine(p.at, line);
+                        int added = edit.addLine(p.at, onBoard(l, board));
                         if (added == 0) continue;
                         d.addedNodes += added;
-                        p.lines.add(line);
-                        adds = true;
+                        kept.add(l);
                     } catch (IllegalArgumentException e) {
                         notes.add(String.join(" ", l) + ": " + e.getMessage());
                     }
                 }
-                if (!adds) continue;
+                if (kept.isEmpty()) continue;
+                // listed in the finder's order, its main line first
+                for (List<String> l : lines) if (kept.remove(l)) p.lines.add(onBoard(l, board));
+                if (m.cut != null) {
+                    for (MissingVariationFinder.Cut c : m.cut) {
+                        List<String> l = onBoard(c.line, board);
+                        if (p.lines.contains(l)) p.cut.add(new MissingVariationFinder.Cut(l, c.why));
+                    }
+                }
                 String move = onBoard(List.of(m.move), board).get(0);
                 p.moves.add(move);
                 if (m.inFileAsWrong) p.markedWrong.add(move);
@@ -137,8 +146,15 @@ public class SuggestionDraft {
             }
             if (!p.accepted.isEmpty()) sb.append(", with the same result as ").append(String.join(" and ", bare(points(p.accepted))));
             sb.append(". Line").append(p.lines.size() == 1 ? "" : "s").append(" added: ");
+            // a line that leaves an earlier one is shown from the move it leaves it after
             List<String> shown = new ArrayList<>();
-            for (List<String> l : p.lines) shown.add(String.join(", ", points(l)));
+            for (int i = 0; i < p.lines.size(); i++) {
+                List<String> l = p.lines.get(i);
+                int common = 0;
+                for (List<String> e : p.lines.subList(0, i)) common = Math.max(common, shared(e, l));
+                shown.add(common == 0 || common == l.size() ? String.join(", ", points(l))
+                        : "after " + points(l.subList(common - 1, common)).get(0) + ": " + String.join(", ", points(l.subList(common, l.size()))));
+            }
             sb.append(String.join("; ", shown)).append(".");
         }
         sb.append(" Found by autoprob, an automated checker");
@@ -213,6 +229,8 @@ public class SuggestionDraft {
                 if (!p.at.equals(q.at)) continue;
                 q.moves.sort(Comparator.comparingInt(m -> rank(p.moves, m)));
                 q.lines.sort(Comparator.comparingInt(l -> rank(p.lines, l)));
+                // a line stopped short still says so, unless it was taken on or cut back by hand
+                if (p.cut != null) for (MissingVariationFinder.Cut c : p.cut) if (q.lines.contains(c.line)) q.cut.add(c);
                 // how sure: the least sure of the draft's own moves still there. a draft made
                 // before each move's was kept has only the place's, which holds while its moves do
                 if (p.confidences == null || p.confidences.isEmpty()) {
@@ -232,6 +250,13 @@ public class SuggestionDraft {
         }
         d.comment = d.comment();
         return d;
+    }
+
+    // how many moves two lines start with in common
+    private static int shared(List<String> a, List<String> b) {
+        int n = 0;
+        while (n < a.size() && n < b.size() && a.get(n).equals(b.get(n))) n++;
+        return n;
     }
 
     private static <T> int rank(List<T> list, T x) {

@@ -93,6 +93,10 @@ h3 .to-tree { border: 1px solid var(--line); background: transparent; border-rad
 .tree .tstone.wrong { opacity: var(--t-fade); }
 .tree-note { color: var(--muted); margin: 6px 0 0; min-height: 1.45em; }
 .tree-note q { color: var(--text); }
+/* lines a limit of the finder stopped short */
+.cut-note { margin: 0 0 8px; padding: 4px 10px; border-left: 3px solid var(--t-sel); }
+.cut-note ul { margin: 2px 0 0; padding-left: 18px; }
+.cut-note small { color: var(--muted); }
 .confidence ul { margin: 0; padding-left: 18px; }
 .confidence li.for::marker { content: "+  "; color: var(--good); }
 .confidence li.against::marker { content: "−  "; color: var(--bad); }

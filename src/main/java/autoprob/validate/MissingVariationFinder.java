@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.function.Function;
 
 import com.google.gson.Gson;
 
@@ -57,7 +59,7 @@ public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
     // (crawl.recheck): goes up with every change to how moves are judged
-    static final int JUDGING_VERSION = 7;
+    static final int JUDGING_VERSION = 9;
     // how many lines past the problem's stones and the author's moves a suggested line may play
     static final int OUTSIDE = 1;
 
@@ -135,6 +137,9 @@ public class MissingVariationFinder {
         boolean inFileAsWrong;  // the problem has the move, on a line that is not correct
         List<String> line;      // the walk that shows the result, ko exchanges taken out
         List<List<String>> lines = new ArrayList<>(); // generated lines from the position, starting with the move
+        // of those, the ones a limit of the generator stopped short: they go in as they are,
+        // and the review says so
+        List<Cut> cut = new ArrayList<>();
         Confidence confidence;  // how far to trust it, for the review before it reaches the site
         // on the raw board, without the fill: how much of the stakes the move leaves the solver,
         // and the author's best move there, with how much it leaves (RawBoard)
@@ -143,6 +148,18 @@ public class MissingVariationFinder {
         Double rawAuthor;
         // for the review tool: the generator's decisions behind the lines, at from the root
         transient List<DecisionRecord> decisions = new ArrayList<>();
+    }
+
+    // a line that stops at a limit of the generator (redo.max_tree_decisions, redo.max_moves)
+    // or a failed analysis, not where the opponent has no threat left, and why
+    static class Cut {
+        List<String> line;
+        String why;
+
+        Cut(List<String> line, String why) {
+            this.line = line;
+            this.why = why;
+        }
     }
 
     // a move the problem accepts that reaches a lower level than the best
@@ -160,6 +177,10 @@ public class MissingVariationFinder {
         // every move near the stakes is a candidate, however unlikely katago and the human
         // policy rate it
         this.props.setProperty("redo.solver_alternatives", "true");
+        // and every plausible one is played out: with a cap, the human moves, tried after
+        // katago's, are the ones left untried, and a move that works is never left out for a
+        // limit (adam's review of gp-62299)
+        this.props.setProperty("redo.solver_candidates", "0");
         if (!props.containsKey("redo.scan_dist")) this.props.setProperty("redo.scan_dist", "2");
         this.params = ChoiceParams.fromProps(this.props);
         this.dir = new File(props.getProperty("missing.dir", "missing_variations"));
@@ -637,22 +658,28 @@ public class MissingVariationFinder {
                 m.source = "author";
             }
             m.inFileAsWrong = inFile.contains(v.move);
-            System.out.println("  " + where + ": " + pt(v.move) + " reaches " + level(best) + " too, generating its line");
-            m.lines.addAll(linesFrom(iso, node, pos.at(), List.of(), v.move, m.decisions));
-            // and the solver's way through each of the problem's own answers to it
-            List<String> afterMove = new ArrayList<>(pos.at());
-            afterMove.add(v.move);
-            for (String answer : sgfMoves(root, afterMove)) {
-                boolean covered = m.lines.stream().anyMatch(l -> l.size() > 1 && l.get(1).equals(answer));
-                if (!covered) m.lines.addAll(linesFrom(iso, node, pos.at(), List.of(v.move, answer), null, m.decisions));
-            }
-            String not = insertedExchange(iso, node, m.lines.isEmpty() ? List.of() : m.lines.get(0), working);
-            if (not == null) not = leaksOut(root, m.lines);
-            if (not == null) not = raw.worse(m);
-            if (not == null) not = lineFallsShort(j, pos, v, m.lines);
+            // the raw board before the lines, which it does not need and which take the longest
+            String not = raw.worse(m);
             if (not != null) {
                 System.out.println("  " + where + ": " + pt(v.move) + " " + not + ", so it is not suggested");
                 continue;
+            }
+            System.out.println("  " + where + ": " + pt(v.move) + " reaches " + level(best) + " too, generating its line");
+            // through each of the problem's own answers to it, wherever the line runs on its tree
+            m.lines.addAll(linesFrom(iso, root, node, pos.at(), List.of(), v.move, m.decisions, m.cut));
+            // the lines go through the solver's other moves that work along the way, and one of
+            // those with a line that fails a check is cut, the found move staying
+            Set<List<String>> others = otherMoves(pos, m.decisions);
+            not = insertedExchange(iso, node, m.lines.isEmpty() ? List.of() : m.lines.get(0), working);
+            if (not == null) not = check(where, m.lines, others, l -> leaksOut(root, List.of(l)));
+            if (not == null) not = check(where, m.lines, others, l -> lineFallsShort(j, pos, v, l, m.cut));
+            if (not != null) {
+                System.out.println("  " + where + ": " + pt(v.move) + " " + not + ", so it is not suggested");
+                continue;
+            }
+            m.cut.removeIf(stop -> !m.lines.contains(stop.line));
+            for (Cut stop : m.cut) {
+                System.out.println("  " + where + ": " + pt(v.move) + "'s line " + String.join(" ", stop.line) + " stops short (" + stop.why + ")");
             }
             m.confidence = confidence(j, root, node, pos, rec, best, verdicts, v, m.lines, true);
             f.moves.add(m);
@@ -845,6 +872,49 @@ public class MissingVariationFinder {
         return true;
     }
 
+    // the solver's other moves that work along a found move's lines, each as the way to it from
+    // the position: the generator's alternatives at its decisions, which are at from the root
+    static Set<List<String>> otherMoves(Position pos, List<DecisionRecord> decisions) {
+        Set<List<String>> out = new HashSet<>();
+        int n = pos.at().size();
+        for (DecisionRecord d : decisions) {
+            if (!DecisionRecord.SOLVER.equals(d.role) || d.alternatives == null) continue;
+            for (String a : d.alternatives) {
+                List<String> way = new ArrayList<>(d.at.subList(n, d.at.size()));
+                way.add(a);
+                out.add(way);
+            }
+        }
+        return out;
+    }
+
+    // a check of one line from the position: why it fails, or null
+    interface LineCheck {
+        String why(List<String> line) throws Exception;
+    }
+
+    // why a found move's lines fail the check, or null. a line through one of the solver's other
+    // moves (others) instead loses the last of those on it, with all that follows: every move
+    // that works is held to what its line shows, the same as the found move, whose own lines
+    // still stand
+    static String check(String where, List<List<String>> lines, Set<List<String>> others, LineCheck check) throws Exception {
+        for (List<String> line : new ArrayList<>(lines)) {
+            if (!lines.contains(line)) continue;
+            String why = check.why(line);
+            if (why == null) continue;
+            List<String> other = null;
+            for (int k = line.size(); k > 1 && other == null; k--) {
+                if (others.contains(line.subList(0, k))) other = new ArrayList<>(line.subList(0, k));
+            }
+            if (other == null) return why;
+            List<String> way = other;
+            lines.removeIf(l -> l.size() >= way.size() && l.subList(0, way.size()).equals(way));
+            System.out.println("  " + where + ": " + pt(way.get(way.size() - 1)) + " after " + String.join(" ", way.subList(0, way.size() - 1))
+                    + " works too, but " + why + ", so it is left out");
+        }
+        return null;
+    }
+
     // why a generated line runs out of the problem, or null: a move more than OUTSIDE lines past
     // the box around the problem's stones and every move of the author's tree, right and wrong.
     // a path that leaks out to the side is never something to add to a problem, and out there
@@ -984,22 +1054,34 @@ public class MissingVariationFinder {
         box[3] = Math.max(box[3], y);
     }
 
-    // why the generated lines do not show the level the move was judged to reach, or null. a
+    // why the generated line does not show the level the move was judged to reach, or null. a
     // line ends where the generator sees the problem settled, and the generator plays without
     // threats, so it can settle for less than a ko the move reaches only by winning it. a
     // suggestion has to show what it claims (gp-62851: R19 reaches ko when black wins every
-    // ko, but its line ended in the seki of B T19)
-    private static String lineFallsShort(Judging j, Position pos, MoveClassifier.Verdict v, List<List<String>> lines)
+    // ko, but its line ended in the seki of B T19). a line a limit stopped is not held to it:
+    // it ends where the tree ran out, not where the result is settled, and a move is never
+    // left out for a limit (gp-62299 at a limit of 20 decisions: black's L13 after W M12, cut
+    // right after it, walked out to ko from there, though followed on, its line ends clean).
+    // it stays, its note saying what its end came to
+    private static String lineFallsShort(Judging j, Position pos, MoveClassifier.Verdict v, List<String> line, List<Cut> cut)
             throws Exception {
-        for (List<String> line : lines) {
-            List<String> full = new ArrayList<>(pos.at());
-            full.addAll(line);
-            MoveClassifier.Level reached = j.quick().levelAfter(full);
-            if (j.quick().rank(reached) < j.quick().rank(v.level)) {
-                return "has a line that ends in " + level(reached) + ", short of " + level(v.level) + " (" + String.join(" ", line) + ")";
-            }
+        List<String> full = new ArrayList<>(pos.at());
+        full.addAll(line);
+        MoveClassifier.Level reached = j.quick().levelAfter(full);
+        if (j.quick().rank(reached) >= j.quick().rank(v.level)) return null;
+        String shortOf = level(reached) + ", short of " + level(v.level);
+        if (noteIfCut(cut, line, "walked out from there it comes to " + shortOf)) return null;
+        return "has a line that ends in " + shortOf + " (" + String.join(" ", line) + ")";
+    }
+
+    // whether a limit stopped the line, the note added to why if so
+    static boolean noteIfCut(List<Cut> cut, List<String> line, String note) {
+        for (Cut stop : cut) {
+            if (!stop.line.equals(line)) continue;
+            stop.why += "; " + note;
+            return true;
         }
-        return null;
+        return false;
     }
 
     // whether the move at the point takes a ko
@@ -1185,11 +1267,13 @@ public class MissingVariationFinder {
 
     // lines from a position, generated by the redo generator so they answer and end the way
     // redo's would: from after the given moves (the solver to play), with a first move
-    // forced or not. the lines start with the given moves. the generator's decisions go to
-    // decisions, at from the root (at is the position's)
-    private List<List<String>> linesFrom(ProblemIsolator.IsolatedProblem iso, Node node, List<String> at,
-                                         List<String> moves, String forced, List<DecisionRecord> decisions)
-            throws Exception {
+    // forced or not. the lines start with the given moves. where they run on the problem's
+    // tree (root), the opponent plays the problem's own answers. the generator's decisions go
+    // to decisions, at from the root (at is the position's), and the lines a limit stopped
+    // short to cut
+    private List<List<String>> linesFrom(ProblemIsolator.IsolatedProblem iso, Node root, Node node, List<String> at,
+                                         List<String> moves, String forced, List<DecisionRecord> decisions,
+                                         List<Cut> cut) throws Exception {
         Node cur = node;
         Node first = null;
         ProblemIsolator.IsolatedProblem from;
@@ -1219,18 +1303,29 @@ public class MissingVariationFinder {
             if (first != null) node.removeChildNode(first);
         }
         from.solvedKar = iso.solvedKar; // the stones at stake end up the same way from here
-        // the scan of every point near the stakes is for the positions being checked; at every
-        // turn of a generated line it would multiply the time a line takes. the line only
-        // illustrates the move, whose level already holds against every answer, so the
-        // opponent resists the way redo's lines do (redo.response_criterion) and the solver
-        // keeps to its main choice
+        // the line only illustrates the move, whose level already holds against every answer,
+        // so the opponent resists the way redo's lines do (redo.response_criterion). but every
+        // move that works for the solver goes in, each followed out the same way as the main
+        // one: on the site a correct move the tree lacks is marked wrong (adam's review,
+        // gp-62299 on its 13x13 board: after B M13, W M11, B M10, W L9, the line had M9 alone,
+        // though N11, M12 and N10 work too). the scan of every point near the stakes stays off,
+        // though katago and the human policy can rate a move that works too low to try it (N10
+        // there came and went with redo.min_human_policy at 0.05, at 0.043 to 0.055 from run to
+        // run, before the cutoff went down to 0.03): where a line goes on past the point its
+        // result is settled, every move that keeps the result works, and with the scan,
+        // following them all out ran gp-62299's tree into redo.max_tree_decisions (nine moves
+        // after its W N12, where black had won already)
         Properties lineProps = new Properties();
         lineProps.putAll(props);
         lineProps.setProperty("redo.scan_dist", "-1");
-        lineProps.setProperty("redo.max_solver_moves", "1");
+        lineProps.setProperty("redo.max_solver_moves", "0");
         SolutionPathGenerator generator = new SolutionPathGenerator(lineProps, brain, from);
         if (forced != null) generator.setForcedFirstMove(Intersection.gtp2point(forced.substring(2)));
-        for (DecisionRecord d : generator.generate().decisions) {
+        List<String> start = new ArrayList<>(at);
+        start.addAll(moves);
+        generator.setOwnAnswers(ownAnswers(root, start));
+        SolutionPathGenerator.GenResult gen = generator.generate();
+        for (DecisionRecord d : gen.decisions) {
             List<String> full = new ArrayList<>(at);
             full.addAll(moves);
             full.addAll(d.at);
@@ -1258,7 +1353,34 @@ public class MissingVariationFinder {
             if (forced != null) only.add(forced);
             if (!only.isEmpty()) lines.add(only);
         }
+        cut.addAll(cutLines(moves, gen.cut, lines));
         return lines;
+    }
+
+    // the problem's own answers after a line's moves from the start (the position and the moves
+    // before the line), as the generator asks for them: on the site the computer plays those,
+    // so a line on the problem's tree takes them rather than adding answers of its own, which
+    // the computer would never take (adam's review of gp-62134). none off the tree
+    static Function<List<String>, Collection<String>> ownAnswers(Node root, List<String> start) {
+        return moves -> {
+            List<String> full = new ArrayList<>(start);
+            full.addAll(moves);
+            return sgfMoves(root, full);
+        };
+    }
+
+    // the lines a limit of the generator stopped short (a line cut where a ko starts stops
+    // there instead), each with why: when the tree reaches a limit no branch goes deeper, but
+    // every move that works where it was decided stays in, so the line goes in as it is and
+    // the review says so (adam: never leave out a valid move because of a limit)
+    static List<Cut> cutLines(List<String> moves, List<SolutionPathGenerator.Cut> cuts, List<List<String>> lines) {
+        List<Cut> out = new ArrayList<>();
+        for (SolutionPathGenerator.Cut c : cuts) {
+            List<String> line = new ArrayList<>(moves);
+            line.addAll(c.at());
+            if (lines.contains(line)) out.add(new Cut(line, c.why()));
+        }
+        return out;
     }
 
     // the finding as a problem of a run the review tool reads (cmd=review

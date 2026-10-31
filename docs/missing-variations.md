@@ -111,17 +111,61 @@ coordinates; the console says how far the problem moved.
    outlaws R19 after B S16, W S15, though R19 kills there too, and it is not reported.
 5. For a missing move, its line is generated with the `redo` generator from that
    position, with the move forced first, so the line answers and ends the way `redo`'s
-   would. For each of the problem's own answers to it, the solver's way through is
-   generated as well. The line only illustrates the move, whose level already holds
-   against every answer (see [Answers](#answers)), so the opponent resists the way
-   `redo`'s lines do (`redo.response_criterion`): by default with the try a human is most
-   likely to get wrong, not KataGo's strongest one, which may be a move nobody plays.
+   would. The line only illustrates the move, whose level already holds against every
+   answer (see [Answers](#answers)), so the opponent resists the way `redo`'s lines do
+   (`redo.response_criterion`): by default with the try a human is most likely to get
+   wrong, not KataGo's strongest one, which may be a move nobody plays. The opponent plays
+   one move at each turn (`redo.opponent_branches`).
+
+   Where the line runs on the problem's own tree, as it does from a move the problem has as
+   wrong, the opponent plays the problem's own answers instead, each of them and no other.
+   On the site the computer answers with those, so a correct line through an answer of the
+   line's own, beside the problem's, is one it never takes, and shows nothing. In gp-62134,
+   after B B3, W B2, B D1, the problem's wrong line, the line took White's C4, the try a
+   human gets wrong most, beside the problem's C3, KataGo's strongest by far (prior 0.77
+   against 0.06). What the problem lacks there is Black's answer to C3. The solver's answer
+   to one of the problem's moves is made whatever the limits (below): without it the line
+   would end on the problem's wrong line, where it cannot go in.
+
+   The solver is never cut down to one move: at each of its turns on the line, every move
+   that works goes in, each followed out the same way as the main one, as in `redo`'s
+   trees. On the site a correct move the tree lacks is marked wrong. In gp-62299 the line
+   kept one move of four: after B M13, W M11, B M10, W L9 (on its 13x13 board), Black's
+   N11, M12 and N10 work as well as the line's M9, and they were left out. The same
+   happened twice more further down the line. Every plausible solver move is played out,
+   too: the finder lifts `redo.solver_candidates`, whose cap left the human moves, tried
+   after KataGo's, untried.
+
+   A generated tree is still bounded by `redo.max_tree_decisions` (gp-62299's came to 37
+   decisions) and each line by `redo.max_moves`. A limit only keeps a branch from going
+   deeper: every move that works at a turn already decided stays in the tree, and a branch
+   the limit reaches ends on its last solver move. Such a line goes in as it is, never
+   held back, and the finding lists it under `cut` with why (as does a line an analysis
+   failed on); the review page says so beside the position, and the crawl's status counts
+   them. A move is never left out for a limit, and a limit never stops the solver's answer
+   to one of the problem's own moves.
+
+   The solver's moves on a line are the ones KataGo and the human policy offer, without the
+   scan of every point near the stakes that the positions checked get. So a working move
+   both rate low can still be missed. N10 there had a human policy of 0.043 to 0.055 from
+   run to run, so with `redo.min_human_policy` at 0.05 it came and went; the cutoff is now
+   0.03. A move rated lower still is only found by the scan, and with the scan on in a
+   line, the tree ran into its limit. A line can go on past the point where its result is
+   settled, and there every move that keeps the result works: nine moves after gp-62299's
+   W N12 in one branch, where Black had won already.
 
    Each line has to show the level its move was judged to reach: the position where it
    ends is walked out under both regimes, and a move with a line that falls short is not
    suggested, since a suggestion has to show what it claims. The generator plays without
    threats, so it can settle for less than a ko the move reaches only by winning it:
-   gp-62851's R19 line ended in the seki of B T19.
+   gp-62851's R19 line ended in the seki of B T19. The solver's other moves along the way
+   are held to the same: one with a line that falls short or runs out of the problem (see
+   below) is left out with all that follows it, and the found move stays with its other
+   lines. A line a limit stopped is not held to its level, since it ends where the tree ran
+   out rather than where the result is settled: it stays, and its note says what its end
+   walks out to. With the limit at 20 decisions, gp-62299's line through Black's L13 after
+   W M12 was cut right after L13, and walked out from there it came to ko; followed on, as
+   in the full tree, it ends clean.
 
    A move with a line that runs out of the problem is not suggested either: a move more than
    a line (`OUTSIDE`) past the box around the problem's stones and every move of the

@@ -80,7 +80,7 @@ public class ChoiceParams {
         p.visits = Integer.parseInt(props.getProperty("redo.visits", "1000"));
         p.responseCandidates = Integer.parseInt(props.getProperty("redo.response_candidates", "4"));
         p.minResponsePrior = Double.parseDouble(props.getProperty("redo.min_response_prior", "0.02"));
-        p.minHumanPolicy = Double.parseDouble(props.getProperty("redo.min_human_policy", "0.05"));
+        p.minHumanPolicy = Double.parseDouble(props.getProperty("redo.min_human_policy", "0.03"));
         p.humanThreatExtends = Boolean.parseBoolean(props.getProperty("redo.human_threat_extends", "true"));
         p.scanDist = Integer.parseInt(props.getProperty("redo.scan_dist", "-1"));
         p.scanVisits = Integer.parseInt(props.getProperty("redo.scan_visits", "150"));

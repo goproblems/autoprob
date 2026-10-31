@@ -310,7 +310,11 @@ RIGHT.
 
 **Order.** The main line is expanded first, then the other branches shallowest first. When
 the tree hits `redo.max_tree_decisions`, the cut falls on the deep ends of side branches,
-never on an alternative first move.
+never on an alternative first move. A limit only stops a branch from going deeper: the
+moves that work at a turn already decided all stay, and a branch stopped at the solver's
+turn drops the opponent's last move, so it ends on a solver move. The generator lists the
+lines a limit or a failed analysis stopped, with why, so whatever uses the tree can say
+so (`missing-variations` shows them in review).
 
 **Transpositions.** When two move orders reach the same position, the decision made the
 first time is reused, so the engine work is not repeated and both branches continue the
@@ -416,13 +420,13 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.recalibrate` | true | Rebuild stakes and komi and regenerate on score drift |
 | `redo.response_candidates` | 4 | KataGo moves considered as opponent responses |
 | `redo.min_response_prior` | 0.02 | Minimum prior for a low-visit KataGo candidate |
-| `redo.min_human_policy` | 0.05 | Minimum human policy for a human candidate |
+| `redo.min_human_policy` | 0.03 | Minimum human policy for a human candidate, the solver's moves and the opponent's tries alike |
 | `redo.human_ranks` | `5k,1d` | Human SL ranks blended for human policy |
 | `redo.human_threat_extends` | true | Include human-natural moves as candidates |
 | `redo.near_dist` | 2.1 | Analysis restricted to moves this close to real stones |
 | `redo.max_moves` | 20 | Truncate a line after this many moves |
 | `redo.solver_alternatives` | true | Evaluate every plausible solver move and keep each one that works |
-| `redo.solver_candidates` | 6 | Solver candidates evaluated per position |
+| `redo.solver_candidates` | 6 | Plausible solver candidates evaluated per position, KataGo's before the human ones (0: all; `missing-variations` uses 0) |
 | `redo.status_threshold` | 1.0 | A stone changes fate when its ownership after a solver move differs from after the best move by more than this |
 | `redo.status_stones` | 2 | A solver move works with at most this many stones changing fate (and fewer than half the stones at stake) |
 | `redo.status_score_margin` | 10 | ...and a lead at most this far behind the best reliable move's |

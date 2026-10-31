@@ -42,7 +42,7 @@ public class DecisionFeatureExtractor {
     private final double nearDist;
     private final String[] humanRanks;
     private final boolean evaluateAlternatives;
-    private final int solverCandidates;
+    private final int solverCandidates; // how many plausible solver moves are played out, 0 for all
     // analyses of positions after a solver move, by position, so the tree builder can
     // reuse them as the starting point of the opponent's decision
     private final Map<String, KataAnalysisResult> afterCache = new HashMap<>();
@@ -128,7 +128,7 @@ public class DecisionFeatureExtractor {
         int sign = rec.toMove.equals("B") ? 1 : -1;
         Map<String, KataAnalysisResult> afterMove = new HashMap<>();
         int evaluated = 0;
-        for (int i = 0; i < rec.candidates.size() && evaluated < solverCandidates; i++) {
+        for (int i = 0; i < rec.candidates.size() && (solverCandidates <= 0 || evaluated < solverCandidates); i++) {
             CandidateFeatures c = rec.candidates.get(i);
             if (c.point().equals("pass")) continue;
             // a natural human move counts even when katago listed it too, with few visits

@@ -66,6 +66,10 @@ A correct move the problem has on a wrong line goes in by carrying that line on:
 author's refutation, to the solver's answer, marked right. The comment says the problem had
 it as wrong.
 
+The comment lists the lines added. The first is in full, and each one after it starts from
+where it leaves an earlier one: "Lines added: B M13, W M11, B M10, W L9, B M9, W N11, B M8;
+after W L9: B N11, W N10, B M12."
+
 ## Reviewing
 
 `cmd=crawl-review` serves a page (`review.port`, 8770) with the suggestions, the surest first.
@@ -83,7 +87,11 @@ For each one it shows:
   the tree, copies the moves from the start to the selected node as the page writes them
   ("B M13, W M11, B M10");
 - each position on the problem's own board: the missing moves (blue squares) and the moves
-  the problem accepts there (green), and a button to select it in the tree;
+  the problem accepts there (green), and a button to select it in the tree. A line the
+  finder's generator stopped at a limit (`redo.max_tree_decisions`, `redo.max_moves`) or a
+  failed analysis is listed above the boards as cut short, with why: it went in as it is,
+  ending on its last solver move, and can be taken on by hand (the note goes once it is).
+  The list marks such a suggestion "cut short", and the crawl's status counts the lines;
 - each line it adds, to step through move by move with the arrows under it. Stepping a line
   selects it, and then the arrow keys step it too (until the tree is clicked);
 - the confidence and the reasons for and against it;

@@ -75,6 +75,50 @@ class SuggestionDraftTest {
     }
 
     @Test
+    void aLineThatBranchesOffIsShownFromWhereItLeaves() {
+        // N13 at the start (made up), with two answers to W M13, the other one longer than the
+        // main line, and one to W L13: the main line comes first, as the finder has it
+        MissingVariationFinder.Finding f = finding(List.of(), List.of("B S16", "B R19"), "B T19", List.of("B T19", "W S19", "B R19"));
+        f.moves.get(0).lines.add(List.of("B T19", "W S19", "B Q19", "W P19", "B O19"));
+        f.moves.get(0).lines.add(List.of("B T19", "W R19", "B S19"));
+        SuggestionDraft d = SuggestionDraft.build(62070, GP62070, List.of(f), 3);
+        assertEquals(8, d.addedNodes);
+        assertTrue(d.comment.startsWith("At the start, Black's N13 works too, with the same result as M10 and L13. Lines added: "
+                + "B N13, W M13, B L13; after W M13: B K13, W J13, B H13; after B N13: W L13, B M13. Found by autoprob"), d.comment);
+    }
+
+    @Test
+    void aLineALimitStoppedSaysSoUntilItIsTakenOnByHand() {
+        // N13 at the start (made up), its line through W L13 stopped at the tree's limit of
+        // decisions
+        MissingVariationFinder.Finding f = finding(List.of(), List.of("B S16", "B R19"), "B T19", List.of("B T19", "W S19", "B R19"));
+        List<String> stopped = List.of("B T19", "W R19", "B S19");
+        f.moves.get(0).lines.add(stopped);
+        f.moves.get(0).cut.add(new MissingVariationFinder.Cut(stopped, "reached the tree limit of 60 decisions"));
+        SuggestionDraft d = SuggestionDraft.build(62070, GP62070, List.of(f), 3);
+        // it goes in as it is, the note on the problem's board
+        assertEquals(List.of(List.of("B ma", "W la", "B ka"), List.of("B ma", "W ka", "B la")), d.places.get(0).lines);
+        List<MissingVariationFinder.Cut> cut = d.places.get(0).cut;
+        assertEquals(1, cut.size());
+        assertEquals(List.of("B ma", "W ka", "B la"), cut.get(0).line);
+        assertEquals("reached the tree limit of 60 decisions", cut.get(0).why);
+        // unedited, it says so still
+        assertEquals(cut.get(0).line, d.edited(d.suggestedSgf).places.get(0).cut.get(0).line);
+        // taken on by hand, it no longer stops there
+        SgfEdit e = SgfEdit.parse(GP62070);
+        e.add(List.of(), "B ma", false);
+        e.add(List.of("B ma"), "W la", false);
+        e.add(List.of("B ma", "W la"), "B ka", true);
+        e.add(List.of("B ma"), "W ka", false);
+        e.add(List.of("B ma", "W ka"), "B la", false);
+        e.add(List.of("B ma", "W ka", "B la"), "W ga", false);
+        e.add(List.of("B ma", "W ka", "B la", "W ga"), "B ha", true);
+        SuggestionDraft taken = d.edited(e.write());
+        assertEquals(2, taken.places.get(0).lines.size());
+        assertEquals(List.of(), taken.places.get(0).cut);
+    }
+
+    @Test
     void aMoveTheProblemHasAsWrongGoesOnPastTheRefutationAndSaysSo() {
         // M9 (S15 on 19x19) is wrong at the start, W M10 its refutation. the finder's lines: the
         // move alone, and on through the refutation; the longer goes in first, which leaves

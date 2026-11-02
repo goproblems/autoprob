@@ -336,6 +336,27 @@ class ChoiceRuleTest {
     }
 
     @Test
+    void aMoveOutsideCountsOnlyWhenNothingInsideWorks() {
+        // gp-61593 at the start: black lives inside, and B4, which white's A4 captures, keeps
+        // the seki as C2 does, but white keeps B4's point once C2 is played
+        CandidateFeatures b4 = statusCand("B B4", "katago", 0.5);
+        b4.pointOwner = -1.0;
+        CandidateFeatures c2 = statusCand("B C2", "katago", 0.4);
+        c2.pointOwner = 1.0;
+        assertEquals(List.of("B B4", "B C2"), ChoiceRule.chooseSolver(solver(b4, c2), params()).moves());
+        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(solver(b4, c2), params("outside_owner", "0.8"));
+        assertEquals(List.of("B C2"), choice.moves()); // the move inside leads, though katago put B4 first
+        assertEquals("the only move that works (1 more only outside)", choice.reason);
+        // a point the opponent only leans to is not outside
+        b4.pointOwner = -0.6;
+        assertEquals(List.of("B B4", "B C2"), ChoiceRule.chooseSolver(solver(b4, c2), params("outside_owner", "0.8")).moves());
+        // when every working move is outside, they all count
+        b4.pointOwner = -1.0;
+        c2.pointOwner = -0.9;
+        assertEquals(List.of("B B4", "B C2"), ChoiceRule.chooseSolver(solver(b4, c2), params("outside_owner", "0.8")).moves());
+    }
+
+    @Test
     void aScannedMoveNeverSetsTheBar() {
         // the scan's moves were barely searched at the decision, like a low-visit katago move
         DecisionRecord rec = solver(statusCand("B L1", "katago", 0.5), statusCand("B K1", "scan", 6.0));

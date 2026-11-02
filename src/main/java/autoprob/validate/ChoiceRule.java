@@ -84,6 +84,15 @@ public class ChoiceRule {
             kos = (int) working.stream().filter(m -> rec.candidate(m).koFight != null).count();
             working.removeIf(m -> rec.candidate(m).koFight != null);
         }
+        // a move where the opponent keeps the point however the problem goes takes no part in
+        // it: a peep or atari outside the wall around a group living inside, played and
+        // answered there before the moves that decide it (redo.outside_owner). it does not
+        // count while a move inside works
+        int outside = 0;
+        if (working.stream().anyMatch(m -> !outside(rec.candidate(m), p))) {
+            outside = (int) working.stream().filter(m -> outside(rec.candidate(m), p)).count();
+            working.removeIf(m -> outside(rec.candidate(m), p));
+        }
         // katago's top move stays the main line when it works
         if (working.remove(top.move)) working.add(0, top.move);
         int found = working.size();
@@ -92,8 +101,15 @@ public class ChoiceRule {
         String main = working.remove(0);
         String reason = (found == 1 ? "the only move that works"
                 : found + " moves work" + (capped ? ", kept " + p.maxSolverMoves : ""))
-                + (kos > 0 ? " (" + kos + " more only through a ko)" : "");
+                + (kos > 0 ? " (" + kos + " more only through a ko)" : "")
+                + (outside > 0 ? " (" + outside + " more only outside)" : "");
         return new Choice(main, working, reason);
+    }
+
+    // whether a solver move is played outside: the opponent keeps its point once the best
+    // move is played, by more than redo.outside_owner
+    static boolean outside(CandidateFeatures c, ChoiceParams p) {
+        return p.outsideOwner > 0 && c.pointOwner != null && c.pointOwner <= -p.outsideOwner;
     }
 
     // a move works when it reaches the life status the best move does, whatever it costs in

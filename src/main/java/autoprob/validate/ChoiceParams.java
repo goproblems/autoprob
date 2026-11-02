@@ -40,6 +40,10 @@ public class ChoiceParams {
     // most solver moves kept at one position (main plus alternatives); 0 keeps every move
     // that works, since on the site a correct move missing from the tree is marked wrong
     public int maxSolverMoves;
+    // a solver move whose point the opponent keeps past this once the best move is played
+    // (its pointOwner at most minus this) is played outside, where nothing the problem asks
+    // is decided: left out while a move inside works. 0 off
+    public double outsideOwner;
     public int opponentBranches;     // most opponent resistances kept at one position
     public int maxAnswers;           // a resistance this many solver answers handle is no real try; 0 off
 
@@ -75,6 +79,7 @@ public class ChoiceParams {
         p.altScoreTolerance = Double.parseDouble(props.getProperty("redo.alt_score_tolerance", "1.5"));
         p.altRegionDist = Integer.parseInt(props.getProperty("redo.alt_region_dist", "3"));
         p.maxSolverMoves = Integer.parseInt(props.getProperty("redo.max_solver_moves", "0"));
+        p.outsideOwner = Double.parseDouble(props.getProperty("redo.outside_owner", "0"));
         p.opponentBranches = Integer.parseInt(props.getProperty("redo.opponent_branches", "1"));
         p.maxAnswers = Integer.parseInt(props.getProperty("redo.max_answers", "3"));
         p.visits = Integer.parseInt(props.getProperty("redo.visits", "1000"));
@@ -107,6 +112,7 @@ public class ChoiceParams {
         p.altScoreTolerance = altScoreTolerance;
         p.altRegionDist = altRegionDist;
         p.maxSolverMoves = maxSolverMoves;
+        p.outsideOwner = outsideOwner;
         p.opponentBranches = opponentBranches;
         p.maxAnswers = maxAnswers;
         p.visits = visits;
@@ -140,6 +146,7 @@ public class ChoiceParams {
             case "alt_score_tolerance" -> altScoreTolerance = Double.parseDouble(value);
             case "alt_region_dist" -> altRegionDist = Integer.parseInt(value);
             case "max_solver_moves" -> maxSolverMoves = Integer.parseInt(value);
+            case "outside_owner" -> outsideOwner = Double.parseDouble(value);
             case "opponent_branches" -> opponentBranches = Integer.parseInt(value);
             case "max_answers" -> maxAnswers = Integer.parseInt(value);
             case "response_candidates" -> responseCandidates = Integer.parseInt(value);

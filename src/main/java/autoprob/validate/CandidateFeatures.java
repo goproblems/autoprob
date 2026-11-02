@@ -28,6 +28,11 @@ public class CandidateFeatures {
     // the move that takes a ko katago's line after this move then fights over (taking a ko
     // again, or playing a ko threat), or null: a clean result comes ahead of it
     public String koFight;
+    // whose the move's point is once the best move is played: the ownership there after it,
+    // from the solver's view. near -1 the opponent keeps the point however the problem goes,
+    // so a move there takes no part in it (an outside peep, see redo.outside_owner). null
+    // where not measured (older records)
+    public Double pointOwner;
 
     public Double humanPolicy;  // blended human policy for this move at the decision position
 

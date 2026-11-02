@@ -206,6 +206,15 @@ Moves other than KataGo's top move must also be within `redo.alt_region_dist` of
 stone: a move away from the fight is a tenuki, not an answer to the problem, and is not
 evaluated.
 
+With `redo.outside_owner` set, a move played outside does not count either while a move
+inside works. Played outside means the opponent keeps the move's point once the yardstick
+is played: KataGo's ownership there, from the solver's view, is at most minus the setting.
+Nothing the problem decides is decided there. A peep or an atari against the wall around a
+group that lives inside keeps the status, since the group lives anyway, and only wastes a
+stone. The setting is off by default; `missing-variations` sets it from
+`missing.outside_owner` for a group living inside (see
+[missing-variations.md](missing-variations.md)).
+
 KataGo's top move stays the main choice when it works; every other working move becomes an
 alternative, since a correct move missing from the tree is marked wrong on the site
 (`redo.max_solver_moves` caps them, 0 for no cap). The tree's size is bounded by
@@ -435,6 +444,7 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.alt_score_tolerance` | 1.5 | Records without a status: a solver move works within this many points of the best reliable move's lead |
 | `redo.alt_region_dist` | 3 | Alternatives must be this close to a stake stone (-1: anywhere) |
 | `redo.max_solver_moves` | 0 | Most solver moves kept at one position (0: every move that works) |
+| `redo.outside_owner` | 0 | A working solver move whose point the opponent owns past this once the yardstick is played is left out, played outside, while a move inside works (0: off) |
 | `redo.opponent_branches` | 1 | Most opponent resistances kept at one position |
 | `redo.max_answers` | 3 | A threat more solver answers handle than this is no real try (0: off) |
 | `redo.max_tree_decisions` | 60 | Stop expanding the tree after this many decisions |

@@ -92,6 +92,31 @@ coordinates; the console says how far the problem moved.
    another order of play, and counts: gp-62668's Q17 before O18 and gp-62856's D4 before
    G1 were approved.
 
+   A found move played outside is not another answer either, when the solver's own stones
+   are at stake, so that the problem is to live (or to win a race). Played outside means
+   the opponent keeps the move's point once the best move is played: KataGo's ownership
+   there, from the solver's view, is at most minus `missing.outside_owner` (0.7). Nothing
+   the problem decides is decided there. The move keeps the result, since the group lives
+   anyway, and that is all it does: a peep or an atari against the wall around the group,
+   answered or ignored, its stone lost. Review calls these outside peeps, and rejected more
+   suggestions for them than for anything else (in the site's coordinates). In gp-61551,
+   after B3, A3, A2, A1, Black's A4 is an atari from outside that White ignores for C1 and
+   captures later at A5. In gp-61593 White's A4 captures Black's B4 at once. In gp-61668
+   Black's N10 and N7 come before the author's M13.
+
+   On 14 suggestions review rejected for these, the peeps' points came out at -0.91 to
+   -1.00 in 12 (every move each one found). The moves a line played outside, beside its
+   own, came out at -0.85 to -1.00, in approved suggestions too: after D1 and White's C5 in
+   gp-62261, Black's A5, A4 and B5 around White's B4. The approved found moves of a group
+   living inside came out at -0.47 (gp-62194's G5, next to Black's stones at stake) to
+   +1.00, in 6 suggestions, and the moves inside on the lines at -0.24 or more. A move
+   inside that ends up meaning nothing still counts, since it loses nothing. When the
+   solver kills, its stones outside are safe, and nothing it plays is held to this
+   (gp-61650's A4, an atari from outside on White's stones, was approved). The other two
+   rejections were pushes from the group outward, whose stone lives: gp-62219's C5 came
+   out at +0.60 to +0.82, Black's own point, and gp-62141's F11 at -0.10 to -0.33. This
+   does not catch those.
+
    Where the best is a ko, a found move whose ko is worse than the author's is not missing.
    The site splits ko results by who takes the ko first (see [Levels](#levels)), and on
    the board without threats a ko goes to whoever takes it first, so a move that comes to
@@ -134,7 +159,10 @@ coordinates; the console says how far the problem moved.
    N11, M12 and N10 work as well as the line's M9, and they were left out. The same
    happened twice more further down the line. Every plausible solver move is played out,
    too: the finder lifts `redo.solver_candidates`, whose cap left the human moves, tried
-   after KataGo's, untried.
+   after KataGo's, untried. The one exception is a move played outside (see step 4): for a
+   group living inside, the finder sets `redo.outside_owner` from `missing.outside_owner`,
+   and no such move goes in at a turn where a move inside works. In gp-61668 the lines of
+   N7 went through N10 again at five turns.
 
    A generated tree is still bounded by `redo.max_tree_decisions` (gp-62299's came to 37
    decisions) and each line by `redo.max_moves`. A limit only keeps a branch from going

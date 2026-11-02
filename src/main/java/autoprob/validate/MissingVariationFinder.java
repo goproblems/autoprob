@@ -59,7 +59,7 @@ public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
     // (crawl.recheck): goes up with every change to how moves are judged
-    static final int JUDGING_VERSION = 9;
+    static final int JUDGING_VERSION = 10;
     // how many lines past the problem's stones and the author's moves a suggested line may play
     static final int OUTSIDE = 1;
 
@@ -74,6 +74,7 @@ public class MissingVariationFinder {
     private final int rawVisits;     // katago's search on the raw board (RawBoard)
     private final double rawGap;     // how much less of the stakes a found move may leave there
     private final double rawGapKo;   // the same where the best is a ko or seki, the stakes half and half
+    private final double outsideOwner; // a living group's move whose point the opponent keeps past this is played outside
     private final boolean skipKo;
     private final boolean allPositions;
     private KataBrain brain;
@@ -192,6 +193,7 @@ public class MissingVariationFinder {
         this.rawVisits = Integer.parseInt(props.getProperty("missing.raw_visits", "1000"));
         this.rawGap = Double.parseDouble(props.getProperty("missing.raw_gap", "0.3"));
         this.rawGapKo = Double.parseDouble(props.getProperty("missing.raw_gap_ko", "0.6"));
+        this.outsideOwner = Double.parseDouble(props.getProperty("missing.outside_owner", "0.7"));
         // with skip_ko, positions whose own line goes through a ko are passed over
         this.skipKo = Boolean.parseBoolean(props.getProperty("missing.skip_ko", "false"));
         // with all_positions (the crawl), a problem's every position is checked rather than
@@ -658,8 +660,10 @@ public class MissingVariationFinder {
                 m.source = "author";
             }
             m.inFileAsWrong = inFile.contains(v.move);
-            // the raw board before the lines, which it does not need and which take the longest
-            String not = raw.worse(m);
+            // where the move is played, and the raw board, before the lines, which they do not
+            // need and which take the longest
+            String not = playedOutside(j, node, rec, v.move);
+            if (not == null) not = raw.worse(m);
             if (not != null) {
                 System.out.println("  " + where + ": " + pt(v.move) + " " + not + ", so it is not suggested");
                 continue;
@@ -846,6 +850,36 @@ public class MissingVariationFinder {
         } finally {
             node.removeChildNode(afterX);
         }
+    }
+
+    // why a found move is played outside, or null: the solver's group lives inside, and the
+    // opponent keeps the move's point once the best move is played (its pointOwner at most
+    // minus missing.outside_owner), so whatever the move does there, the problem is decided
+    // without it. adam's review, the commonest reason the crawl's suggestions were rejected:
+    // an outside peep, "a move thrown in the middle of a sequence. It doesn't affect anything
+    // on the inside, but it directly loses points on the outside", a peep or an atari (gp-61551's
+    // A4, an atari from outside that White ignores and captures later; gp-61593's B4, which A4
+    // captures; gp-61668's N10 and N7). a move inside that ends up meaning nothing still counts,
+    // since it loses nothing, and so does any move when the solver kills, its stones safe
+    // outside (gp-61650's A4, approved)
+    private String playedOutside(Judging j, Node node, DecisionRecord rec, String move) throws Exception {
+        if (outsideOwner <= 0 || !defends(j.iso())) return null;
+        CandidateFeatures c = rec.candidate(move);
+        if (c == null || c.pointOwner == null) c = j.extractor().measure(node, rec, move);
+        if (c == null || c.pointOwner == null || c.pointOwner > -outsideOwner) return null;
+        CandidateFeatures best = ChoiceRule.bestCandidate(rec);
+        return "is played outside, where " + (j.iso().solverColor == Intersection.BLACK ? "White" : "Black")
+                + " keeps the point once " + pt(best.move) + " is played (its ownership there "
+                + String.format("%.2f", -c.pointOwner) + "): it takes no part in the problem";
+    }
+
+    // whether the solver's own group is at stake: the problem is to live, or to win a race,
+    // rather than to kill
+    static boolean defends(ProblemIsolator.IsolatedProblem iso) {
+        for (Point s : iso.stakes) {
+            if (iso.problem.board.board[s.x][s.y].stone == iso.solverColor) return true;
+        }
+        return false;
     }
 
     // whether a point takes part in the fight: next to a stone at stake, or in an empty region
@@ -1319,6 +1353,10 @@ public class MissingVariationFinder {
         lineProps.putAll(props);
         lineProps.setProperty("redo.scan_dist", "-1");
         lineProps.setProperty("redo.max_solver_moves", "0");
+        // and none of the solver's moves is played outside when its group lives inside (see
+        // playedOutside): such a move works, since nothing is decided there, but a line through
+        // it shows nothing the problem asks
+        lineProps.setProperty("redo.outside_owner", defends(iso) ? String.valueOf(outsideOwner) : "0");
         SolutionPathGenerator generator = new SolutionPathGenerator(lineProps, brain, from);
         if (forced != null) generator.setForcedFirstMove(Intersection.gtp2point(forced.substring(2)));
         List<String> start = new ArrayList<>(at);

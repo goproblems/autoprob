@@ -162,6 +162,30 @@ class MissingVariationFinderTest {
     }
 
     @Test
+    void onlyASolverWithStonesAtStakeHasAnInsideToStayIn() {
+        // black kills white's corner: black's stones are safe outside
+        ProblemIsolator.IsolatedProblem iso = throwInProblem();
+        assertFalse(MissingVariationFinder.defends(iso));
+        // with a black stone at stake too, black's group is part of what the problem decides
+        iso.stakes.add(Intersection.gtp2point("P16"));
+        assertTrue(MissingVariationFinder.defends(iso));
+    }
+
+    @Test
+    void aPointsOwnerIsSeenFromTheMover() {
+        // after the best move, black owns A1 and white T19
+        autoprob.katastruct.KataAnalysisResult after = new autoprob.katastruct.KataAnalysisResult();
+        after.ownership = new java.util.ArrayList<>(java.util.Collections.nCopies(361, 0.0));
+        Point a1 = Intersection.gtp2point("A1"), t19 = Intersection.gtp2point("T19");
+        after.ownership.set(a1.x + a1.y * 19, 0.97);
+        after.ownership.set(t19.x + t19.y * 19, -0.9);
+        assertEquals(0.97, DecisionFeatureExtractor.pointOwner("B A1", after));
+        assertEquals(-0.9, DecisionFeatureExtractor.pointOwner("B T19", after));
+        assertEquals(0.9, DecisionFeatureExtractor.pointOwner("W T19", after));
+        assertNull(DecisionFeatureExtractor.pointOwner("B A1", null));
+    }
+
+    @Test
     void aLineThatRunsOutOfTheProblemIsNoSuggestion() throws Exception {
         // stones from A1 to C3, and the author's moves out to D1 and A4, on a wrong line too
         Node root = new Parser().parse("(;SZ[19]AB[as][bs][br]AW[cs][cr][cq](;B[ds];W[ap])(;B[bq]C[RIGHT]))");

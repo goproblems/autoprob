@@ -166,7 +166,18 @@ public class DecisionFeatureExtractor {
             c.koFight = koFight(node, c.move, after);
         }
         scan(rec, node, kar, human, reference, best.afterLead);
+        for (CandidateFeatures c : rec.candidates) {
+            if (!c.point().equals("pass")) c.pointOwner = pointOwner(c.move, reference);
+        }
         return rec;
+    }
+
+    // the ownership of a move's point after the reference move, from the mover's view
+    static Double pointOwner(String move, KataAnalysisResult reference) {
+        if (reference == null || reference.ownership == null) return null;
+        Point p = Intersection.gtp2point(move.substring(2));
+        int sign = move.startsWith("B") ? 1 : -1;
+        return Math.round(sign * reference.ownership.get(p.x + p.y * 19) * 1000.0) / 1000.0;
     }
 
     // the move that takes a ko katago's line after the move then fights over, or null
@@ -269,6 +280,7 @@ public class DecisionFeatureExtractor {
         out.afterLead = (move.startsWith("B") ? 1 : -1) * after.blackScore();
         out.statusDeltas = statusDeltas(node, after, reference);
         out.koFight = koFight(node, move, after);
+        out.pointOwner = pointOwner(move, reference);
         return out;
     }
 

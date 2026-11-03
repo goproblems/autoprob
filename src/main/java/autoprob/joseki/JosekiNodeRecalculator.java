@@ -2,6 +2,7 @@ package autoprob.joseki;
 
 import autoprob.ApiClient;
 import autoprob.KataBrain;
+import autoprob.joseki.TenukiMoves;
 import autoprob.QueryBuilder;
 import autoprob.api.JosekiAnalysisResultData;
 import autoprob.api.JosekiAnalysisRequestData;
@@ -97,6 +98,7 @@ public class JosekiNodeRecalculator {
     enum AnalysisScope {
         LOCAL("local", true, false),
         LOCAL_WITH_MOVES("local_with_moves", true, true),
+        LOCAL_WITH_MOVES_NO_TENUKI("local_with_moves_no_tenuki", true, true),
         GLOBAL("global", false, false);
 
         private final String value;
@@ -114,6 +116,7 @@ public class JosekiNodeRecalculator {
             return switch (normalized) {
                 case "local" -> LOCAL;
                 case "local_with_moves" -> LOCAL_WITH_MOVES;
+                case "local_with_moves_no_tenuki" -> LOCAL_WITH_MOVES_NO_TENUKI;
                 case "global" -> GLOBAL;
                 default -> throw new IllegalArgumentException("Unknown joseki analysis scope: " + value);
             };
@@ -562,6 +565,7 @@ public class JosekiNodeRecalculator {
     private record ProcessNodesResult(int submittedResults, int submittedHumanPolicies, int failedNodes) {}
 
     private record ScopedQueryResult(KataAnalysisResult analysis, double policyMass, String configHash) {}
+    private final Map<String, ScopedQueryResult> scopedQueryCache = new HashMap<>();
 
     private record AnalysisTarget(String model, int minVisits) {}
 
@@ -873,6 +877,7 @@ public class JosekiNodeRecalculator {
         List<AnalysisScope> scopes,
         boolean includePass
     ) throws Exception {
+        scopedQueryCache.clear();
         List<JosekiAnalysisResultData> results = new ArrayList<>();
         for (AnalysisScope scope : scopes) {
             results.add(analyzeNode(entry, brain, scope));
@@ -898,6 +903,7 @@ public class JosekiNodeRecalculator {
     private JosekiPassAnalysisUpdateData analyzePassNode(
         JosekiNodeEntry entry, KataBrain brain, Double currentGlobalScore
     ) throws Exception {
+        scopedQueryCache.clear();
         String path = entry.path == null ? "" : entry.path;
         Node node = buildNode(path);
         double baselineScore = currentGlobalScore == null
@@ -1017,6 +1023,8 @@ public class JosekiNodeRecalculator {
 
         String configHash = analysisConfigHash(brain.modelPath, query, role, scope.value);
 
+        ScopedQueryResult cached = scopedQueryCache.get(configHash);
+        if (cached != null) return cached;
         brain.doQuery(query);
         KataAnalysisResult result = brain.getResult(query.id, 0);
         if (result == null) {
@@ -1031,7 +1039,9 @@ public class JosekiNodeRecalculator {
         double policyMass = scope == AnalysisScope.GLOBAL
             ? 1.0
             : calculatePolicyMass(result.policy, allowedMoves);
-        return new ScopedQueryResult(result, policyMass, configHash);
+        ScopedQueryResult scopedResult = new ScopedQueryResult(result, policyMass, configHash);
+        scopedQueryCache.put(configHash, scopedResult);
+        return scopedResult;
     }
 
     KataQuery buildScopedQuery(Node node, AnalysisScope scope, Set<String> childMoves) {
@@ -1041,6 +1051,9 @@ public class JosekiNodeRecalculator {
         query.analyzeTurns.add(0);
         query.maxVisits = configuredVisits();
         Set<String> scopedChildMoves = scope.includeExistingMoves ? childMoves : Set.of();
+        if (scope == AnalysisScope.LOCAL_WITH_MOVES_NO_TENUKI) {
+            scopedChildMoves = TenukiMoves.withoutTenuki(node, scopedChildMoves);
+        }
 
         int maxMoveDistance = Integer.parseInt(props.getProperty("joseki.max_move_distance", "4"));
         if (scope.restrictToNearbyMoves && maxMoveDistance >= 0) {
@@ -1081,9 +1094,8 @@ public class JosekiNodeRecalculator {
             }
         }
 
-        String config = "joseki-katago-query-v1\n"
-            + role + "\n"
-            + scope + "\n"
+        String config = "joseki-katago-query-v2\n"
+            + TenukiMoves.VERSION + "\n"
             + hashAnalysisFile(resolveKatagoExecutable()) + "\n"
             + hashAnalysisFile(Path.of(modelPath)) + "\n"
             + hashAnalysisFile(Path.of(props.getProperty("kata.config"))) + "\n"

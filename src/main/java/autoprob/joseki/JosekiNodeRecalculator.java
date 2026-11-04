@@ -1095,7 +1095,6 @@ public class JosekiNodeRecalculator {
         }
 
         String config = "joseki-katago-query-v2\n"
-            + TenukiMoves.VERSION + "\n"
             + hashAnalysisFile(resolveKatagoExecutable()) + "\n"
             + hashAnalysisFile(Path.of(modelPath)) + "\n"
             + hashAnalysisFile(Path.of(props.getProperty("kata.config"))) + "\n"

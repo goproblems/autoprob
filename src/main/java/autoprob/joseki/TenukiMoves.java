@@ -8,9 +8,10 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
 
-/** Matches Josekipedia's history-chebyshev-4-v1 placement classification. */
+/** Matches Josekipedia's placement classification using the root region and move history. */
 public final class TenukiMoves {
-    public static final String VERSION = "history-chebyshev-4-v1";
+    private static final int BOARD_SIZE = 19;
+    private static final int ROOT_LOCAL_SIZE = 10;
     private TenukiMoves() {}
 
     public static boolean isTenuki(Node position, String move) {
@@ -24,7 +25,9 @@ public final class TenukiMoves {
             hasHistory = true;
             if (Math.max(Math.abs(point.x-action.loc.x), Math.abs(point.y-action.loc.y)) <= 4) return false;
         }
-        return hasHistory;
+        if (hasHistory) return true;
+        // Internal y counts downward; the upper-right 10x10 region is K10–T19.
+        return point.x < BOARD_SIZE - ROOT_LOCAL_SIZE || point.y >= ROOT_LOCAL_SIZE;
     }
 
     public static Set<String> withoutTenuki(Node position, Set<String> moves) {
@@ -36,6 +39,6 @@ public final class TenukiMoves {
     }
 
     private static boolean onBoard(Point point) {
-        return point != null && point.x >= 0 && point.x < 19 && point.y >= 0 && point.y < 19;
+        return point != null && point.x >= 0 && point.x < BOARD_SIZE && point.y >= 0 && point.y < BOARD_SIZE;
     }
 }

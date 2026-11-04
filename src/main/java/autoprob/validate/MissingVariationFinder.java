@@ -105,6 +105,7 @@ public class MissingVariationFinder {
         int positions; // positions on the author's lines checked
         int koSkipped; // of those, passed over because the author's line goes through a ko
         long seconds;
+        String result; // what its correct lines come to where first judged: live, kill, ko or seki (result)
         Finding finding;
         // with missing.all_positions, the finding at every position that has one
         transient List<Finding> findings = new ArrayList<>();
@@ -394,6 +395,7 @@ public class MissingVariationFinder {
                 o.positions = 0;
                 o.status = null;
                 o.reason = null;
+                o.result = null;
                 o.findings.clear();
             }
         }
@@ -458,7 +460,7 @@ public class MissingVariationFinder {
                     continue;
                 }
             }
-            Finding f = findAt(name, sgf, root, own, embedded, judging, pos);
+            Finding f = findAt(name, sgf, root, own, embedded, judging, pos, o);
             if (f != null) {
                 f.difficulty = difficulty;
                 if (allPositions) {
@@ -501,8 +503,8 @@ public class MissingVariationFinder {
                 new MoveClassifier(iso, walker, verifyVisits, visits, 2 * verifyVisits, replyDist));
     }
 
-    private Finding findAt(String name, String sgf, Node root, Node own, SmallBoard.Embedded board, Judging j, Position pos)
-            throws Exception {
+    private Finding findAt(String name, String sgf, Node root, Node own, SmallBoard.Embedded board, Judging j, Position pos,
+                           Outcome o) throws Exception {
         ProblemIsolator.IsolatedProblem iso = j.iso();
         String where = pos.at().isEmpty() ? "at the start" : "after " + String.join(" ", pos.at());
         Node node;
@@ -582,6 +584,8 @@ public class MissingVariationFinder {
                     + " misreads the position");
             return null;
         }
+        // positions come shallowest first, so this is the start unless it was passed over
+        if (o.result == null) o.result = result(best, iso);
 
         // a position the solver may leave and still reach the best level is settled: every
         // move that does not throw the result away reaches it there, so none is missing
@@ -880,6 +884,17 @@ public class MissingVariationFinder {
             if (iso.problem.board.board[s.x][s.y].stone == iso.solverColor) return true;
         }
         return false;
+    }
+
+    // the best level as a problem's goal says it: live or kill when the solver reaches it
+    // outright, as its own stones are at stake or only the opponent's, else ko or seki
+    static String result(MoveClassifier.Level best, ProblemIsolator.IsolatedProblem iso) {
+        return switch (best) {
+            case CLEAN -> defends(iso) ? "live" : "kill";
+            case SEKI -> "seki";
+            case KO -> "ko";
+            case FAIL -> null;
+        };
     }
 
     // whether a point takes part in the fight: next to a stone at stake, or in an empty region
@@ -1621,6 +1636,7 @@ public class MissingVariationFinder {
         if (o.reason != null) row.put("reason", o.reason);
         row.put("positions", o.positions);
         if (o.koSkipped > 0) row.put("koSkipped", o.koSkipped);
+        if (o.result != null) row.put("result", o.result);
         row.put("seconds", o.seconds);
         if (o.finding != null) {
             row.put("at", String.join(" ", o.finding.at));

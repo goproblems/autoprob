@@ -20,6 +20,7 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.TreeMap;
 
+import com.google.gson.reflect.TypeToken;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
@@ -144,6 +145,7 @@ public class CrawlReviewServer {
         if (d != made) out.put("edited", Map.of("by", edit.by, "time", edit.time));
         out.put("approval", approval(name));
         out.put("submitted", submitted(name));
+        out.put("result", result(d));
         out.put("url", "https://www.goproblems.com/problems/" + d.problemId);
         SmallBoard.Embedded board = SmallBoard.toNineteen(d.originalSgf);
         Node root = new Parser().parse(board.sgf());
@@ -189,6 +191,27 @@ public class CrawlReviewServer {
             out.put("treeError", String.valueOf(e.getMessage()));
         }
         return out;
+    }
+
+    // what the checker makes of the problem's correct lines, for the headline: live, kill, ko or
+    // seki, as the crawl kept it. for a problem judged before the crawl kept that, the best
+    // level at the shallowest of its findings, marked old: there live and kill are one level
+    // (clean), so it says "live or kill". null with neither
+    Map<String, Object> result(SuggestionDraft d) throws IOException {
+        CrawlIndex.Entry e = CrawlIndex.load(new File(dir, "problems.jsonl")).get(d.problemId);
+        if (e != null && e.result != null) return Map.of("text", e.result);
+        File f = new File(dir, "findings/" + d.problem + ".json");
+        if (!f.exists()) return null;
+        List<MissingVariationFinder.Finding> findings = RunRecorder.GSON.fromJson(Files.readString(f.toPath()),
+                new TypeToken<List<MissingVariationFinder.Finding>>() {}.getType());
+        MissingVariationFinder.Finding first = null;
+        for (MissingVariationFinder.Finding x : findings) {
+            if (x.level == null || x.level == MoveClassifier.Level.FAIL) continue;
+            if (first == null || x.at.size() < first.at.size()) first = x;
+        }
+        if (first == null) return null;
+        return Map.of("text", first.level == MoveClassifier.Level.CLEAN ? "live or kill" : MissingVariationFinder.level(first.level),
+                "old", true);
     }
 
     // the problem's tree as the suggestion leaves it, on the problem's own board, node by node

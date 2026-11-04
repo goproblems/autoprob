@@ -257,6 +257,7 @@ public class Crawler {
         MissingVariationFinder.Outcome o = analyzer.analyze(name, sgf, e.difficulty, heading);
         e.seconds = (System.currentTimeMillis() - t0) / 1000;
         e.positions = o.positions;
+        e.result = o.result;
         if ("error".equals(o.status)) return error(e, o.reason);
         e.version = MissingVariationFinder.JUDGING_VERSION;
         if ("skipped".equals(o.status)) return status(e, "skipped", o.reason);

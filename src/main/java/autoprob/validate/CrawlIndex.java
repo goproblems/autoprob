@@ -32,6 +32,7 @@ public class CrawlIndex {
         public String difficulty;
         public String sgfHash;      // of the sgf as the site had it
         public Integer positions;   // positions on the author's lines checked
+        public String result;       // what its correct lines come to, judged at the start: live, kill, ko or seki
         public Long seconds;
         public int attempts;        // errors so far
         public String time;

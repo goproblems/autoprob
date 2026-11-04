@@ -172,6 +172,18 @@ class MissingVariationFinderTest {
     }
 
     @Test
+    void aProblemsResultIsSaidAsItsGoal() {
+        // reached outright, black kills white's corner; with black's own stones at stake it lives
+        ProblemIsolator.IsolatedProblem iso = throwInProblem();
+        assertEquals("kill", MissingVariationFinder.result(MoveClassifier.Level.CLEAN, iso));
+        assertEquals("ko", MissingVariationFinder.result(MoveClassifier.Level.KO, iso));
+        assertEquals("seki", MissingVariationFinder.result(MoveClassifier.Level.SEKI, iso));
+        assertNull(MissingVariationFinder.result(MoveClassifier.Level.FAIL, iso));
+        iso.stakes.add(Intersection.gtp2point("P16"));
+        assertEquals("live", MissingVariationFinder.result(MoveClassifier.Level.CLEAN, iso));
+    }
+
+    @Test
     void aPointsOwnerIsSeenFromTheMover() {
         // after the best move, black owns A1 and white T19
         autoprob.katastruct.KataAnalysisResult after = new autoprob.katastruct.KataAnalysisResult();

@@ -21,6 +21,14 @@ function conf(c) {
   return c ? `${c.label} ${c.low}-${c.high}%` : 'no confidence';
 }
 
+// what the checker makes of the problem's correct lines: live, kill, ko or seki
+function result(r) {
+  if (!r) return '';
+  const tip = r.old ? 'Judged before the crawl kept this: the best result at the first position with findings, where live and kill are one'
+    : "What the checker makes of the problem's correct lines, where it first judged them";
+  return ` <span class="result${r.old ? ' old' : ''}" title="${esc(tip)}">correct path: ${esc(r.text)}</span>`;
+}
+
 async function loadList() {
   const d = await api('/api/list');
   S.entries = d.entries;
@@ -152,7 +160,7 @@ function renderItem(path) {
   const it = S.item, d = it.draft, a = it.approval, s = it.submitted;
   const where = s ? `sent as suggestion #${s.suggestionId}${s.status ? ` (${s.status})` : ''}`
     : a ? `${a.decision} by ${esc(a.by)}` : 'waiting for review';
-  let h = `<h2><a href="${it.url}" target="_blank" rel="noopener">${d.problem}</a> <small>${esc(d.difficulty)} · ${where}</small></h2>`;
+  let h = `<h2><a href="${it.url}" target="_blank" rel="noopener">${d.problem}</a>${result(it.result)} <small>${esc(d.difficulty)} · ${where}</small></h2>`;
   h += it.tree ? `<section class="place" id="tree-section">
       <h3>The tree ${it.edited ? `<small class="edited" title="${esc(it.edited.time)}">edited by ${esc(it.edited.by)}</small>` : ''}
         <label class="wrong-toggle" title="Show the problem's wrong lines too"><input type="checkbox" id="wrong-lines" ${S.wrong ? 'checked' : ''}> wrong lines</label></h3>
@@ -699,8 +707,8 @@ function move(dir, from = S.name) {
   if (!items.length) { $('item').innerHTML = '<p class="empty">nothing left here</p>'; return; }
   let i = items.findIndex(e => e.name === from);
   i = i < 0 ? 0 : Math.max(0, Math.min(items.length - 1, i + dir));
-  location.hash = items[i].name;
-  if (items[i].name === S.name) select(S.name);
+  if (location.hash.slice(1) === items[i].name) select(items[i].name);
+  else location.hash = items[i].name;
 }
 
 document.addEventListener('keydown', e => {
@@ -733,5 +741,6 @@ window.addEventListener('beforeunload', e => {
 window.onhashchange = () => select(location.hash.slice(1));
 loadList().then(() => {
   if (location.hash) select(location.hash.slice(1));
-  else if (visible().length) location.hash = visible()[0].name;
+  // the first one, with no problem in the address until one is picked
+  else if (visible().length) select(visible()[0].name);
 });

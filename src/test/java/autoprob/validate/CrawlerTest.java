@@ -65,6 +65,7 @@ class CrawlerTest {
             MissingVariationFinder.Outcome o = new MissingVariationFinder.Outcome();
             o.problem = name;
             o.positions = 5;
+            o.result = "kill";
             if (finds.contains(name)) {
                 o.findings.add(SuggestionDraftTest.r19());
                 o.finding = o.findings.get(0);
@@ -106,6 +107,8 @@ class CrawlerTest {
         assertEquals("found", index.get(4).status);
         assertEquals("18 kyu", index.get(4).difficulty);
         assertEquals(MissingVariationFinder.JUDGING_VERSION, index.get(4).version);
+        assertEquals("kill", index.get(4).result);
+        assertEquals("kill", index.get(10).result);
         SuggestionDraft d = RunRecorder.GSON.fromJson(Files.readString(tmp.resolve("suggestions/gp-4.json")), SuggestionDraft.class);
         assertEquals(4, d.problemId);
         assertEquals(3, d.addedNodes);

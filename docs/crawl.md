@@ -73,8 +73,14 @@ after W L9: B N11, W N10, B M12."
 ## Reviewing
 
 `cmd=crawl-review` serves a page (`review.port`, 8770) with the suggestions, the surest first.
-For each one it shows:
+The page opens on the first one waiting for review without putting its name in the address,
+and the page's title goes back there from any problem. For each one it shows:
 
+- in the headline, what the checker makes of the problem's correct lines: live, kill, ko or
+  seki, the best result at the start (or at the first position it judged, when the start was
+  passed over). The crawl keeps it with the problem in `problems.jsonl`. A problem judged before
+  it did shows the best result at its shallowest finding instead, dashed, and there live and
+  kill are one result ("live or kill");
 - the problem's tree as the suggestion leaves it, laid out like the redo review's (depth runs
   right, branches stack downward): green lines lead to a correct end and red ones only to
   wrong ends, blue is what the suggestion adds, and dashed blue is the problem's own move on a
@@ -155,7 +161,7 @@ checks are the only ones.
 
 | Path | Contents |
 |---|---|
-| `problems.jsonl` | what each problem came to, a line each, a later line replacing an earlier |
+| `problems.jsonl` | what each problem came to, a line each, a later line replacing an earlier; for a judged one, what its correct lines come to (live, kill, ko or seki) |
 | `state.json` | counts and where the last run was, for a look |
 | `lock` | held by a running crawl: one crawl per folder, since KataGo needs the memory |
 | `sgf/gp-<id>.sgf` | the problem as the site had it |

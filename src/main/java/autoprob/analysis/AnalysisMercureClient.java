@@ -1,6 +1,5 @@
 package autoprob.analysis;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -16,8 +15,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Base64;
+import java.time.Instant;
+import java.util.List;
+import java.util.stream.StreamSupport;
 import java.util.Properties;
+import java.util.function.Consumer;
 
 /** Queue wake-ups over Mercure, independent of the legacy scenario subscriber. */
 public final class AnalysisMercureClient implements AutoCloseable {
@@ -25,28 +27,25 @@ public final class AnalysisMercureClient implements AutoCloseable {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private volatile boolean running;
     private volatile boolean connected;
-    private volatile HttpURLConnection connection;
     private Thread listener;
     private String token;
     private long tokenExpiresAt;
     private String lastEventId;
+    private String hubUrl;
+    private List<String> topics = List.of();
 
     public AnalysisMercureClient(Properties configured) { props.putAll(configured); }
 
     public boolean isConnected() { return connected; }
 
-    public void startListening(Runnable onQueueChanged) {
+    public void startListening(Runnable onQueueChanged, Consumer<JsonObject> onControl) {
         if (!Boolean.parseBoolean(props.getProperty("analysis.use.mercure", "true"))) return;
-        if (props.getProperty("auth.username", "").isBlank() || props.getProperty("auth.password", "").isEmpty()) {
-            System.err.println("Analysis Mercure requires auth.username/password; using polling until configured");
-            return;
-        }
         running = true;
         listener = new Thread(() -> {
             while (running) {
                 try {
                     ensureToken();
-                    listen(onQueueChanged);
+                    listen(onQueueChanged, onControl);
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     break;
@@ -54,9 +53,6 @@ public final class AnalysisMercureClient implements AutoCloseable {
                     if (running) System.err.println("Analysis Mercure: " + error.getMessage());
                 } finally {
                     connected = false;
-                    HttpURLConnection current = connection;
-                    if (current != null) current.disconnect();
-                    connection = null;
                     if (running) onQueueChanged.run();
                 }
                 if (running) {
@@ -75,77 +71,84 @@ public final class AnalysisMercureClient implements AutoCloseable {
 
     private void ensureToken() throws Exception {
         if (token != null && System.currentTimeMillis() < tokenExpiresAt - 60000) return;
-        JsonObject body = new JsonObject();
-        body.addProperty("username", props.getProperty("auth.username"));
-        body.addProperty("password", props.getProperty("auth.password"));
-        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/auth/login"))
-            .timeout(Duration.ofSeconds(15)).header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(new Gson().toJson(body))).build();
+        String apiKey = props.getProperty("analysis.apikey", props.getProperty("apikey", "")).trim();
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/api/v2/analysis-clients/" + props.getProperty("clientId").trim() + "/subscription"))
+            .timeout(Duration.ofSeconds(15)).header("Accept", "application/json").header("X-API-Key", apiKey).GET().build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200) throw new IOException("Login HTTP " + response.statusCode());
+        if (response.statusCode() != 200) throw new IOException("Worker subscription HTTP " + response.statusCode());
         JsonObject session = JsonParser.parseString(response.body()).getAsJsonObject();
-        if (!session.has("token") || session.get("token").isJsonNull()) throw new IOException("Login returned no token");
+        if (!session.has("token") || session.get("token").isJsonNull()) throw new IOException("Subscription returned no token");
         token = session.get("token").getAsString();
-        // Read expiry only to schedule refresh; the hub validates the JWT signature.
-        String claims = new String(Base64.getUrlDecoder().decode(token.split("\\.")[1]), StandardCharsets.UTF_8);
-        tokenExpiresAt = JsonParser.parseString(claims).getAsJsonObject().get("exp").getAsLong() * 1000;
+        tokenExpiresAt = Instant.parse(session.get("expiresAt").getAsString()).toEpochMilli();
+        hubUrl = session.get("hubUrl").getAsString();
+        topics = StreamSupport.stream(session.getAsJsonArray("topics").spliterator(), false).map(value -> value.getAsString()).toList();
     }
 
-    private void listen(Runnable onQueueChanged) throws Exception {
-        String base = props.getProperty("mercure.baseurl", baseUrl()).replaceAll("/+$", "");
-        String hub = base + props.getProperty("mercure.hub.url", "/.well-known/mercure");
-        // This is a separate topic: old scenario workers receive no new queue events.
-        String url = hub + (hub.contains("?") ? "&" : "?")
-            + "match=" + URLEncoder.encode("/analysis/tasks", StandardCharsets.UTF_8);
+    private void listen(Runnable onQueueChanged, Consumer<JsonObject> onControl) throws Exception {
+        String hub = hubUrl;
+        if (!props.getProperty("mercure.baseurl", "").isBlank()) {
+            hub = props.getProperty("mercure.baseurl").replaceAll("/+$", "") + props.getProperty("mercure.hub.url", URI.create(hubUrl).getRawPath());
+        }
+        String query = topics.stream().map(topic -> "match=" + URLEncoder.encode(topic, StandardCharsets.UTF_8)).collect(java.util.stream.Collectors.joining("&"));
+        String url = hub + (hub.contains("?") ? "&" : "?") + query;
         HttpURLConnection current = (HttpURLConnection) URI.create(url).toURL().openConnection();
-        connection = current;
-        current.setConnectTimeout(10000);
-        current.setReadTimeout(30000);
-        current.setRequestProperty("Accept", "text/event-stream");
-        current.setRequestProperty("Cache-Control", "no-cache");
-        current.setRequestProperty("Authorization", "Bearer " + token);
-        if (lastEventId != null) current.setRequestProperty("Last-Event-ID", lastEventId);
-        int status = current.getResponseCode();
-        if (status == 401 || status == 403) token = null;
-        if (status != 200) throw new IOException("Hub HTTP " + status);
-        connected = true;
-        System.out.println("Analysis Mercure connected; listening for queue changes");
-        onQueueChanged.run(); // Recover notifications missed during startup or disconnection.
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(current.getInputStream(), StandardCharsets.UTF_8))) {
-            StringBuilder data = new StringBuilder();
-            String eventId = null;
-            long lastDataAt = System.currentTimeMillis();
-            while (running && System.currentTimeMillis() < tokenExpiresAt - 60000) {
-                String line;
-                try { line = reader.readLine(); }
-                catch (SocketTimeoutException timeout) {
-                    if (System.currentTimeMillis() - lastDataAt >= 90000) throw new IOException("Hub stream timed out");
-                    continue;
-                }
-                if (line == null) break;
-                lastDataAt = System.currentTimeMillis();
-                if (line.isEmpty()) {
-                    if (eventId != null) lastEventId = eventId;
-                    if (!data.isEmpty()) dispatch(data.toString(), onQueueChanged);
-                    data.setLength(0);
-                    eventId = null;
-                } else if (line.startsWith("data:")) {
-                    if (!data.isEmpty()) data.append('\n');
-                    data.append(line.substring(5));
-                    if (data.length() > 65536) throw new IOException("Queue event exceeds size limit");
-                } else if (line.startsWith("id:")) {
-                    String id = line.substring(3).stripLeading();
-                    if (!id.contains("\u0000")) eventId = id;
+        try {
+            current.setConnectTimeout(10000);
+            current.setReadTimeout(30000);
+            current.setRequestProperty("Accept", "text/event-stream");
+            current.setRequestProperty("Cache-Control", "no-cache");
+            current.setRequestProperty("Authorization", "Bearer " + token);
+            if (lastEventId != null) current.setRequestProperty("Last-Event-ID", lastEventId);
+            int status = current.getResponseCode();
+            if (status == 401 || status == 403) token = null;
+            if (status != 200) throw new IOException("Hub HTTP " + status);
+            if (!running) return;
+            connected = true;
+            System.out.println("Analysis Mercure connected; listening for queue changes");
+            JsonObject sync = new JsonObject();
+            sync.addProperty("type", "analysis_control_sync");
+            onControl.accept(sync);
+            onQueueChanged.run(); // Recover notifications missed during startup or disconnection.
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(current.getInputStream(), StandardCharsets.UTF_8))) {
+                StringBuilder data = new StringBuilder();
+                String eventId = null;
+                long lastDataAt = System.currentTimeMillis();
+                while (running && System.currentTimeMillis() < tokenExpiresAt - 60000) {
+                    String line;
+                    try { line = reader.readLine(); }
+                    catch (SocketTimeoutException timeout) {
+                        if (System.currentTimeMillis() - lastDataAt >= 90000) throw new IOException("Hub stream timed out");
+                        continue;
+                    }
+                    if (line == null) break;
+                    lastDataAt = System.currentTimeMillis();
+                    if (line.isEmpty()) {
+                        if (eventId != null) lastEventId = eventId;
+                        if (running && !data.isEmpty()) dispatch(data.toString(), onQueueChanged, onControl);
+                        data.setLength(0);
+                        eventId = null;
+                    } else if (line.startsWith("data:")) {
+                        if (!data.isEmpty()) data.append('\n');
+                        data.append(line.substring(5));
+                        if (data.length() > 65536) throw new IOException("Queue event exceeds size limit");
+                    } else if (line.startsWith("id:")) {
+                        String id = line.substring(3).stripLeading();
+                        if (!id.contains("\u0000")) eventId = id;
+                    }
                 }
             }
+        } finally {
+            current.disconnect();
         }
     }
 
-    private void dispatch(String data, Runnable onQueueChanged) {
+    private void dispatch(String data, Runnable onQueueChanged, Consumer<JsonObject> onControl) {
         try {
             JsonObject event = JsonParser.parseString(data).getAsJsonObject();
             if (event.has("type") && "analysis_tasks_changed".equals(event.get("type").getAsString())) {
                 onQueueChanged.run();
+            } else if (event.has("type") && List.of("live_analysis_control", "analysis_configuration_changed").contains(event.get("type").getAsString())) {
+                onControl.accept(event);
             }
         } catch (RuntimeException invalidEvent) {
             System.err.println("Ignored invalid analysis queue event");
@@ -155,12 +158,8 @@ public final class AnalysisMercureClient implements AutoCloseable {
     @Override public void close() {
         running = false;
         connected = false;
-        HttpURLConnection current = connection;
-        if (current != null) current.disconnect();
-        if (listener != null) {
-            listener.interrupt();
-            try { listener.join(2000); }
-            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
-        }
+        // disconnect() can block on the SSE reader's lock. Its daemon thread owns
+        // the connection and closes it after the bounded read, without delaying shutdown.
+        if (listener != null) listener.interrupt();
     }
 }

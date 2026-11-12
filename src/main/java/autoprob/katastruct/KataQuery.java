@@ -9,6 +9,7 @@ import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
 public class KataQuery {
+    public Integer priority;
 
 	@SerializedName("id")
 	@Expose
@@ -36,6 +37,8 @@ public class KataQuery {
 	public Boolean includeOwnershipStdev;
 	public Boolean includeMovesOwnership;
 	public Boolean includePolicy;
+
+    public Double reportDuringSearchEvery;
 
 	@SerializedName("maxVisits")
 	@Expose
@@ -68,6 +71,7 @@ public class KataQuery {
 	public OverrideSettings overrideSettings;
 
 	public static class OverrideSettings {
+        public Double maxTime;
 		@SerializedName("humanSLProfile")
 		@Expose
 		public String humanSLProfile;

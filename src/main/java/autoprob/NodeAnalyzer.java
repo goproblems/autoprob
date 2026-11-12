@@ -18,7 +18,7 @@ import autoprob.katastruct.KataQuery;
 public class NodeAnalyzer {
 	private boolean debugOwnership = false;
 	private final Properties props;
-	private static final DecimalFormat df = new DecimalFormat("0.00");
+	private final DecimalFormat df = new DecimalFormat("0.00");
 
 	public NodeAnalyzer(Properties props) {
 		this.props = props;

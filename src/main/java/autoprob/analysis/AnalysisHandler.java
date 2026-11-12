@@ -9,11 +9,16 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import java.nio.charset.StandardCharsets;
 
-import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.UUID;
+import java.io.File;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,50 +29,250 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** One dispatcher and lease lifecycle for all analysis work. Priority belongs to goproblems. */
 public class AnalysisHandler {
-    public static final int CLIENT_VERSION = 10;
+    public static final int CLIENT_VERSION = 16;
+    private static final int INTERACTIVE_PRIORITY = 100;
     private final Properties props = new Properties();
+    private final Properties localProps = new Properties();
     private final Gson gson = new Gson();
     private final TaskQueueClient queue;
-    private final List<String> types;
+    private final ResourceTelemetryCollector telemetry;
+    private volatile long lastRegistrationNanos;
+    private volatile List<String> types = List.of();
+    private volatile AnalysisWorkerConfig settings;
+    private final AtomicBoolean refreshConfiguration = new AtomicBoolean(true);
+    private volatile boolean configurationPending = true;
+    private JsonObject pendingConfiguration;
+    private final Object registrationLock = new Object();
+    private volatile long appliedRevision;
+    private Long configurationErrorRevision;
+    private String configurationError;
+    private ExecutorService workers;
+    private volatile String activeModelName;
     private final AtomicLong queueVersion = new AtomicLong();
+    private final AtomicBoolean reconcileControls = new AtomicBoolean();
     private final Semaphore queueChanged = new Semaphore(0);
     private final AnalysisMercureClient mercure;
     private AnalysisKataBrain brain;
+    private final Map<Long, RunningTask> active = new ConcurrentHashMap<>();
+
+    private static final class RunningTask {
+        final AnalysisTask task;
+        final AtomicBoolean finished = new AtomicBoolean();
+        final AtomicLong stopRequestedAtNanos = new AtomicLong();
+        volatile Future<?> analysisFuture;
+        RunningTask(AnalysisTask task) { this.task = task; }
+        boolean stopRequested() { return stopRequestedAtNanos.get() != 0; }
+        void stop() {
+            stopRequestedAtNanos.compareAndSet(0, System.nanoTime());
+            Future<?> running = analysisFuture;
+            if (running != null) running.cancel(true);
+        }
+    }
+
+    private void wakeup() {
+        queueVersion.incrementAndGet();
+        if (queueChanged.availablePermits() == 0) queueChanged.release();
+    }
+
+    private List<String> availableTypes() {
+        return types.stream().filter(type -> !"live".equals(type) || mercure.isConnected()).toList();
+    }
+
+    private void control(JsonObject event) {
+        if ("analysis_control_sync".equals(event.get("type").getAsString())) {
+            reconcileControls.set(true);
+            refreshConfiguration.set(true);
+            wakeup();
+            return;
+        }
+        if ("analysis_configuration_changed".equals(event.get("type").getAsString())) {
+            refreshConfiguration.set(true);
+            configurationPending = true;
+            wakeup();
+            return;
+        }
+        RunningTask running = active.get(event.get("id").getAsLong());
+        if (running == null || !"live".equals(running.task.type)) return;
+        int generation = event.get("generation").getAsInt();
+        String status = event.get("status").getAsString();
+        if (generation > running.task.generation || (generation == running.task.generation
+            && ("paused".equals(status) || "cancelled".equals(status)))) running.stop();
+        wakeup();
+    }
 
     public AnalysisHandler(Properties configured) {
+        localProps.putAll(configured);
         props.putAll(configured);
-        props.setProperty("analysis.force_black_perspective", "true");
-        if (Long.parseLong(props.getProperty("kata.query.timeout.ms", "0")) <= 0) {
-            props.setProperty("kata.query.timeout.ms", "120000");
+        queue = new TaskQueueClient(localProps);
+        telemetry = new ResourceTelemetryCollector(localProps);
+        mercure = new AnalysisMercureClient(localProps);
+    }
+
+    /** Serialize configuration acknowledgements and runtime heartbeats for this process instance. */
+    private void registerState() throws Exception {
+        synchronized (registrationLock) {
+            long revision = settings == null ? 0 : settings.revision;
+            JsonObject state = queue.registerWorker(revision, activeModelName, configurationErrorRevision, configurationError, telemetry.latest());
+            lastRegistrationNanos = System.nanoTime();
+            appliedRevision = revision;
+            if (state.get("configurationRevision").getAsLong() != revision) {
+                configurationPending = true;
+                refreshConfiguration.set(true);
+            }
         }
-        types = Arrays.stream(props.getProperty("analysis.types", "scenario,joseki,review").split(","))
-            .map(String::trim).filter(value -> !value.isBlank()).distinct().toList();
-        if (types.isEmpty() || !List.of("scenario", "joseki", "review").containsAll(types)) {
-            throw new IllegalArgumentException("analysis.types supports scenario,joseki,review");
+    }
+
+    private void synchronizeConfiguration() throws Exception {
+        if (refreshConfiguration.getAndSet(false)) {
+            JsonObject response = queue.fetchConfiguration();
+            long revision = response.get("revision").getAsLong();
+            if (settings != null && settings.revision == revision && appliedRevision == revision) {
+                pendingConfiguration = null;
+                configurationPending = false;
+            } else {
+                pendingConfiguration = response;
+                configurationPending = true;
+            }
         }
-        queue = new TaskQueueClient(props);
-        mercure = new AnalysisMercureClient(props);
+        if (pendingConfiguration == null || !active.isEmpty()) return;
+        JsonObject response = pendingConfiguration;
+        AnalysisWorkerConfig candidate;
+        try {
+            candidate = new AnalysisWorkerConfig(localProps, response);
+        } catch (RuntimeException invalid) {
+            synchronized (registrationLock) {
+                configurationErrorRevision = response.get("revision").getAsLong();
+                configurationError = invalid.getMessage() == null ? invalid.getClass().getSimpleName() : invalid.getMessage();
+                registerState();
+            }
+            pendingConfiguration = null;
+            System.err.println("Client configuration could not be applied: " + invalid.getMessage());
+            return;
+        }
+        synchronized (registrationLock) {
+            if (settings == null || settings.revision != candidate.revision) {
+                stopEngine();
+                if (workers != null) {
+                    workers.shutdown();
+                    if (!workers.awaitTermination(15, TimeUnit.SECONDS)) throw new IllegalStateException("Previous analysis tasks have not stopped");
+                }
+                props.clear();
+                props.putAll(candidate.properties());
+                workers = Executors.newFixedThreadPool(candidate.concurrency);
+                settings = candidate;
+                types = candidate.types;
+            }
+            configurationError = null;
+            configurationErrorRevision = null;
+            registerState();
+        }
+        pendingConfiguration = null;
+        configurationPending = appliedRevision != candidate.revision || refreshConfiguration.get();
+        System.out.println("Applied Client configuration revision " + candidate.revision + "; types=" + types + "; models=" + candidate.models + "; GPU group=" + candidate.resourceGroup);
     }
 
     public void run() throws Exception {
-        long pollMs = Math.max(250, Long.parseLong(props.getProperty("analysis.poll.interval.ms", "2000")));
-        System.out.println("Unified analysis worker started; types=" + types + "; priorities assigned by goproblems");
-        try (mercure; JosekiTaskBridge bridge = new JosekiTaskBridge(props, queue)) {
-            mercure.startListening(() -> {
-                queueVersion.incrementAndGet();
-                if (queueChanged.availablePermits() == 0) queueChanged.release();
-            });
+        long pollMs = Math.max(250, Long.parseLong(localProps.getProperty("analysis.poll.interval.ms", "2000")));
+        ScheduledExecutorService registration = Executors.newSingleThreadScheduledExecutor();
+        AtomicReference<Exception> registrationFailure = new AtomicReference<>();
+        Thread workerThread = Thread.currentThread();
+        CountDownLatch stopped = new CountDownLatch(1);
+        Thread shutdownHook = new Thread(() -> {
+            workerThread.interrupt();
+            try { stopped.await(40, TimeUnit.SECONDS); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+        }, "analysis-worker-shutdown");
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
+        System.out.println("Unified analysis worker started; configuration source=Client API");
+        try (mercure; JosekiTaskBridge bridge = new JosekiTaskBridge(localProps, queue)) {
+            registerState();
+            registration.scheduleWithFixedDelay(() -> {
+                try {
+                    int running = (int) active.values().stream().filter(task -> !task.finished.get()).count();
+                    boolean sampled = telemetry.sampleIfDue(running, activeModelName, appliedRevision);
+                    if (!sampled && System.nanoTime() - lastRegistrationNanos < TimeUnit.SECONDS.toNanos(20)) return;
+                    registerState();
+                }
+                catch (TaskQueueClient.ApiException error) {
+                    if (error.authorizationFailure() || error.status == 400) registrationFailure.compareAndSet(null, error);
+                    if (error.status == 409) refreshConfiguration.set(true);
+                    System.err.println("Worker registration: " + error.getMessage());
+                } catch (Exception error) { System.err.println("Worker heartbeat: " + error.getMessage()); }
+                wakeup();
+            }, 1, 1, TimeUnit.SECONDS);
+            mercure.startListening(this::wakeup, this::control);
             bridge.start();
             while (!Thread.currentThread().isInterrupted()) {
+                if (registrationFailure.get() != null) throw registrationFailure.get();
                 queueChanged.drainPermits();
+                active.values().removeIf(running -> running.finished.get());
                 try {
-                    AnalysisTask task = queue.next(types);
-                    if (task != null) {
-                        process(task);
-                        continue;
+                    if (reconcileControls.getAndSet(false)) {
+                        for (RunningTask running : active.values()) {
+                            if (!"live".equals(running.task.type)) continue;
+                            try { queue.update(running.task, "heartbeat", new JsonObject()); }
+                            catch (TaskQueueClient.ApiException error) {
+                                if (error.status == 409 || error.status == 404) running.stop();
+                                else throw error;
+                            }
+                        }
+                    }
+                    synchronizeConfiguration();
+                    while (!configurationPending && !refreshConfiguration.get() && settings != null && active.size() < settings.concurrency) {
+                        if (brain != null && !brain.isAlive() && !active.isEmpty()) break;
+                        List<String> available = availableTypes();
+                        long backgroundRunning = active.values().stream().filter(running -> running.task.priority < INTERACTIVE_PRIORITY).count();
+                        int backgroundLimit = settings.concurrency - settings.reservedInteractive;
+                        Integer minimumPriority = backgroundRunning >= backgroundLimit ? INTERACTIVE_PRIORITY : null;
+                        String activeModel = active.isEmpty() ? null : new File(brain.modelPath).getName();
+                        AnalysisTask task = queue.next(available, activeModel, minimumPriority);
+                        if (task == null) break;
+                        long receivedAtNanos = System.nanoTime();
+                        System.out.println("Received " + task.type + " task " + task.id + "; model=" + task.payload.get("model").getAsString() + "; priority=" + task.priority);
+                        try { ensureEngine(task); }
+                        catch (Exception error) {
+                            JsonObject fields = new JsonObject();
+                            fields.addProperty("errorMessage", error.getMessage());
+                            queue.update(task, "error", fields);
+                            continue;
+                        }
+                        AnalysisKataBrain taskBrain = brain;
+                        RunningTask running = new RunningTask(task);
+                        active.put(task.id, running);
+                        workers.submit(() -> {
+                            long startedAtNanos = 0;
+                            try {
+                                if (!running.stopRequested()) {
+                                    startedAtNanos = System.nanoTime();
+                                    if ("live".equals(task.type)) {
+                                        System.out.printf(Locale.ROOT, "Started live task %d; generation=%d; move=%d; setup=%.2fs%n",
+                                            task.id, task.generation, task.payload.getAsJsonArray("moves").size(),
+                                            (startedAtNanos - receivedAtNanos) / 1_000_000_000.0);
+                                    }
+                                    process(task, taskBrain, running, receivedAtNanos);
+                                }
+                            }
+                            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+                            catch (Exception error) { System.err.println("Task " + task.id + ": " + error.getMessage()); }
+                            finally {
+                                if ("live".equals(task.type)) {
+                                    long stoppedAtNanos = System.nanoTime();
+                                    long requestedAtNanos = running.stopRequestedAtNanos.get();
+                                    String stopTime = requestedAtNanos == 0 ? "" : String.format(Locale.ROOT,
+                                        "; stop=%.2fs", (stoppedAtNanos - requestedAtNanos) / 1_000_000_000.0);
+                                    System.out.printf(Locale.ROOT, "Stopped live task %d; generation=%d; analysis=%.2fs; total=%.2fs%s%n",
+                                        task.id, task.generation, startedAtNanos == 0 ? 0 : (stoppedAtNanos - startedAtNanos) / 1_000_000_000.0,
+                                        (stoppedAtNanos - receivedAtNanos) / 1_000_000_000.0, stopTime);
+                                }
+                                running.finished.set(true);
+                                wakeup();
+                            }
+                        });
+                        if (running.stopRequested()) running.stop();
                     }
                 } catch (TaskQueueClient.ApiException error) {
                     if (error.authorizationFailure()) throw error;
@@ -78,15 +283,39 @@ public class AnalysisHandler {
                 } catch (Exception error) {
                     System.err.println("Analysis worker: " + error.getMessage());
                 }
-                // Push wakes idle workers immediately; periodic recovery covers missed events/expired leases.
                 queueChanged.tryAcquire(mercure.isConnected() ? 30000 : pollMs, TimeUnit.MILLISECONDS);
             }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         } finally {
-            stopEngine();
+            boolean interrupted = Thread.interrupted();
+            try {
+                registration.shutdownNow();
+                for (RunningTask running : active.values()) running.stop();
+                if (workers != null) {
+                    workers.shutdownNow();
+                    try { workers.awaitTermination(15, TimeUnit.SECONDS); }
+                    catch (InterruptedException stopping) { interrupted = true; }
+                }
+            } finally {
+                try { stopEngine(); }
+                finally {
+                    try {
+                        synchronized (registrationLock) { queue.unregisterWorker(); }
+                    } catch (Exception error) {
+                        System.err.println("Worker registration could not be released; it will expire automatically.");
+                    } finally {
+                        stopped.countDown();
+                        try { Runtime.getRuntime().removeShutdownHook(shutdownHook); }
+                        catch (IllegalStateException shuttingDown) { /* The JVM is already running this hook. */ }
+                        if (interrupted) Thread.currentThread().interrupt();
+                    }
+                }
+            }
         }
     }
 
-    private void process(AnalysisTask task) throws Exception {
+    private void process(AnalysisTask task, AnalysisKataBrain taskBrain, RunningTask running, long receivedAtNanos) throws Exception {
         if (task.claimToken == null || task.payload == null || !types.contains(task.type)) {
             throw new IllegalStateException("Invalid analysis task envelope");
         }
@@ -110,8 +339,14 @@ public class AnalysisHandler {
             }
         }, 20, 20, TimeUnit.SECONDS);
         try {
-            ensureEngine(task);
-            future = executor.submit(() -> analyze(task));
+            String scope = "task:" + task.id + ":" + UUID.randomUUID() + ":";
+            future = executor.submit(() -> {
+                taskBrain.beginScope(scope, task.priority);
+                try { return analyze(task, taskBrain); }
+                finally { taskBrain.endScope(scope); }
+            });
+            running.analysisFuture = future;
+            if (running.stopRequested()) future.cancel(true);
             long timeoutMs = timeoutMs(task);
             JsonObject result;
             while (true) {
@@ -133,7 +368,7 @@ public class AnalysisHandler {
             fields.add("result", result);
             fields.addProperty("durationMs", Math.max(1, System.currentTimeMillis() - started));
             updateWithRetry(task, "result", fields);
-            System.out.println("Completed " + task.type + " task " + task.id);
+            if (!"live".equals(task.type)) System.out.printf(Locale.ROOT, "Completed %s task %d; total=%.2fs%n", task.type, task.id, (System.nanoTime() - receivedAtNanos) / 1_000_000_000.0);
         } catch (Exception error) {
             Throwable cause = error instanceof ExecutionException ? error.getCause() : error;
             if (cause instanceof ReviewAnalysis.YieldRequested && !leaseLost.get()) {
@@ -141,8 +376,8 @@ public class AnalysisHandler {
                 System.out.println("Yielded review " + task.id + " to higher priority work");
             } else {
                 if (future != null) future.cancel(true);
-                stopEngine();
-                if (!leaseLost.get() && !(cause instanceof InterruptedException)) {
+                if (cause instanceof TaskQueueClient.ApiException apiError && (apiError.status == 409 || apiError.status == 404)) leaseLost.set(true);
+                if (!leaseLost.get() && !(cause instanceof InterruptedException) && !(cause instanceof java.util.concurrent.CancellationException)) {
                     String message = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
                     JsonObject fields = new JsonObject();
                     fields.addProperty("errorMessage", message.substring(0, Math.min(2000, message.length())));
@@ -152,6 +387,10 @@ public class AnalysisHandler {
                 if (cause instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                     throw (InterruptedException) cause;
+                }
+                if (cause instanceof java.util.concurrent.CancellationException || leaseLost.get()) {
+                    if (!"live".equals(task.type)) System.out.println("Stopped " + task.type + " task " + task.id);
+                    return;
                 }
                 System.err.println("Task " + task.id + " failed: " + cause.getMessage());
             }
@@ -163,11 +402,18 @@ public class AnalysisHandler {
         }
     }
 
-    private JsonObject analyze(AnalysisTask task) throws Exception {
+    private JsonObject analyze(AnalysisTask task, AnalysisKataBrain brain) throws Exception {
+        Properties taskProps = taskProperties(task);
+        taskProps.setProperty("kata.model", brain.modelPath);
         AtomicLong checkedVersion = new AtomicLong(-1);
         AtomicLong lastPriorityCheck = new AtomicLong();
         return switch (task.type) {
-            case "review" -> new ReviewAnalysis(props).analyze(task, brain, partial -> {
+            case "live" -> new LiveAnalysis(taskProps).analyze(task, brain, partial -> {
+                JsonObject fields = new JsonObject();
+                fields.add("result", partial);
+                updateWithRetry(task, "progress", fields);
+            });
+            case "review" -> new ReviewAnalysis(taskProps).analyze(task, brain, partial -> {
                 JsonObject fields = new JsonObject();
                 fields.add("result", partial);
                 updateWithRetry(task, "progress", fields);
@@ -178,22 +424,22 @@ public class AnalysisHandler {
                     Long.parseLong(props.getProperty("analysis.poll.interval.ms", "2000")));
                 if (version == checkedVersion.get() && now - lastPriorityCheck.get() < recoveryMs) return false;
                 JsonObject fields = new JsonObject();
-                fields.add("types", gson.toJsonTree(types));
+                fields.add("types", gson.toJsonTree(availableTypes()));
                 JsonObject response = queue.update(task, "check-priority", fields);
                 checkedVersion.set(version);
                 lastPriorityCheck.set(now);
                 return response.get("shouldYield").getAsBoolean();
             });
-            case "scenario" -> analyzeScenario(task);
+            case "scenario" -> analyzeScenario(task, brain, taskProps);
             case "joseki" -> gson.toJsonTree(new JosekiTaskAdapter(
-                JosekiTaskBridge.remoteProperties(props)).analyzeTask(task.payload, brain)).getAsJsonObject();
+                JosekiTaskBridge.remoteProperties(taskProps)).analyzeTask(task.payload, brain)).getAsJsonObject();
             default -> throw new IllegalArgumentException("Unsupported analysis type: " + task.type);
         };
     }
 
-    private JsonObject analyzeScenario(AnalysisTask task) throws Exception {
+    private JsonObject analyzeScenario(AnalysisTask task, AnalysisKataBrain brain, Properties taskProps) throws Exception {
         AnalysisRequest request = gson.fromJson(task.payload, AnalysisRequest.class);
-        Analysis analysis = new Analysis(props, brain);
+        Analysis analysis = new Analysis(taskProps, brain);
         boolean streamed = Boolean.TRUE.equals(request.isPrecalculate);
         AtomicLong batchNumber = new AtomicLong(task.result != null && task.result.has("lastBatchNumber")
             ? task.result.get("lastBatchNumber").getAsLong() + 1 : 0);
@@ -205,7 +451,7 @@ public class AnalysisHandler {
                 for (AnalysisResult result : batch) results.put(result.path + ":" + result.difficulty, result);
             }
         });
-        analysis.analyze(request);
+        analysis.analyzeResolved(request);
         JsonObject result = new JsonObject();
         result.addProperty("requestId", request.id);
         result.addProperty("streamed", streamed);
@@ -252,25 +498,33 @@ public class AnalysisHandler {
     }
 
     private long timeoutMs(AnalysisTask task) {
+        if ("live".equals(task.type)) return 920000;
+        Properties taskProps = taskProperties(task);
         if ("scenario".equals(task.type)) {
-            return gson.fromJson(task.payload, AnalysisRequest.class).getTimeoutMs(
-                Long.parseLong(props.getProperty("scenario.request.timeout.ms", "30000")));
+            return Long.parseLong(taskProps.getProperty("scenario.request.timeout.ms"));
         }
-        return Long.parseLong(props.getProperty("analysis.task.timeout.ms", "43200000"));
+        return Long.parseLong(taskProps.getProperty("analysis.task.timeout.ms"));
+    }
+
+    private Properties taskProperties(AnalysisTask task) {
+        Properties taskProps = new Properties();
+        taskProps.putAll(props);
+        task.payload.getAsJsonObject("analysisParameters").entrySet().forEach(entry -> taskProps.setProperty(entry.getKey(), entry.getValue().getAsString()));
+        return taskProps;
     }
 
     private void ensureEngine(AnalysisTask task) throws Exception {
-        String requestedModel = props.getProperty("kata.model");
-        if (("joseki".equals(task.type) || "review".equals(task.type))
-            && task.payload.has("model") && !task.payload.get("model").isJsonNull()) {
-            requestedModel = KataModelResolver.resolve(props, task.payload.get("model").getAsString());
-        }
-        if (brain != null && !java.nio.file.Path.of(brain.modelPath).toAbsolutePath().normalize()
-            .equals(java.nio.file.Path.of(requestedModel).toAbsolutePath().normalize())) stopEngine();
+        String model = task.payload.get("model").getAsString();
+        if (!settings.models.contains(model)) throw new IllegalArgumentException("Task model is outside the worker whitelist");
+        String requestedModel = KataModelResolver.resolve(props, model);
+        if (brain != null && (!brain.isAlive() || !java.nio.file.Path.of(brain.modelPath).toAbsolutePath().normalize()
+            .equals(java.nio.file.Path.of(requestedModel).toAbsolutePath().normalize()))) stopEngine();
         if (brain == null) brain = new AnalysisKataBrain(props, requestedModel);
+        activeModelName = new File(brain.modelPath).getName();
     }
 
     private void stopEngine() {
+        activeModelName = null;
         if (brain != null) { brain.stopKataBrain(); brain = null; }
     }
 

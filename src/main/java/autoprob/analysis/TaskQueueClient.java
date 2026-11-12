@@ -11,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Properties;
+import java.util.UUID;
 
 /** Bounded HTTP calls; heartbeat traffic can proceed independently of result uploads. */
 public class TaskQueueClient {
@@ -19,6 +20,8 @@ public class TaskQueueClient {
     private final String endpoint;
     private final String apiKey;
     private final String clientId;
+    private final String clientEndpoint;
+    private final String instanceId = UUID.randomUUID().toString();
 
     public TaskQueueClient(Properties props) {
         String base = props.getProperty("analysis.baseurl", props.getProperty("baseurl", "")).trim();
@@ -26,16 +29,44 @@ public class TaskQueueClient {
         endpoint = base.replaceAll("/+$", "") + "/api/v2/analysis-tasks";
         apiKey = props.getProperty("analysis.apikey", props.getProperty("apikey", "")).trim();
         clientId = props.getProperty("clientId", "").trim();
+        clientEndpoint = base.replaceAll("/+$", "") + "/api/v2/analysis-clients/" + clientId + "/worker";
         if (apiKey.isEmpty() || clientId.isEmpty()) {
             throw new IllegalArgumentException("Unified analysis requires apikey and a stable unique clientId");
         }
     }
 
-    public AnalysisTask next(List<String> types) throws Exception {
+    public JsonObject fetchConfiguration() throws Exception {
+        return requestAt(clientEndpoint.replaceFirst("/worker$", "/configuration"), "GET", null);
+    }
+
+    public JsonObject registerWorker(long revision, String activeModel, Long errorRevision, String error, JsonObject telemetry) throws Exception {
+        JsonObject body = new JsonObject();
+        body.addProperty("clientVersion", AnalysisHandler.CLIENT_VERSION);
+        body.addProperty("instanceId", instanceId);
+        body.addProperty("appliedConfigurationRevision", revision);
+        body.add("telemetry", telemetry == null ? com.google.gson.JsonNull.INSTANCE : telemetry);
+        if (activeModel != null) body.addProperty("activeModel", activeModel);
+        if (error != null) {
+            body.addProperty("configurationErrorRevision", errorRevision);
+            body.addProperty("configurationError", error.substring(0, Math.min(2000, error.length())));
+        }
+        return requestAt(clientEndpoint, "POST", body);
+    }
+
+    public void unregisterWorker() throws Exception {
+        JsonObject body = new JsonObject();
+        body.addProperty("instanceId", instanceId);
+        requestAt(clientEndpoint, "DELETE", body, Duration.ofSeconds(5));
+    }
+
+    public AnalysisTask next(List<String> types, String activeModel, Integer minimumPriority) throws Exception {
         JsonObject body = new JsonObject();
         body.addProperty("clientId", clientId);
         body.addProperty("clientVersion", AnalysisHandler.CLIENT_VERSION);
+        body.addProperty("instanceId", instanceId);
         body.add("types", gson.toJsonTree(types));
+        if (activeModel != null) body.addProperty("activeModel", activeModel);
+        if (minimumPriority != null) body.addProperty("minimumPriority", minimumPriority);
         JsonObject response = request("POST", "/next", body);
         if (response == null) return null;
         // A new task has no result yet. Gson's JsonObject adapter rejects explicit JsonNull,
@@ -52,8 +83,16 @@ public class TaskQueueClient {
     }
 
     public JsonObject request(String method, String path, JsonObject body) throws Exception {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(endpoint + path))
-            .timeout(Duration.ofSeconds(20)).header("X-Api-Key", apiKey)
+        return requestAt(endpoint + path, method, body);
+    }
+
+    private JsonObject requestAt(String url, String method, JsonObject body) throws Exception {
+        return requestAt(url, method, body, Duration.ofSeconds(20));
+    }
+
+    private JsonObject requestAt(String url, String method, JsonObject body, Duration timeout) throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+            .timeout(timeout).header("X-Api-Key", apiKey)
             .header("Accept", "application/json").header("Content-Type", "application/json");
         builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
             : HttpRequest.BodyPublishers.ofString(gson.toJson(body)));

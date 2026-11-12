@@ -15,7 +15,7 @@ import autoprob.go.Node;
 
 public class KataAnalysisResult {
 	public static final double OWN_THRESH = 0.5;
-    private static final DecimalFormat df = new DecimalFormat("0.00");
+    private final transient DecimalFormat df = new DecimalFormat("0.00");
 
 	/** Non-null when KataGo returned an error instead of a valid result. */
 	public String error;

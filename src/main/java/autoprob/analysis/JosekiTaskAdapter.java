@@ -36,6 +36,7 @@ import java.security.NoSuchAlgorithmException;
 import java.text.DecimalFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -64,12 +65,8 @@ public final class JosekiTaskAdapter {
     private static final String YELLOW = "\033[33m";
     private static final String RED = "\033[31m";
     private static final String RESET = "\033[0m";
-    private static final DecimalFormat DF = new DecimalFormat("0.00");
+    private final DecimalFormat df = new DecimalFormat("0.00");
     private static final int ROOT_LOCAL_SIZE = 10;
-    private static final List<String> DEFAULT_RANK_RANKS = List.of("20k", "10k", "5k", "1d", "5d", "9d");
-    private static final List<String> DEFAULT_PREAZ_RANKS = List.of(
-        "20k", "15k", "10k", "5k", "3k", "1k", "1d", "3d", "5d", "7d", "9d");
-    private static final List<Integer> DEFAULT_PROFESSIONAL_YEARS = List.of(1950, 1980, 2000, 2023);
     private final Properties props = new Properties();
     private final AnalysisApiClient apiClient = new AnalysisApiClient();
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -79,7 +76,6 @@ public final class JosekiTaskAdapter {
     private String taskBaseSgf;
     private Set<String> taskChildMoves;
     private Set<String> taskParentChildMoves;
-    private Integer requestVisits;
     private String requestModelPath;
 
     public JosekiTaskAdapter(Properties configured) {
@@ -120,20 +116,17 @@ public final class JosekiTaskAdapter {
     public JosekiAnalysisSubmitBody analyzeTask(JsonObject payload, KataBrain brain) throws Exception {
         taskBaseSgf = payload.get("sgf").getAsString();
         Node base = new Parser().parse(taskBaseSgf).advance2end();
+        if (base.getRoot().getXtra("KM") == null) {
+            base.getRoot().setXtraTag("KM", props.getProperty("joseki.komi"));
+            taskBaseSgf = "(" + base.getRoot().outputSGF(false) + ")";
+        }
         if (base.board.boardX != 19 || base.board.boardY != 19) {
             throw new IllegalArgumentException("Joseki scoped analysis requires a 19x19 board");
-        }
-        requestVisits = payload.has("visits") && !payload.get("visits").isJsonNull()
-            ? payload.get("visits").getAsInt()
-            : (payload.has("maxVisits") ? payload.get("maxVisits").getAsInt() : null);
-        if (requestVisits != null && (requestVisits < 1 || requestVisits > 20000)) {
-            throw new IllegalArgumentException("Joseki visits must be between 1 and 20000");
         }
         requestModelPath = brain.modelPath;
         taskChildMoves = new LinkedHashSet<>(strings(payload, "childMoves"));
         taskParentChildMoves = new LinkedHashSet<>(strings(payload, "parentChildMoves"));
-        List<AnalysisScope> scopes = payload.has("scopes")
-            ? strings(payload, "scopes").stream().map(AnalysisScope::fromConfig).toList() : analysisScopes();
+        List<AnalysisScope> scopes = analysisScopes();
         if (scopes.isEmpty()) throw new IllegalArgumentException("Joseki scopes cannot be empty");
         JosekiNodeEntry entry = new JosekiNodeEntry();
         entry.path = payload.has("path") ? payload.get("path").getAsString() : "";
@@ -142,7 +135,10 @@ public final class JosekiTaskAdapter {
         result.source = payload.has("source") ? payload.get("source").getAsString() : "recalculate";
         if (payload.has("requestId")) result.requestId = payload.get("requestId").getAsInt();
         result.results = analyzeNode(entry, brain, scopes);
-        result.humanPolicyDistributions = analyzeHumanPolicies(entry, brain, strings(payload, "humanPolicyProfiles"));
+        boolean includeHumanPolicy = payload.has("humanPolicyProfiles")
+            || payload.has("includeHumanPolicy") && payload.get("includeHumanPolicy").getAsBoolean();
+        List<String> profiles = includeHumanPolicy ? humanSLProfiles() : List.of();
+        result.humanPolicyDistributions = analyzeHumanPolicies(entry, brain, profiles);
         return result;
     }
 
@@ -157,12 +153,10 @@ public final class JosekiTaskAdapter {
         payload.addProperty("source", request.source == null ? "recalculate" : request.source);
         if (request.visits != null) payload.addProperty("visits", request.visits);
         if (request.model != null) payload.addProperty("model", request.model);
-        payload.add("scopes", gson.toJsonTree(analysisScopes().stream().map(scope -> scope.value).toList()));
         JosekiNodeEntry entry = resolveNodeForAnalysis(request.path == null ? "" : request.path);
         payload.add("childMoves", gson.toJsonTree(entry.id > 0 ? fetchChildMoves(entry.id) : Set.of()));
         payload.add("parentChildMoves", gson.toJsonTree(entry.parentId == null ? Set.of() : fetchChildMoves(entry.parentId)));
-        payload.add("humanPolicyProfiles", gson.toJsonTree(request.visits != null || request.model != null
-            ? List.of() : humanSLProfiles()));
+        payload.addProperty("includeHumanPolicy", request.visits == null && request.model == null);
         return payload;
     }
 
@@ -334,9 +328,9 @@ public final class JosekiTaskAdapter {
         result.analysisConfigHash = currentQueryResult.configHash();
         System.out.println("Joseki node " + formatPath(path)
             + " scope=" + scope.value
-            + " score=" + DF.format(result.score)
-            + " loss=" + DF.format(result.loss)
-            + (result.prior == null ? "" : " prior=" + DF.format(result.prior * 1000.0))
+            + " score=" + df.format(result.score)
+            + " loss=" + df.format(result.loss)
+            + (result.prior == null ? "" : " prior=" + df.format(result.prior * 1000.0))
             + (result.visits == null ? "" : " visits=" + result.visits)
             + (result.moveOrder == null ? "" : " order=" + result.moveOrder));
         return result;
@@ -389,7 +383,7 @@ public final class JosekiTaskAdapter {
             scopedChildMoves = TenukiMoves.withoutTenuki(node, scopedChildMoves);
         }
 
-        int maxMoveDistance = Integer.parseInt(props.getProperty("joseki.max_move_distance", "4"));
+        int maxMoveDistance = Integer.parseInt(props.getProperty("joseki.max_move_distance"));
         if (scope.restrictToNearbyMoves && maxMoveDistance >= 0) {
             restrictToMoves(node, query, nearbyMoves(node, maxMoveDistance, scopedChildMoves));
         }
@@ -505,7 +499,7 @@ public final class JosekiTaskAdapter {
         }
 
         Set<String> localMoves = null;
-        int maxMoveDistance = Integer.parseInt(props.getProperty("joseki.max_move_distance", "4"));
+        int maxMoveDistance = Integer.parseInt(props.getProperty("joseki.max_move_distance"));
         if (maxMoveDistance >= 0) {
             try {
                 localMoves = nearbyMoves(node, maxMoveDistance, Set.of());
@@ -553,12 +547,12 @@ public final class JosekiTaskAdapter {
         KataQuery query = queryBuilder.buildQueryWithHistory(parentNode);
         query.id = "joseki-human:" + (++queryCounter) + ":" + profile;
         query.includePolicy = true;
-        query.maxVisits = Integer.parseInt(props.getProperty("joseki.human_visits", "1"));
+        query.maxVisits = Integer.parseInt(props.getProperty("joseki.human_visits"));
 
         KataQuery.OverrideSettings settings = new KataQuery.OverrideSettings();
         settings.humanSLProfile = profile;
         settings.ignorePreRootHistory = false;
-        int symmetries = Integer.parseInt(props.getProperty("joseki.human_sl_symmetries", "2"));
+        int symmetries = Integer.parseInt(props.getProperty("joseki.human_sl_symmetries"));
         if (symmetries > 1) {
             settings.rootNumSymmetriesToSample = symmetries;
         }
@@ -579,34 +573,8 @@ public final class JosekiTaskAdapter {
     }
 
     private List<String> humanSLProfiles() {
-        String configured = props.getProperty("joseki.human_sl_profiles");
-        if (configured != null && !configured.isBlank()) {
-            List<String> profiles = new ArrayList<>();
-            for (String raw : configured.split(",")) {
-                String profile = raw.trim();
-                if (!profile.isEmpty()) {
-                    profiles.add(profile);
-                }
-            }
-            if (!profiles.isEmpty()) {
-                return profiles;
-            }
-        }
-        return allHumanSLProfiles();
-    }
-
-    private static List<String> allHumanSLProfiles() {
-        List<String> profiles = new ArrayList<>();
-        for (String rank : DEFAULT_RANK_RANKS) {
-            profiles.add("rank_" + rank);
-        }
-        for (String rank : DEFAULT_PREAZ_RANKS) {
-            profiles.add("preaz_" + rank);
-        }
-        for (int year : DEFAULT_PROFESSIONAL_YEARS) {
-            profiles.add("proyear_" + year);
-        }
-        return profiles;
+        return Arrays.stream(props.getProperty("joseki.human_sl_profiles").split(","))
+            .map(String::trim).filter(value -> !value.isEmpty()).toList();
     }
 
     private boolean humanModelConfigured() {
@@ -771,7 +739,6 @@ public final class JosekiTaskAdapter {
             String sgf = Files.readString(Path.of(sgfPath));
             node = new Parser().parse(sgf).advance2end();
         }
-        node.getRoot().setXtraTag("KM", props.getProperty("joseki.komi", "6.5"));
         return node;
     }
 
@@ -1055,7 +1022,7 @@ public final class JosekiTaskAdapter {
     }
 
     private List<AnalysisScope> analysisScopes() {
-        String configured = props.getProperty("joseki.analysis_scopes", "local");
+        String configured = props.getProperty("joseki.analysis_scopes");
         List<AnalysisScope> scopes = new ArrayList<>();
         Set<AnalysisScope> seen = new LinkedHashSet<>();
         for (String rawScope : configured.split(",")) {
@@ -1090,9 +1057,7 @@ public final class JosekiTaskAdapter {
     }
 
     private int configuredVisits() {
-        return requestVisits == null
-            ? Integer.parseInt(props.getProperty("joseki.visits", "1000"))
-            : requestVisits;
+        return Integer.parseInt(props.getProperty("joseki.visits"));
     }
 
     private String formatPath(String path) {

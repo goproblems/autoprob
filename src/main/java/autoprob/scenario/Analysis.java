@@ -39,8 +39,8 @@ public class Analysis {
         HUMAN_OPPONENT_BIASED
     }
 
-    private static final DecimalFormat df = new DecimalFormat("0.00");
-    private static final DecimalFormat policyDf = new DecimalFormat("0.0000");
+    private final DecimalFormat df = new DecimalFormat("0.00");
+    private final DecimalFormat policyDf = new DecimalFormat("0.0000");
 
     private static final String DEFAULT_HUMAN_RANK = "10k";
     private static final String VISITS_PROPERTY = "scenario.analysis.visits";
@@ -166,6 +166,15 @@ public class Analysis {
      * Runs KataGo on the supplied request path and summarizes the outcome.
      */
     public AnalysisResult[] analyze(AnalysisRequest request) throws Exception {
+        return analyze(request, false);
+    }
+
+    /** Task parameters already include metadata overrides; keep metadata for geometry and komi precedence. */
+    public AnalysisResult[] analyzeResolved(AnalysisRequest request) throws Exception {
+        return analyze(request, true);
+    }
+
+    private AnalysisResult[] analyze(AnalysisRequest request, boolean resolved) throws Exception {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(request.scenario, "request.scenario");
         if (request.scenario.sgf == null || request.scenario.sgf.isBlank()) {
@@ -174,7 +183,7 @@ public class Analysis {
 
         // Build per-request config with metadata overrides and area constraints
         this.scenarioType = request.scenario.type;
-        this.config = defaultConfig.withMetadata(request.scenario.metadata);
+        this.config = defaultConfig.withMetadata(request.scenario.metadata, !resolved);
         if (request.scenario.metadata != null && request.scenario.metadata.configOverrides != null
                 && !request.scenario.metadata.configOverrides.isEmpty()) {
             System.out.println("Applied config overrides from scenario metadata: " + request.scenario.metadata.configOverrides);
@@ -189,17 +198,18 @@ public class Analysis {
 
         boolean isPrecalculationMode = request.isPrecalculate != null && request.isPrecalculate;
 
+        int visits = resolved ? determineVisits() : determineVisits(request);
         if (isPrecalculationMode) {
-            return analyzePrecalculation(request);
+            return analyzePrecalculation(request, visits);
         }
 
-        return analyzePath(request);
+        return analyzePath(request, visits);
     }
 
     /**
      * Analyzes a specific path
      */
-    private AnalysisResult[] analyzePath(AnalysisRequest request) throws Exception {
+    private AnalysisResult[] analyzePath(AnalysisRequest request, int visits) throws Exception {
         var nodeAnalyzer = new NodeAnalyzer(props);
 
         Node root = parser.parse(request.scenario.sgf);
@@ -207,7 +217,6 @@ public class Analysis {
         System.out.println(root.board); // draws the board out
         System.out.println("To move: " + (root.getToMove() == Intersection.BLACK ? "black" : "white"));
 
-        int visits = determineVisits(request);
         System.out.println("Visits: " + visits);
 
         String humanRank = normalizeRank(request.difficulty);
@@ -328,7 +337,7 @@ public class Analysis {
      * @param request The analysis request with depth and maxNodes parameters
      * @return Array of AnalysisResult for all precalculated nodes
      */
-    private AnalysisResult[] analyzePrecalculation(AnalysisRequest request) throws Exception {
+    private AnalysisResult[] analyzePrecalculation(AnalysisRequest request, int visits) throws Exception {
         var nodeAnalyzer = new NodeAnalyzer(props);
 
         Node root = parser.parse(request.scenario.sgf);
@@ -344,7 +353,6 @@ public class Analysis {
             ", maxDepth=" + config.precalculationMaxDepth +
             ", maxNodes=" + config.precalculationMaxNodes + ", batchSize=" + config.precalculationBatchSize);
 
-        int visits = determineVisits(request);
         String humanRank = normalizeRank(request.difficulty);
         KataQuery.OverrideSettings overrideSettings = buildOverrideSettings(humanRank, HumanLikeStyle.HUMAN);
         int maxDepth = config.precalculationMaxDepth;

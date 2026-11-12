@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 /** Server-owned scheduling and lease envelope. */
 public class AnalysisTask {
     public long id;
+    public int generation;
     public String type;
     public int priority;
     public JsonObject payload;

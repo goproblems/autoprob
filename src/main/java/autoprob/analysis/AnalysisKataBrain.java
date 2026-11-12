@@ -1,295 +1,213 @@
 package autoprob.analysis;
 
 import autoprob.KataBrain;
-
-import java.io.*;
-import java.text.DecimalFormat;
-import java.util.Hashtable;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CancellationException;
-import java.util.Map;
-import java.util.Properties;
-
+import autoprob.katastruct.KataAnalysisResult;
+import autoprob.katastruct.KataQuery;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import autoprob.katastruct.KataAnalysisResult;
-import autoprob.katastruct.KataQuery;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
-/** Engine transport owned exclusively by the new analysis worker. */
+/** Multiplexes independent queries on one model process. Only this transport opts into streaming. */
 public final class AnalysisKataBrain extends KataBrain {
-	private final Process process;
-	private final Properties props;
-	private boolean debugPrintKatago = false;
-	private BufferedReader reader;
-	private Map<String, KataAnalysisResult> results = new Hashtable<>();
-	private Map<String, String> errors = new Hashtable<>();
-	private volatile String lastProcessOutput;
-	private static final DecimalFormat df = new DecimalFormat("0.00");
-	private Thread thread;
+    private final Process process;
+    private final Properties props;
+    private final BufferedWriter writer;
+    private final Object writeLock = new Object();
+    private final Map<String, KataAnalysisResult> results = new HashMap<>();
+    private final Map<String, String> errors = new HashMap<>();
+    private final Map<String, AtomicInteger> activeQueries = new ConcurrentHashMap<>();
+    private final Map<String, BlockingQueue<KataAnalysisResult>> streams = new ConcurrentHashMap<>();
+    private final ThreadLocal<String> queryScope = new ThreadLocal<>();
+    private final ThreadLocal<Integer> queryPriority = new ThreadLocal<>();
+    private volatile String lastProcessOutput = "";
 
-	public AnalysisKataBrain(Properties props) throws Exception {
-		this(props, null);
-	}
-
-	public AnalysisKataBrain(Properties props, String modelPathOverride) throws Exception {
-		this.props = props;
-		String kataPath = props.getProperty("katago").trim();
-		String configPath = props.getProperty("kata.config").trim();
-		System.out.println("KataGo config: " + new File(configPath).getAbsolutePath());
-		modelPath = props.getProperty("kata.model").trim();
-		String humanModelPath = props.getProperty("kata.human_model");
-		if (modelPathOverride != null) {
-			modelPath = modelPathOverride;
-		}
-		debugPrintKatago = Boolean.parseBoolean(props.getProperty("kata.debug_print", "false"));
-
-		// create a native katago process
-		ProcessBuilder processBuilder = new ProcessBuilder();
-		processBuilder.redirectErrorStream(false);
-		try {
-            List<String> command = new ArrayList<>(List.of(kataPath, "analysis", "-config", configPath, "-model", modelPath));
-            if (humanModelPath != null && !humanModelPath.isBlank()) {
-                command.addAll(List.of("-human-model", humanModelPath));
-            }
-			// Only the new worker opts into an explicit result perspective.
-            if (Boolean.parseBoolean(props.getProperty("analysis.force_black_perspective", "false"))) {
-                command.addAll(List.of("-override-config", "reportAnalysisWinratesAs=BLACK"));
-            }
-            processBuilder.command(command);
-			process = processBuilder.start();
-			
-            // Keep JSON stdout separate: interleaving native stderr log writes can corrupt a JSON line.
-            Thread stderrThread = new Thread(() -> {
-                try (BufferedReader stderr = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
-                    String line;
-                    while ((line = stderr.readLine()) != null) {
-                        lastProcessOutput = line.length() > 500 ? line.substring(line.length() - 500) : line;
-                        if (debugPrintKatago || line.contains("Error") || line.contains("Warning")
-                            || line.contains("ready to begin handling requests")) System.err.println(line);
-                    }
-                } catch (IOException error) {
-                    if (process.isAlive()) System.err.println("KataGo stderr: " + error.getMessage());
-                }
-            }, "katago-stderr");
-            stderrThread.setDaemon(true);
-            stderrThread.start();
-			reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-			
-			try {
-				thread = new Thread() {
-					public void run() {
-						System.out.println("katabrain Thread Running");
-						try {
-							AnalysisKataBrain.this.processKataResponses();
-						} catch (InterruptedIOException e) {
-							System.out.println("Thread was interrupted during I/O");
-							Thread.currentThread().interrupt(); // Optional: re-interrupt the thread
-						} catch (Exception e) {
-							e.printStackTrace();
-						} finally {
-							if (process != null) {
-								process.destroy(); // Ensure process is terminated when done
-							}
-						}
-					}
-				};
-
-				thread.start();
-			} catch (Exception e1) {
-				e1.printStackTrace();
-			}
-		} catch (Exception e) {
-			String err = e.getLocalizedMessage();
-			String message = String.format("Failed to start the engine.\n\nError: %s",
-					(err == null) ? "(No message)" : err);
-			System.out.println(message);
-			throw e;
-		}
-	}
-
-    @Override
-	public void stopKataBrain() {
-        System.out.println("Stopping KataBrain...");
-		if (thread != null) {
-			thread.interrupt(); // Interrupt the thread, causing blocking I/O to throw an exception
-		}
-		if (process != null) {
-			try {
-				process.destroy(); // Attempt to terminate the process
-				process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS); // Wait for the process to terminate
-				process.destroyForcibly(); // Force termination if not already done
-			} catch (InterruptedException e) {
-				System.out.println("Failed to terminate the process cleanly");
-			}
-		}
-		if (reader != null) {
-			try {
-				reader.close(); // Close the reader to release any blocked I/O
-			} catch (IOException e) {
-				System.out.println("Failed to close the reader properly");
-				e.printStackTrace();
-			}
-		}
-	}
-
-    @Override
-	protected void processKataResponses() throws Exception {
-		boolean printSummary = Boolean.parseBoolean(props.getProperty("kata.print_summary_result", "false"));
-		boolean printWarnings = Boolean.parseBoolean(props.getProperty("kata.print_warnings", "true"));
-		Gson gson = new Gson();
-		String line;
-		long startTime = 0;
-		int total = 0;
-		boolean started = false;
-		while ((line = reader.readLine()) != null) {
-			if (!line.isBlank()) {
-				lastProcessOutput = line.length() > 500
-					? line.substring(line.length() - 500) : line;
-			}
-            if (line.startsWith("{")) {
-                JsonObject response = JsonParser.parseString(line).getAsJsonObject();
-                if (response.has("error")) {
-                    String error = response.get("error").getAsString();
-                    if (!response.has("id")) {
-                        throw new IOException("KataGo error: " + error);
-                    }
-                    synchronized (this) {
-                        errors.put(response.get("id").getAsString(), error);
-                    }
-                    continue;
-                }
-                // Warning and control replies are not analysis positions.
-                if (!response.has("rootInfo") || !response.has("turnNumber")
-                    || (response.has("isDuringSearch") && response.get("isDuringSearch").getAsBoolean())) {
-                    if (printWarnings && response.has("warning")) {
-                        System.out.println("KataGo warning: " + response.get("warning").getAsString());
-                    }
-                    continue;
-                }
-            }
-			if (line.contains("Uncaught exception")) {
-				System.out.println("fatal error: " + line);
-				throw new RuntimeException("fatal error: " + line);
-			}
-			if (line.contains("terminating with"))
-				throw new RuntimeException("ending on katago error: " + line);
-			
-			// print to debug
-			if (debugPrintKatago) {
-				System.out.println("kata: " + line);
-			} else if (printWarnings && line.contains("Warning:")) {
-				System.out.println("kata: " + line);
-			}
-
-			if (line.startsWith("{")) {
-				KataAnalysisResult kres = gson.fromJson(line, KataAnalysisResult.class);
-				total++;
-				double avgTime = (System.currentTimeMillis() - startTime) / (double)total;
-				if (printSummary)
-					System.out.println("> KBRAIN parsed: " + kres.id + ", turn: " + kres.turnNumber + ", score: " + df.format(kres.rootInfo.scoreLead) + ", avg ms: " + df.format(avgTime));
-
-				synchronized (this) {
-					// record result
-					results.put(kres.id + kres.turnNumber, kres);
-				}
-			}
-			else if (line.contains("ready to begin handling requests")) {
-				System.out.println(line);
-				startTime = System.currentTimeMillis();
-				started = true;
-			}
-			else {
-				if (started) {
-					// print out other lines
-					System.out.println(line);
-				}
-			}
-		}
-	}
-
-    @Override
-	public void doQuery(KataQuery query) throws Exception {
-		Gson gson = new Gson();
-		String qjson = gson.toJson(query, KataQuery.class);
-		// System.out.println("KENG (" + "x" + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
-		
-		PrintWriter pw = new PrintWriter(process.getOutputStream());
-		pw.println(qjson);
-		pw.flush();
-        if (pw.checkError()) {
-            throw new IOException("Could not write query to KataGo");
+    public AnalysisKataBrain(Properties props, String requestedModel) throws Exception {
+        this.props = props;
+        modelPath = requestedModel == null ? props.getProperty("kata.model").trim() : requestedModel;
+        List<String> command = new ArrayList<>(List.of(props.getProperty("katago").trim(), "analysis",
+            "-config", props.getProperty("kata.config").trim(), "-model", modelPath));
+        String humanModel = props.getProperty("kata.human_model", "").trim();
+        if (!humanModel.isBlank()) command.addAll(List.of("-human-model", humanModel));
+        List<String> overrides = new ArrayList<>();
+        if (Boolean.parseBoolean(props.getProperty("analysis.force_black_perspective", "false"))) {
+            overrides.add("reportAnalysisWinratesAs=BLACK");
         }
-	}
+        for (String key : List.of("numAnalysisThreads", "numSearchThreadsPerAnalysisThread")) {
+            String configured = props.getProperty("analysis.kata." + key);
+            if (configured != null) {
+                int value = Integer.parseInt(configured);
+                if (value < 1 || value > 256) throw new IllegalArgumentException("Invalid " + key);
+                overrides.add(key + "=" + value);
+            }
+        }
+        if (!overrides.isEmpty()) command.addAll(List.of("-override-config", String.join(",", overrides)));
+        process = new ProcessBuilder(command).start();
+        writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
+        Thread stderr = new Thread(() -> {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    lastProcessOutput = line.length() > 500 ? line.substring(line.length() - 500) : line;
+                    if (Boolean.parseBoolean(props.getProperty("kata.debug_print", "false")) || line.contains("Error") || line.contains("Warning")) {
+                        System.err.println(line);
+                    }
+                }
+            } catch (IOException error) {
+                if (process.isAlive()) System.err.println("KataGo stderr: " + error.getMessage());
+            }
+        }, "analysis-katago-stderr");
+        stderr.setDaemon(true);
+        stderr.start();
+        Thread reader = new Thread(() -> {
+            try { processKataResponses(); }
+            catch (Exception error) { if (process.isAlive()) System.err.println("KataGo reader: " + error.getMessage()); }
+            finally {
+                process.destroy();
+                synchronized (this) { notifyAll(); }
+            }
+        }, "analysis-katago-stdout");
+        reader.setDaemon(true);
+        reader.start();
+    }
 
-	/**
-	 * Waits for a KataGo result. Timeout is read from props (kata.query.timeout.ms).
-	 * A value of 0 means no timeout (wait indefinitely).
-	 */
-    @Override
-	public KataAnalysisResult getResult(String id, int targetTurn) {
-//		System.out.println("brain fetching: " + id + " : " + targetTurn);
+    public boolean isAlive() { return process.isAlive(); }
+
+    public void beginScope(String scope) { queryScope.set(scope); }
+
+    public void beginScope(String scope, int priority) { queryScope.set(scope); queryPriority.set(priority); }
+
+    /** Cancels only this task's queries, leaving other users' searches running. */
+    public void endScope(String scope) {
+        queryScope.remove();
+        queryPriority.remove();
+        for (String id : List.copyOf(activeQueries.keySet())) {
+            if (id.startsWith(scope)) {
+                activeQueries.remove(id);
+                streams.remove(id);
+                try { terminateQuery(id); }
+                catch (IOException error) { System.err.println("KataGo cancel: " + error.getMessage()); }
+            }
+        }
+        streams.keySet().removeIf(id -> id.startsWith(scope));
+        synchronized (this) {
+            results.keySet().removeIf(id -> id.startsWith(scope));
+            errors.keySet().removeIf(id -> id.startsWith(scope));
+        }
+    }
+
+    public BlockingQueue<KataAnalysisResult> streamQuery(KataQuery query) throws Exception {
+        scope(query);
+        BlockingQueue<KataAnalysisResult> updates = new ArrayBlockingQueue<>(1);
+        streams.put(query.id, updates);
+        doQuery(query);
+        return updates;
+    }
+
+    private void scope(KataQuery query) {
+        String scope = queryScope.get();
+        if (scope != null && !query.id.startsWith(scope)) query.id = scope + query.id;
+    }
+
+    @Override public void doQuery(KataQuery query) throws Exception {
+        scope(query);
+        if (query.priority == null) query.priority = queryPriority.get();
+        activeQueries.put(query.id, new AtomicInteger(query.analyzeTurns == null ? 1 : query.analyzeTurns.size()));
+        send(new Gson().toJson(query, KataQuery.class));
+    }
+
+    private void terminateQuery(String id) throws IOException {
+        JsonObject command = new JsonObject();
+        command.addProperty("id", "terminate:" + UUID.randomUUID());
+        command.addProperty("action", "terminate");
+        command.addProperty("terminateId", id);
+        send(command.toString());
+    }
+
+    private void send(String json) throws IOException {
+        synchronized (writeLock) {
+            writer.write(json);
+            writer.newLine();
+            writer.flush();
+        }
+    }
+
+    @Override protected void processKataResponses() throws Exception {
+        Gson gson = new Gson();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!line.startsWith("{")) continue;
+                JsonObject response = JsonParser.parseString(line).getAsJsonObject();
+                if (!response.has("id")) {
+                    if (response.has("error")) throw new IOException("KataGo: " + response.get("error").getAsString());
+                    continue;
+                }
+                String id = response.get("id").getAsString();
+                if (!activeQueries.containsKey(id)) continue;
+                if (response.has("warning")) {
+                    if (Boolean.parseBoolean(props.getProperty("kata.print_warnings", "true"))) System.err.println(response.get("warning"));
+                    continue;
+                }
+                KataAnalysisResult result = gson.fromJson(response, KataAnalysisResult.class);
+                if (response.has("noResults")) result.error = "Query stopped before any search";
+                BlockingQueue<KataAnalysisResult> stream = streams.get(id);
+                boolean partial = Boolean.TRUE.equals(result.isDuringSearch);
+                if (stream != null) {
+                    // Never block stdout on HTTP or a slow consumer; retain only the newest snapshot.
+                    if (!stream.offer(result)) { stream.poll(); stream.offer(result); }
+                } else if (!partial) {
+                    synchronized (this) {
+                        if (result.isError()) errors.put(id, result.error);
+                        else if (result.rootInfo != null) results.put(id + result.turnNumber, result);
+                        notifyAll();
+                    }
+                }
+                if (!partial) {
+                    AtomicInteger remaining = activeQueries.get(id);
+                    if (result.isError() || (remaining != null && remaining.decrementAndGet() <= 0)) activeQueries.remove(id);
+                }
+            }
+        }
+    }
+
+    @Override public KataAnalysisResult getResult(String id, int targetTurn) {
         return getResult(id, targetTurn, Long.parseLong(props.getProperty("kata.query.timeout.ms", "0")));
     }
 
-    public KataAnalysisResult getResult(String id, int targetTurn, long timeoutMs) {
-		String nm = id + targetTurn; // lookup
-		long startTime = System.currentTimeMillis();
-		while (true) {
-            if (Thread.currentThread().isInterrupted()) {
-                throw new CancellationException("KataGo analysis interrupted");
-            }
-			synchronized (this) {
-				if (errors.containsKey(id)) {
-					String errorMsg = errors.remove(id);
-					KataAnalysisResult errorResult = new KataAnalysisResult();
-					errorResult.id = id;
-					errorResult.turnNumber = targetTurn;
-					errorResult.error = errorMsg;
-					return errorResult;
-				}
-				// getting the value removes it from our map
-				if (results.containsKey(nm)) {
-//					System.out.println("brain found: " + id + " : " + targetTurn);
-					return results.remove(nm);
-				}
-			}
-			if (!process.isAlive()) {
-				KataAnalysisResult errorResult = new KataAnalysisResult();
-				errorResult.id = id;
-				errorResult.turnNumber = targetTurn;
-				errorResult.error = "KataGo process exited with code " + process.exitValue()
-					+ (lastProcessOutput == null ? "" : ": " + lastProcessOutput);
-				return errorResult;
-			}
-			if (timeoutMs > 0 && System.currentTimeMillis() - startTime > timeoutMs) {
-				System.err.println("KataGo query timed out after " + (timeoutMs / 1000) +
-						"s for id=" + id + ", turn=" + targetTurn);
-				KataAnalysisResult errorResult = new KataAnalysisResult();
-				errorResult.id = id;
-				errorResult.turnNumber = targetTurn;
-				errorResult.error = "KataGo query timed out after " + (timeoutMs / 1000) + " seconds";
-				return errorResult;
-			}
-			try {
-				Thread.sleep(1);
-			} catch (InterruptedException e) {
+    public synchronized KataAnalysisResult getResult(String id, int targetTurn, long timeoutMs) {
+        long start = System.currentTimeMillis();
+        while (true) {
+            if (Thread.currentThread().isInterrupted()) throw new CancellationException("KataGo analysis interrupted");
+            if (errors.containsKey(id)) return error(id, targetTurn, errors.remove(id));
+            KataAnalysisResult result = results.remove(id + targetTurn);
+            if (result != null) return result;
+            if (!process.isAlive()) return error(id, targetTurn, "KataGo exited: " + lastProcessOutput);
+            if (timeoutMs > 0 && System.currentTimeMillis() - start >= timeoutMs) return error(id, targetTurn, "KataGo query timed out");
+            try { wait(timeoutMs > 0 ? Math.min(1000, Math.max(1, timeoutMs - (System.currentTimeMillis() - start))) : 1000); }
+            catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 throw new CancellationException("KataGo analysis interrupted");
-			}
-		}
-	}
+            }
+        }
+    }
 
-	/** Extract a string value for a given key from a JSON-like string, e.g. "id":"abc" → abc */
-	private static String extractJsonStringValue(String text, String key) {
-		String search = "\"" + key + "\":\"";
-		int start = text.indexOf(search);
-		if (start < 0) return null;
-		start += search.length();
-		int end = text.indexOf("\"", start);
-		if (end < 0) return null;
-		return text.substring(start, end);
-	}
+    private KataAnalysisResult error(String id, int turn, String message) {
+        KataAnalysisResult result = new KataAnalysisResult();
+        result.id = id;
+        result.turnNumber = turn;
+        result.error = message;
+        return result;
+    }
+
+    @Override public void stopKataBrain() {
+        process.destroy();
+        try { if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly(); }
+        catch (InterruptedException interrupted) { process.destroyForcibly(); Thread.currentThread().interrupt(); }
+    }
 }

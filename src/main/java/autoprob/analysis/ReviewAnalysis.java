@@ -13,9 +13,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /** Full game analysis from the server's normalized SGF, including both endpoints. */
 public class ReviewAnalysis {
@@ -46,8 +48,7 @@ public class ReviewAnalysis {
         query.includeOwnership = true;
         query.includeMovesOwnership = false;
         query.includeOwnershipStdev = false;
-        query.maxVisits = query.maxVisits == null
-            ? Integer.parseInt(props.getProperty("review.visits", "500")) : query.maxVisits;
+        query.maxVisits = Integer.parseInt(props.getProperty("review.visits"));
         if (query.maxVisits < 1) throw new IllegalArgumentException("maxVisits must be positive");
         // Never inherit human-play biases from a scenario task.
         query.overrideSettings = new KataQuery.OverrideSettings();
@@ -68,7 +69,10 @@ public class ReviewAnalysis {
                 positions.put(position.get("turnNumber").getAsInt(), position);
             }
         }
-        long queryTimeoutMs = Math.max(1000, Long.parseLong(props.getProperty("review.query.timeout.ms", "120000")));
+        long queryTimeoutMs = Math.max(1000, Long.parseLong(props.getProperty("review.query.timeout.ms")));
+        int totalPositions = query.moves.size() + 1;
+        logProgress(task, positions.size(), totalPositions);
+        long lastProgressAtNanos = System.nanoTime();
         for (int turn = 0; turn <= query.moves.size(); turn++) {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Review interrupted");
             if (shouldYield.shouldYield()) throw new YieldRequested();
@@ -86,12 +90,21 @@ public class ReviewAnalysis {
             JsonObject position = normalize(result, turn, boardSize);
             positions.put(turn, position);
             progress.accept(envelope(List.of(position), brain));
+            long now = System.nanoTime();
+            if (positions.size() == totalPositions || now - lastProgressAtNanos >= TimeUnit.SECONDS.toNanos(5)) {
+                logProgress(task, positions.size(), totalPositions);
+                lastProgressAtNanos = now;
+            }
         }
         // Every position has already been durably uploaded; the server merges and validates completion.
         return envelope(List.of(), brain);
     }
 
-    private JsonObject normalize(KataAnalysisResult result, int turn, int boardSize) {
+    private void logProgress(AnalysisTask task, int completed, int total) {
+        System.out.printf(Locale.ROOT, "Review task %d progress: %d/%d positions (%.1f%%)%n", task.id, completed, total, 100.0 * completed / total);
+    }
+
+    JsonObject normalize(KataAnalysisResult result, int turn, int boardSize) {
         if (result.turnNumber == null || result.turnNumber != turn
             || !("B".equals(result.rootInfo.currentPlayer) || "W".equals(result.rootInfo.currentPlayer))) {
             throw new IllegalStateException("KataGo returned invalid position metadata");
@@ -112,6 +125,7 @@ public class ReviewAnalysis {
             item.addProperty("winrate", probability(move.winrate));
             item.addProperty("scoreLead", finite(move.scoreLead));
             item.addProperty("visits", visits(move.visits));
+            item.addProperty("prior", probability(move.prior));
             item.add("pv", gson.toJsonTree(move.pv == null ? List.of() : move.pv.subList(0, Math.min(30, move.pv.size()))));
             if (move.order != null) item.addProperty("order", move.order);
             moves.add(item);
@@ -127,7 +141,7 @@ public class ReviewAnalysis {
         return position;
     }
 
-    private JsonObject envelope(List<JsonObject> positions, AnalysisKataBrain brain) {
+    JsonObject envelope(List<JsonObject> positions, AnalysisKataBrain brain) {
         JsonObject result = new JsonObject();
         result.addProperty("perspective", "black");
         result.addProperty("model", new File(brain.modelPath).getName());

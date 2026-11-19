@@ -17,14 +17,19 @@ import java.util.Properties;
 import java.util.Set;
 
 public class JosekiNodeCompleter {
-    private static final double DEFAULT_AI_POLICY_THRESHOLD = 0.10;
-    private static final double DEFAULT_HUMAN_POLICY_THRESHOLD = 0.20;
-    private static final int DEFAULT_MAX_MOVE_DISTANCE = 4;
-    private static final int DEFAULT_MAX_PATH_DEPTH = 30;
-    private static final int DEFAULT_PAGE_LIMIT = 100;
+    private static final String BASE_URL = "http://localhost:8081/";
+    private static final String CANDIDATES_API_PATH = "api/joseki-node-completion-candidates";
+    private static final String ANALYSIS_REQUESTS_API_PATH = "api/joseki-analysis-requests";
+    private static final double AI_POLICY_THRESHOLD = 0.5;
+    private static final double HUMAN_POLICY_THRESHOLD = 0.8;
+    private static final int MAX_MOVE_DISTANCE = 4;
+    private static final int MAX_PATH_DEPTH = 20;
+    private static final int PAGE_LIMIT = 100;
+    private static final boolean DRY_RUN = false;
+    private static final boolean PRINT_CANDIDATES = false;
     private static final DecimalFormat POLICY_FORMAT = new DecimalFormat("0.0000");
 
-    private final Properties props;
+    private final Properties apiProperties;
     private final ApiClient apiClient;
     private final Gson gson = new Gson();
 
@@ -43,52 +48,26 @@ public class JosekiNodeCompleter {
     }
 
     JosekiNodeCompleter(Properties props, ApiClient apiClient) {
-        this.props = props;
+        this.apiProperties = new Properties();
+        this.apiProperties.putAll(props);
+        this.apiProperties.setProperty("baseurl", BASE_URL);
+        this.apiProperties.setProperty("api.joseki.node_completion_candidates", CANDIDATES_API_PATH);
+        this.apiProperties.setProperty("api.joseki.analysis_requests", ANALYSIS_REQUESTS_API_PATH);
+        this.apiProperties.setProperty("api.joseki.username", props.getProperty(
+            "api.joseki.username", System.getenv().getOrDefault("JOSEKIPEDIA_USERNAME", "")));
+        this.apiProperties.setProperty("api.joseki.password", props.getProperty(
+            "api.joseki.password", System.getenv().getOrDefault("JOSEKIPEDIA_PASSWORD", "")));
         this.apiClient = apiClient;
     }
 
     public CompletionSummary run() throws Exception {
-        double aiPolicyThreshold = policyThreshold(
-            "joseki.completion.ai_policy_threshold",
-            DEFAULT_AI_POLICY_THRESHOLD
-        );
-        double humanPolicyThreshold = policyThreshold(
-            "joseki.completion.human_policy_threshold",
-            DEFAULT_HUMAN_POLICY_THRESHOLD
-        );
-        int maxMoveDistance = rangedInt(
-            "joseki.completion.max_move_distance",
-            props.getProperty(
-                "joseki.max_move_distance",
-                String.valueOf(DEFAULT_MAX_MOVE_DISTANCE)
-            ),
-            0,
-            18
-        );
-        int pageLimit = rangedInt(
-            "joseki.completion.page_limit",
-            String.valueOf(DEFAULT_PAGE_LIMIT),
-            1,
-            500
-        );
-        int maxPathDepth = rangedInt(
-            "joseki.completion.max_path_depth",
-            String.valueOf(DEFAULT_MAX_PATH_DEPTH),
-            1,
-            500
-        );
-        boolean dryRun = Boolean.parseBoolean(props.getProperty("joseki.completion.dry_run", "false"));
-        boolean printCandidates = Boolean.parseBoolean(
-            props.getProperty("joseki.completion.print_candidates", "false")
-        );
-
         System.out.println("Scanning one fixed joseki node snapshot"
-            + " (AI policy >= " + POLICY_FORMAT.format(aiPolicyThreshold)
-            + ", Human Policy >= " + POLICY_FORMAT.format(humanPolicyThreshold)
-            + ", max move distance=" + maxMoveDistance
-            + ", max path depth=" + maxPathDepth
-            + ", page limit=" + pageLimit
-            + (dryRun ? ", dry run" : "") + ")");
+            + " (AI policy >= " + POLICY_FORMAT.format(AI_POLICY_THRESHOLD)
+            + ", Human Policy >= " + POLICY_FORMAT.format(HUMAN_POLICY_THRESHOLD)
+            + ", max move distance=" + MAX_MOVE_DISTANCE
+            + ", max path depth=" + MAX_PATH_DEPTH
+            + ", page limit=" + PAGE_LIMIT
+            + (DRY_RUN ? ", dry run" : "") + ")");
 
         long startedAt = System.currentTimeMillis();
         int afterNodeId = 0;
@@ -103,12 +82,7 @@ public class JosekiNodeCompleter {
         while (true) {
             JosekiNodeCompletionCandidatePage page = fetchCandidatePage(
                 afterNodeId,
-                snapshotMaxNodeId,
-                pageLimit,
-                aiPolicyThreshold,
-                humanPolicyThreshold,
-                maxMoveDistance,
-                maxPathDepth
+                snapshotMaxNodeId
             );
             if (snapshotMaxNodeId == null) {
                 snapshotMaxNodeId = page.snapshotMaxNodeId;
@@ -131,8 +105,8 @@ public class JosekiNodeCompleter {
                 }
 
                 discoveredCandidates++;
-                if (dryRun) {
-                    if (printCandidates) {
+                if (DRY_RUN) {
+                    if (PRINT_CANDIDATES) {
                         printCandidate("Would request", candidate);
                     }
                     continue;
@@ -141,12 +115,12 @@ public class JosekiNodeCompleter {
                 ApiClient.ApiResponse<Object> response = createAnalysisRequest(candidate.path);
                 if (response.getStatusCode() == 409) {
                     pendingRequests++;
-                    if (printCandidates) {
+                    if (PRINT_CANDIDATES) {
                         printCandidate("Already pending", candidate);
                     }
                 } else if (response.isSuccess()) {
                     createdRequests++;
-                    if (printCandidates) {
+                    if (PRINT_CANDIDATES) {
                         printCandidate("Requested", candidate);
                     }
                 } else {
@@ -164,7 +138,6 @@ public class JosekiNodeCompleter {
                 discoveredCandidates,
                 createdRequests,
                 pendingRequests,
-                dryRun,
                 startedAt
             );
 
@@ -183,45 +156,40 @@ public class JosekiNodeCompleter {
             discoveredCandidates,
             createdRequests,
             pendingRequests,
-            dryRun,
+            DRY_RUN,
             snapshotMaxNodeId == null ? 0 : snapshotMaxNodeId
         );
-        System.out.println("Joseki node completion " + (dryRun ? "estimate" : "complete")
+        System.out.println("Joseki node completion " + (DRY_RUN ? "estimate" : "complete")
             + ": scanned " + scannedNodes
             + " nodes"
             + ", skipped " + skippedNodes
             + ", found " + discoveredCandidates + " missing high-policy nodes"
-            + (dryRun ? "." : ", created " + createdRequests
+            + (DRY_RUN ? "." : ", created " + createdRequests
                 + " analysis requests, already pending " + pendingRequests + "."));
         return summary;
     }
 
     private JosekiNodeCompletionCandidatePage fetchCandidatePage(
         int afterNodeId,
-        Integer snapshotMaxNodeId,
-        int pageLimit,
-        double aiPolicyThreshold,
-        double humanPolicyThreshold,
-        int maxMoveDistance,
-        int maxPathDepth
+        Integer snapshotMaxNodeId
     ) throws Exception {
         List<String> params = new ArrayList<>();
         addQueryParam(params, "afterNodeId", String.valueOf(afterNodeId));
         if (snapshotMaxNodeId != null) {
             addQueryParam(params, "maxNodeId", String.valueOf(snapshotMaxNodeId));
         }
-        addQueryParam(params, "limit", String.valueOf(pageLimit));
-        addQueryParam(params, "aiPolicyThreshold", String.valueOf(aiPolicyThreshold));
-        addQueryParam(params, "humanPolicyThreshold", String.valueOf(humanPolicyThreshold));
-        addQueryParam(params, "maxMoveDistance", String.valueOf(maxMoveDistance));
-        addQueryParam(params, "maxPathDepth", String.valueOf(maxPathDepth));
+        addQueryParam(params, "limit", String.valueOf(PAGE_LIMIT));
+        addQueryParam(params, "aiPolicyThreshold", String.valueOf(AI_POLICY_THRESHOLD));
+        addQueryParam(params, "humanPolicyThreshold", String.valueOf(HUMAN_POLICY_THRESHOLD));
+        addQueryParam(params, "maxMoveDistance", String.valueOf(MAX_MOVE_DISTANCE));
+        addQueryParam(params, "maxPathDepth", String.valueOf(MAX_PATH_DEPTH));
 
         ApiClient.ApiResponse<JosekiNodeCompletionCandidatePage> response = apiClient.makeGetRequest(
             "api.joseki.node_completion_candidates",
             null,
             "?" + String.join("&", params),
             JosekiNodeCompletionCandidatePage.class,
-            props
+            apiProperties
         );
         if (!response.isSuccess() || response.getData() == null) {
             throw new RuntimeException("Failed to fetch joseki node completion candidates: HTTP "
@@ -239,7 +207,7 @@ public class JosekiNodeCompleter {
             null,
             gson.toJson(body),
             Object.class,
-            props
+            apiProperties
         );
     }
 
@@ -264,7 +232,6 @@ public class JosekiNodeCompleter {
         int discoveredCandidates,
         int createdRequests,
         int pendingRequests,
-        boolean dryRun,
         long startedAt
     ) {
         double progress = snapshotMaxNodeId <= 0
@@ -287,7 +254,7 @@ public class JosekiNodeCompleter {
             .append(skippedNodes)
             .append(", candidates=")
             .append(discoveredCandidates);
-        if (!dryRun) {
+        if (!DRY_RUN) {
             message.append(", requested=")
                 .append(createdRequests)
                 .append(", pending=")
@@ -312,22 +279,6 @@ public class JosekiNodeCompleter {
             return minutes + "m" + seconds + "s";
         }
         return seconds + "s";
-    }
-
-    private double policyThreshold(String property, double defaultValue) {
-        double value = Double.parseDouble(props.getProperty(property, String.valueOf(defaultValue)));
-        if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
-            throw new IllegalArgumentException(property + " must be between 0 and 1");
-        }
-        return value;
-    }
-
-    private int rangedInt(String property, String defaultValue, int minimum, int maximum) {
-        int value = Integer.parseInt(props.getProperty(property, defaultValue));
-        if (value < minimum || value > maximum) {
-            throw new IllegalArgumentException(property + " must be between " + minimum + " and " + maximum);
-        }
-        return value;
     }
 
     private void addQueryParam(List<String> params, String key, String value) {

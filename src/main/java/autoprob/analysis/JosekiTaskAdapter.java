@@ -104,17 +104,27 @@ public final class JosekiTaskAdapter {
         requestModelPath = brain.modelPath;
         taskChildMoves = new LinkedHashSet<>(strings(payload, "childMoves"));
         taskParentChildMoves = new LinkedHashSet<>(strings(payload, "parentChildMoves"));
-        List<AnalysisScope> scopes = analysisScopes();
-        if (scopes.isEmpty()) throw new IllegalArgumentException("Joseki scopes cannot be empty");
+        List<AnalysisScope> scopes = payload.has("scopes")
+            ? strings(payload, "scopes").stream().map(AnalysisScope::fromConfig).toList() : analysisScopes();
         JosekiNodeEntry entry = new JosekiNodeEntry();
         entry.path = payload.has("path") ? payload.get("path").getAsString() : "";
         JosekiAnalysisSubmitBody result = new JosekiAnalysisSubmitBody();
         result.clientVersion = CLIENT_VERSION;
-        result.results = analyzeNode(entry, brain, scopes);
+        boolean partialFill = payload.has("includePass");
+        result.results = analyzeNode(entry, brain, scopes, !partialFill);
+        if (partialFill && payload.get("includePass").getAsBoolean()) {
+            Double globalScore = result.results.stream().filter(value -> "global".equals(value.scope))
+                .map(value -> value.score).findFirst().orElse(null);
+            result.passAnalysisUpdates = List.of(analyzePassNode(entry, brain, globalScore));
+        }
         boolean includeHumanPolicy = payload.has("humanPolicyProfiles")
             || payload.has("includeHumanPolicy") && payload.get("includeHumanPolicy").getAsBoolean();
-        List<String> profiles = includeHumanPolicy ? humanSLProfiles() : List.of();
+        List<String> profiles = payload.has("humanPolicyProfiles") ? strings(payload, "humanPolicyProfiles")
+            : includeHumanPolicy ? humanSLProfiles() : List.of();
         result.humanPolicyDistributions = analyzeHumanPolicies(entry, brain, profiles);
+        if (partialFill && result.humanPolicyDistributions.size() != profiles.size()) {
+            throw new IllegalStateException("Could not calculate every missing Human Policy profile");
+        }
         return result;
     }
 
@@ -131,13 +141,15 @@ public final class JosekiTaskAdapter {
     private List<JosekiAnalysisResultData> analyzeNode(
         JosekiNodeEntry entry,
         KataBrain brain,
-        List<AnalysisScope> scopes
+        List<AnalysisScope> scopes,
+        boolean includePass
     ) throws Exception {
         scopedQueryCache.clear();
         List<JosekiAnalysisResultData> results = new ArrayList<>();
         for (AnalysisScope scope : scopes) {
             results.add(analyzeNode(entry, brain, scope));
         }
+        if (!includePass) return results;
         JosekiAnalysisResultData carrier = results.stream()
             .filter(result -> AnalysisScope.GLOBAL.value.equals(result.scope))
             .findFirst()

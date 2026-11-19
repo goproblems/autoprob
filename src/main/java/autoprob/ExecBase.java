@@ -6,29 +6,31 @@ import java.io.StringReader;
 import java.util.Properties;
 
 /**
- * common logic for starting an executable, parsing config plus command line overrides
+ * Parses an optional properties file followed by command-line name=value settings.
  *
  */
 public class ExecBase {
 	public static Properties getRunConfig(String[] args) throws Exception {
 		if (args.length == 0) {
-			throw new RuntimeException("first argument must be a path to the config file");
+			throw new RuntimeException("pass a config file or command-line properties such as cmd=josekinodecomplete");
 		}
-		// load properties file
-		String propPath = args[0];
-		
-		InputStream input = new FileInputStream(propPath);
 		Properties prop = new Properties();
-		prop.load(input);
+		int firstOverride = 0;
+		if (!args[0].contains("=")) {
+			try (InputStream input = new FileInputStream(args[0])) {
+				prop.load(input);
+			}
+			firstOverride = 1;
+		}
 		
 		// load any additional properties from the command line
 		// format is propertyname=value
 		
 		StringBuilder sb = new StringBuilder();
-		for (int i = 1; i < args.length; i++) {
+		for (int i = firstOverride; i < args.length; i++) {
 			String arg = args[i];
 			if (!arg.contains("=")) {
-				throw new RuntimeException("arguments after the config file override properties from the config file with format name=value");
+				throw new RuntimeException("command-line properties must use the format name=value");
 			}
 		    sb.append(arg).append("\n");
 		}

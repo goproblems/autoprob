@@ -25,7 +25,6 @@ public class ReviewAnalysis {
     public interface Progress { void accept(JsonObject result) throws Exception; }
     @FunctionalInterface
     public interface YieldCheck { boolean shouldYield() throws Exception; }
-    public static class YieldRequested extends Exception { }
     private final Gson gson = new Gson();
     private final Properties props;
 
@@ -75,7 +74,7 @@ public class ReviewAnalysis {
         long lastProgressAtNanos = System.nanoTime();
         for (int turn = 0; turn <= query.moves.size(); turn++) {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Review interrupted");
-            if (shouldYield.shouldYield()) throw new YieldRequested();
+            if (shouldYield.shouldYield()) throw new AnalysisHandler.YieldRequested();
             if (positions.containsKey(turn)) continue;
             // A single position per query permits yielding to live scenario jobs between moves.
             // Full game history remains intact for ko, pass, handicap and rules handling.

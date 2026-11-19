@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** One dispatcher and lease lifecycle for all analysis work. Priority belongs to goproblems. */
 public class AnalysisHandler {
-    public static final int CLIENT_VERSION = 17;
+    public static final int CLIENT_VERSION = 18;
     private static final int INTERACTIVE_PRIORITY = 100;
     private final Properties props = new Properties();
     private final Properties localProps = new Properties();
@@ -390,14 +390,15 @@ public class AnalysisHandler {
                 fields.add("result", new JsonObject());
             }
             fields.addProperty("durationMs", submitsResult ? result.get("calculationDurationMs").getAsLong()
+                : "josekiprecalculate".equals(task.type) ? result.get("elapsedMs").getAsLong()
                 : Math.max(1, System.currentTimeMillis() - started));
             updateWithRetry(task, "result", fields);
             if (!"live".equals(task.type)) System.out.printf(Locale.ROOT, "Completed %s task %d; total=%.2fs%n", task.type, task.id, (System.nanoTime() - receivedAtNanos) / 1_000_000_000.0);
         } catch (Exception error) {
             Throwable cause = error instanceof ExecutionException ? error.getCause() : error;
-            if (cause instanceof ReviewAnalysis.YieldRequested && !leaseLost.get()) {
+            if (cause instanceof YieldRequested && !leaseLost.get()) {
                 updateWithRetry(task, "yield", null);
-                System.out.println("Yielded review " + task.id + " to higher priority work");
+                System.out.println("Yielded " + task.type + " " + task.id + " to higher priority work");
             } else {
                 if (future != null) future.cancel(true);
                 if (cause instanceof TaskQueueClient.ApiException apiError && (apiError.status == 409 || apiError.status == 404)) leaseLost.set(true);
@@ -426,6 +427,8 @@ public class AnalysisHandler {
         }
     }
 
+    public static class YieldRequested extends Exception { }
+
     private JsonObject analyze(AnalysisTask task, AnalysisKataBrain brain) throws Exception {
         Properties taskProps = taskProperties(task);
         taskProps.setProperty("kata.model", brain.modelPath);
@@ -441,24 +444,32 @@ public class AnalysisHandler {
                 JsonObject fields = new JsonObject();
                 fields.add("result", partial);
                 updateWithRetry(task, "progress", fields);
-            }, () -> {
-                long version = queueVersion.get();
-                long now = System.currentTimeMillis();
-                long recoveryMs = mercure.isConnected() ? 30000 : Math.max(250,
-                    Long.parseLong(props.getProperty("analysis.poll.interval.ms", "2000")));
-                if (version == checkedVersion.get() && now - lastPriorityCheck.get() < recoveryMs) return false;
-                JsonObject fields = new JsonObject();
-                fields.add("types", gson.toJsonTree(availableTypes()));
-                JsonObject response = queue.update(task, "check-priority", fields);
-                checkedVersion.set(version);
-                lastPriorityCheck.set(now);
-                return response.get("shouldYield").getAsBoolean();
-            });
+            }, () -> shouldYield(task, checkedVersion, lastPriorityCheck));
+            case "josekiprecalculate" -> new JosekiPrecalculation(taskProps, resultSubmitter).analyze(task, brain,
+                partial -> {
+                    JsonObject fields = new JsonObject();
+                    fields.add("result", partial);
+                    updateWithRetry(task, "progress", fields);
+                }, () -> shouldYield(task, checkedVersion, lastPriorityCheck));
             case "scenario" -> analyzeScenario(task, brain, taskProps);
-            case "joseki" -> gson.toJsonTree(new JosekiTaskAdapter(taskProps)
+            case "josekinode" -> gson.toJsonTree(new JosekiTaskAdapter(taskProps)
                 .analyzeTask(task.payload, brain)).getAsJsonObject();
             default -> throw new IllegalArgumentException("Unsupported analysis type: " + task.type);
         };
+    }
+
+    private boolean shouldYield(AnalysisTask task, AtomicLong checkedVersion, AtomicLong lastPriorityCheck) throws Exception {
+        long version = queueVersion.get();
+        long now = System.currentTimeMillis();
+        long recoveryMs = mercure.isConnected() ? 30000 : Math.max(250,
+            Long.parseLong(props.getProperty("analysis.poll.interval.ms", "2000")));
+        if (version == checkedVersion.get() && now - lastPriorityCheck.get() < recoveryMs) return false;
+        JsonObject fields = new JsonObject();
+        fields.add("types", gson.toJsonTree(availableTypes()));
+        JsonObject response = queue.update(task, "check-priority", fields);
+        checkedVersion.set(version);
+        lastPriorityCheck.set(now);
+        return response.get("shouldYield").getAsBoolean();
     }
 
     private JsonObject analyzeScenario(AnalysisTask task, AnalysisKataBrain brain, Properties taskProps) throws Exception {
@@ -523,6 +534,7 @@ public class AnalysisHandler {
 
     private long timeoutMs(AnalysisTask task) {
         if ("live".equals(task.type)) return 920000;
+        if ("josekiprecalculate".equals(task.type)) return 0;
         Properties taskProps = taskProperties(task);
         if ("scenario".equals(task.type)) {
             return Long.parseLong(taskProps.getProperty("scenario.request.timeout.ms"));

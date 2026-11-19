@@ -73,6 +73,8 @@ public class GoTool {
             runRecalculateNodesCommand(props);
         } else if (command.equals("josekinodecomplete")) {
             runJosekiNodeCompleteCommand(props);
+        } else if (command.equals("josekiprecalculate")) {
+            new autoprob.analysis.JosekiPrecalculateCommand(props).run();
         } else {
             throw new RuntimeException("unknown command: " + command);
         }

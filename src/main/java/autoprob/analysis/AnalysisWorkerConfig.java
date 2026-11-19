@@ -32,7 +32,7 @@ public final class AnalysisWorkerConfig {
         concurrency = config.get("maxConcurrency").getAsInt();
         reservedInteractive = config.get("reservedInteractiveSlots").getAsInt();
         resourceGroup = config.get("resourceGroupId").getAsString();
-        if (types.isEmpty() || !List.of("scenario", "joseki", "review", "live").containsAll(types)
+        if (types.isEmpty() || !List.of("scenario", "josekinode", "josekiprecalculate", "review", "live").containsAll(types)
             || models.isEmpty() || !models.contains(defaultModel) || !List.of("fixed", "switchable").contains(modelMode)
             || ("fixed".equals(modelMode) && models.size() != 1) || concurrency < 1 || concurrency > 32
             || reservedInteractive < 0 || reservedInteractive >= concurrency) {

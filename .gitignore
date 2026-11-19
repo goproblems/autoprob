@@ -8,6 +8,9 @@
 # Compiled class file
 *.class
 
+# Maven build output
+target/
+
 # Log file
 *.log
 
@@ -31,3 +34,7 @@ hs_err_pid*
 
 # VS Code workspace settings
 .vscode/
+
+# Local worker connection settings
+/analysis-worker-tf3.properties
+/analysis-worker-all.properties

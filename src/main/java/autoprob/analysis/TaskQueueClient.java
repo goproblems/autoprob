@@ -86,7 +86,7 @@ public class TaskQueueClient {
         return requestAt(endpoint + path, method, body);
     }
 
-    private JsonObject requestAt(String url, String method, JsonObject body) throws Exception {
+    JsonObject requestAt(String url, String method, JsonObject body) throws Exception {
         return requestAt(url, method, body, Duration.ofSeconds(20));
     }
 

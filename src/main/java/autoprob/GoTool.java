@@ -9,7 +9,6 @@ import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
 import autoprob.joseki.JosekiNodeCompleter;
-import autoprob.joseki.JosekiNodeRecalculator;
 import autoprob.problem.DifficultyEstimator;
 import autoprob.problem.SiteProblem;
 import autoprob.scenario.ScenarioNodeRecalculator;
@@ -72,10 +71,6 @@ public class GoTool {
             runScenarioHandlerCommand(props);
         } else if (command.equals("recalculatenodes")) {
             runRecalculateNodesCommand(props);
-        } else if (command.equals("josekinoderecalculate")) {
-            runJosekiNodeRecalculateCommand(props);
-        } else if (command.equals("josekihandler")) {
-            runJosekiAnalysisRequestCommand(props);
         } else if (command.equals("josekinodecomplete")) {
             runJosekiNodeCompleteCommand(props);
         } else {
@@ -117,18 +112,6 @@ public class GoTool {
         System.out.println("Running scenario node recalculation...");
         ScenarioNodeRecalculator recalculator = new ScenarioNodeRecalculator(props);
         recalculator.run();
-    }
-
-    private void runJosekiNodeRecalculateCommand(Properties props) throws Exception {
-        System.out.println("Running joseki node recalculation...");
-        JosekiNodeRecalculator recalculator = new JosekiNodeRecalculator(props);
-        recalculator.run();
-    }
-
-    private void runJosekiAnalysisRequestCommand(Properties props) throws Exception {
-        System.out.println("Running joseki on-demand analysis request handler...");
-        JosekiNodeRecalculator recalculator = new JosekiNodeRecalculator(props);
-        recalculator.runAnalysisRequests();
     }
 
     private void runJosekiNodeCompleteCommand(Properties props) throws Exception {

@@ -33,12 +33,13 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** One dispatcher and lease lifecycle for all analysis work. Priority belongs to goproblems. */
 public class AnalysisHandler {
-    public static final int CLIENT_VERSION = 16;
+    public static final int CLIENT_VERSION = 17;
     private static final int INTERACTIVE_PRIORITY = 100;
     private final Properties props = new Properties();
     private final Properties localProps = new Properties();
     private final Gson gson = new Gson();
     private final TaskQueueClient queue;
+    private final TaskResultSubmitter resultSubmitter = new TaskResultSubmitter();
     private final ResourceTelemetryCollector telemetry;
     private volatile long lastRegistrationNanos;
     private volatile List<String> types = List.of();
@@ -188,7 +189,7 @@ public class AnalysisHandler {
         }, "analysis-worker-shutdown");
         Runtime.getRuntime().addShutdownHook(shutdownHook);
         System.out.println("Unified analysis worker started; configuration source=Client API");
-        try (mercure; JosekiTaskBridge bridge = new JosekiTaskBridge(localProps, queue)) {
+        try (mercure) {
             registerState();
             registration.scheduleWithFixedDelay(() -> {
                 try {
@@ -205,7 +206,6 @@ public class AnalysisHandler {
                 wakeup();
             }, 1, 1, TimeUnit.SECONDS);
             mercure.startListening(this::wakeup, this::control);
-            bridge.start();
             while (!Thread.currentThread().isInterrupted()) {
                 if (registrationFailure.get() != null) throw registrationFailure.get();
                 queueChanged.drainPermits();
@@ -339,10 +339,24 @@ public class AnalysisHandler {
             }
         }, 20, 20, TimeUnit.SECONDS);
         try {
+            boolean submitsResult = task.payload.has("resultSubmission");
+            boolean reusesSavedResult = submitsResult && task.result != null && task.result.has("calculatedResult");
             String scope = "task:" + task.id + ":" + UUID.randomUUID() + ":";
             future = executor.submit(() -> {
+                // Only this envelope represents a full calculation. Streaming progress
+                // from other adapters must never be mistaken for a reusable final result.
+                if (reusesSavedResult) {
+                    return task.result;
+                }
                 taskBrain.beginScope(scope, task.priority);
-                try { return analyze(task, taskBrain); }
+                try {
+                    JsonObject calculated = analyze(task, taskBrain);
+                    if (!submitsResult) return calculated;
+                    JsonObject snapshot = new JsonObject();
+                    snapshot.add("calculatedResult", calculated);
+                    snapshot.addProperty("calculationDurationMs", Math.max(1, System.currentTimeMillis() - started));
+                    return snapshot;
+                }
                 finally { taskBrain.endScope(scope); }
             });
             running.analysisFuture = future;
@@ -366,7 +380,17 @@ public class AnalysisHandler {
             }
             JsonObject fields = new JsonObject();
             fields.add("result", result);
-            fields.addProperty("durationMs", Math.max(1, System.currentTimeMillis() - started));
+            if (running.stopRequested()) throw new java.util.concurrent.CancellationException("Analysis task was stopped");
+            if (submitsResult) {
+                // Persist a fresh calculation before delivery. Retries receive the
+                // saved snapshot with their current claim and can submit it directly.
+                if (!reusesSavedResult) updateWithRetry(task, "progress", fields);
+                resultSubmitter.submit(task);
+                // Completion reuses the persisted snapshot instead of uploading it again.
+                fields.add("result", new JsonObject());
+            }
+            fields.addProperty("durationMs", submitsResult ? result.get("calculationDurationMs").getAsLong()
+                : Math.max(1, System.currentTimeMillis() - started));
             updateWithRetry(task, "result", fields);
             if (!"live".equals(task.type)) System.out.printf(Locale.ROOT, "Completed %s task %d; total=%.2fs%n", task.type, task.id, (System.nanoTime() - receivedAtNanos) / 1_000_000_000.0);
         } catch (Exception error) {
@@ -431,8 +455,8 @@ public class AnalysisHandler {
                 return response.get("shouldYield").getAsBoolean();
             });
             case "scenario" -> analyzeScenario(task, brain, taskProps);
-            case "joseki" -> gson.toJsonTree(new JosekiTaskAdapter(
-                JosekiTaskBridge.remoteProperties(taskProps)).analyzeTask(task.payload, brain)).getAsJsonObject();
+            case "joseki" -> gson.toJsonTree(new JosekiTaskAdapter(taskProps)
+                .analyzeTask(task.payload, brain)).getAsJsonObject();
             default -> throw new IllegalArgumentException("Unsupported analysis type: " + task.type);
         };
     }

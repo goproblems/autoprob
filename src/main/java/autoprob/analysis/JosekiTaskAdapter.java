@@ -4,16 +4,13 @@ import autoprob.KataBrain;
 import autoprob.joseki.TenukiMoves;
 import autoprob.QueryBuilder;
 import autoprob.api.JosekiAnalysisResultData;
-import autoprob.api.JosekiAnalysisRequestData;
 import autoprob.api.JosekiAnalysisSubmitBody;
 import autoprob.api.JosekiHumanPolicyDistributionData;
 import autoprob.api.JosekiNodeEntry;
-import autoprob.api.JosekiNodeListResponse;
 import autoprob.api.JosekiPassAnalysisUpdateData;
 import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.action.MoveAction;
-import autoprob.go.action.SizeAction;
 import autoprob.go.parse.Parser;
 import autoprob.katastruct.AllowMove;
 import autoprob.katastruct.KataAnalysisResult;
@@ -27,18 +24,15 @@ import com.google.gson.JsonObject;
 
 import java.awt.Point;
 import java.io.File;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.DecimalFormat;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -46,31 +40,17 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.HashSet;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Snapshot adapter for the central queue. Deliberately independent of the legacy
- * JosekiNodeRecalculator, including its polling and maintenance commands.
- */
+/** Computes a self-contained joseki snapshot supplied by the unified queue. */
 public final class JosekiTaskAdapter {
     public static final int CLIENT_VERSION = 4;
-    private static final int NODE_PAGE_LIMIT = 500;
-    private static final int DEFAULT_API_MAX_ATTEMPTS = 3;
-    private static final long DEFAULT_API_RETRY_DELAY_MS = 1000L;
     private static final String YELLOW = "\033[33m";
     private static final String RED = "\033[31m";
     private static final String RESET = "\033[0m";
     private final DecimalFormat df = new DecimalFormat("0.00");
     private static final int ROOT_LOCAL_SIZE = 10;
     private final Properties props = new Properties();
-    private final AnalysisApiClient apiClient = new AnalysisApiClient();
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-    private final Map<Integer, Set<String>> childMovesByParentId = new HashMap<>();
     private final Map<Path, String> analysisFileHashes = new HashMap<>();
     private int queryCounter;
     private String taskBaseSgf;
@@ -80,8 +60,6 @@ public final class JosekiTaskAdapter {
 
     public JosekiTaskAdapter(Properties configured) {
         props.putAll(configured);
-        props.putIfAbsent("api.joseki.analysis_request_heartbeat",
-            "api/joseki-analysis-requests/{id}/handles/{handleId}/heartbeat");
     }
 
     enum AnalysisScope {
@@ -132,41 +110,12 @@ public final class JosekiTaskAdapter {
         entry.path = payload.has("path") ? payload.get("path").getAsString() : "";
         JosekiAnalysisSubmitBody result = new JosekiAnalysisSubmitBody();
         result.clientVersion = CLIENT_VERSION;
-        result.source = payload.has("source") ? payload.get("source").getAsString() : "recalculate";
-        if (payload.has("requestId")) result.requestId = payload.get("requestId").getAsInt();
         result.results = analyzeNode(entry, brain, scopes);
         boolean includeHumanPolicy = payload.has("humanPolicyProfiles")
             || payload.has("includeHumanPolicy") && payload.get("includeHumanPolicy").getAsBoolean();
         List<String> profiles = includeHumanPolicy ? humanSLProfiles() : List.of();
         result.humanPolicyDistributions = analyzeHumanPolicies(entry, brain, profiles);
         return result;
-    }
-
-    /** Snapshot all remote inputs before enqueueing; compute workers need no remote lease. */
-    public JsonObject taskPayload(JosekiAnalysisRequestData request) throws Exception {
-        childMovesByParentId.clear();
-        JsonObject payload = new JsonObject();
-        Node base = loadBasePosition();
-        payload.addProperty("sgf", "(" + base.getRoot().outputSGF(false) + ")");
-        payload.addProperty("path", request.path == null ? "" : request.path);
-        payload.addProperty("requestId", request.id);
-        payload.addProperty("source", request.source == null ? "recalculate" : request.source);
-        if (request.visits != null) payload.addProperty("visits", request.visits);
-        if (request.model != null) payload.addProperty("model", request.model);
-        JosekiNodeEntry entry = resolveNodeForAnalysis(request.path == null ? "" : request.path);
-        payload.add("childMoves", gson.toJsonTree(entry.id > 0 ? fetchChildMoves(entry.id) : Set.of()));
-        payload.add("parentChildMoves", gson.toJsonTree(entry.parentId == null ? Set.of() : fetchChildMoves(entry.parentId)));
-        payload.addProperty("includeHumanPolicy", request.visits == null && request.model == null);
-        return payload;
-    }
-
-    public void forwardTaskError(int requestId, String message) throws Exception {
-        AnalysisApiClient.ApiResponse<Object> response = apiClient.makePostRequest(
-            "api.joseki.analysis_request_error", Map.of("id", String.valueOf(requestId)),
-            gson.toJson(Map.of("message", message.substring(0, Math.min(2000, message.length())))), Object.class, props);
-        if (!response.isSuccess()) {
-            throw new IllegalStateException("Joseki error forwarding failed: HTTP " + response.getStatusCode());
-        }
     }
 
     private List<String> strings(JsonObject payload, String key) {
@@ -176,58 +125,32 @@ public final class JosekiTaskAdapter {
         return values;
     }
 
-    public void forwardTaskResult(JsonObject result, long durationMs) throws Exception {
-        JsonObject body = result.deepCopy();
-        body.addProperty("durationMs", durationMs);
-        AnalysisApiClient.ApiResponse<Object> response = apiClient.makePostRequest(
-            "api.joseki.analysis_results", null, gson.toJson(body), Object.class, props);
-        if (!response.isSuccess()) {
-            throw new IllegalStateException("Joseki result forwarding failed: HTTP " + response.getStatusCode());
-        }
-    }
-
     private record ScopedQueryResult(KataAnalysisResult analysis, double policyMass, String configHash) {}
     private final Map<String, ScopedQueryResult> scopedQueryCache = new HashMap<>();
-
-    @FunctionalInterface
-    private interface ThrowingSupplier<T> {
-        T get() throws Exception;
-    }
 
     private List<JosekiAnalysisResultData> analyzeNode(
         JosekiNodeEntry entry,
         KataBrain brain,
         List<AnalysisScope> scopes
     ) throws Exception {
-        return analyzeNode(entry, brain, scopes, true);
-    }
-
-    private List<JosekiAnalysisResultData> analyzeNode(
-        JosekiNodeEntry entry,
-        KataBrain brain,
-        List<AnalysisScope> scopes,
-        boolean includePass
-    ) throws Exception {
         scopedQueryCache.clear();
         List<JosekiAnalysisResultData> results = new ArrayList<>();
         for (AnalysisScope scope : scopes) {
             results.add(analyzeNode(entry, brain, scope));
         }
-        if (includePass && !results.isEmpty()) {
-            JosekiAnalysisResultData carrier = results.stream()
-                .filter(result -> AnalysisScope.GLOBAL.value.equals(result.scope))
-                .findFirst()
-                .orElse(results.get(0));
-            Double currentGlobalScore = AnalysisScope.GLOBAL.value.equals(carrier.scope)
-                ? carrier.score
-                : null;
-            JosekiPassAnalysisUpdateData pass = analyzePassNode(entry, brain, currentGlobalScore);
-            carrier.passScore = pass.passScore;
-            carrier.passLoss = pass.passLoss;
-            carrier.passVisits = pass.passVisits;
-            carrier.passAnalysis = pass.passAnalysis;
-            carrier.passAnalysisConfigHash = pass.analysisConfigHash;
-        }
+        JosekiAnalysisResultData carrier = results.stream()
+            .filter(result -> AnalysisScope.GLOBAL.value.equals(result.scope))
+            .findFirst()
+            .orElse(results.get(0));
+        Double currentGlobalScore = AnalysisScope.GLOBAL.value.equals(carrier.scope)
+            ? carrier.score
+            : null;
+        JosekiPassAnalysisUpdateData pass = analyzePassNode(entry, brain, currentGlobalScore);
+        carrier.passScore = pass.passScore;
+        carrier.passLoss = pass.passLoss;
+        carrier.passVisits = pass.passVisits;
+        carrier.passAnalysis = pass.passAnalysis;
+        carrier.passAnalysisConfigHash = pass.analysisConfigHash;
         return results;
     }
 
@@ -729,17 +652,7 @@ public final class JosekiTaskAdapter {
     }
 
     private Node loadBasePosition() throws Exception {
-        if (taskBaseSgf != null) return new Parser().parse(taskBaseSgf).advance2end();
-        String sgfPath = props.getProperty("joseki.base_sgf");
-        Node node;
-        if (sgfPath == null || sgfPath.isBlank()) {
-            node = new Node(null);
-            node.addAct(new SizeAction(19));
-        } else {
-            String sgf = Files.readString(Path.of(sgfPath));
-            node = new Parser().parse(sgf).advance2end();
-        }
-        return node;
+        return new Parser().parse(taskBaseSgf).advance2end();
     }
 
     private MoveInfo findMoveInfo(KataAnalysisResult parentResult, Node node) {
@@ -781,246 +694,6 @@ public final class JosekiTaskAdapter {
         return gson.toJson(info);
     }
 
-    public JosekiAnalysisRequestData fetchNextAnalysisRequest() throws Exception {
-        List<String> params = new ArrayList<>();
-        addQueryParam(params, "clientVersion", String.valueOf(CLIENT_VERSION));
-        addQueryParam(params, "requestOptionsVersion", "1");
-        String clientId = props.getProperty("clientId", "").trim();
-        if (!clientId.isEmpty()) {
-            addQueryParam(params, "clientId", clientId);
-        }
-        String queryString = "?" + String.join("&", params);
-        AnalysisApiClient.ApiResponse<JosekiAnalysisRequestData> response = apiClient.makeGetRequest(
-            "api.joseki.analysis_requests_next",
-            null,
-            queryString,
-            JosekiAnalysisRequestData.class,
-            props
-        );
-        if (response.getStatusCode() == 204) {
-            return null;
-        }
-        if (response.getStatusCode() == 404) {
-            String error = response.getErrorMessage();
-            if (error != null && error.contains("No joseki analysis request found")) {
-                return null;
-            }
-            throw new RuntimeException("Failed to fetch next joseki analysis request: HTTP 404 - " + error);
-        }
-        if (response.getStatusCode() == 401 || response.getStatusCode() == 403) {
-            throw new SecurityException("Josekipedia rejected the analysis worker credentials: HTTP "
-                + response.getStatusCode() + " - " + response.getErrorMessage());
-        }
-        if (!response.isSuccess()) {
-            throw new RuntimeException("Failed to fetch next joseki analysis request: HTTP "
-                + response.getStatusCode() + " - " + response.getErrorMessage());
-        }
-        return response.getData();
-    }
-
-    public ScheduledExecutorService startAnalysisHeartbeat(
-        JosekiAnalysisRequestData request,
-        AtomicBoolean leaseLost,
-        AtomicLong lastHeartbeat
-    ) {
-        if (request.handleId == null) {
-            return null;
-        }
-
-        AnalysisApiClient heartbeatClient = new AnalysisApiClient();
-        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(task -> {
-            Thread thread = new Thread(task, "joseki-analysis-heartbeat");
-            thread.setDaemon(true);
-            return thread;
-        });
-        executor.scheduleAtFixedRate(() -> {
-            try {
-                Map<String, String> pathParams = Map.of(
-                    "id", String.valueOf(request.id),
-                    "handleId", String.valueOf(request.handleId)
-                );
-                AnalysisApiClient.ApiResponse<Object> response = heartbeatClient.makePostRequest(
-                    "api.joseki.analysis_request_heartbeat",
-                    pathParams,
-                    "{}",
-                    Object.class,
-                    props
-                );
-                if (response.isSuccess()) {
-                    lastHeartbeat.set(System.currentTimeMillis());
-                } else if (response.getStatusCode() == 403 || response.getStatusCode() == 404
-                    || response.getStatusCode() == 409) {
-                    leaseLost.set(true);
-                    System.out.println(RED + "Joseki analysis request " + request.id
-                        + " lost its handle: HTTP " + response.getStatusCode() + RESET);
-                } else {
-                    System.out.println(RED + "Joseki analysis request " + request.id
-                        + " heartbeat failed: HTTP " + response.getStatusCode() + RESET);
-                }
-            } catch (Exception ex) {
-                System.out.println(RED + "Joseki analysis request " + request.id
-                    + " heartbeat failed: " + describeException(ex) + RESET);
-            }
-        }, 5L, 5L, TimeUnit.SECONDS);
-        return executor;
-    }
-
-    private JosekiNodeEntry resolveNodeForAnalysis(String path) throws Exception {
-        JosekiNodeEntry entry = fetchNodeByPath(path);
-        if (entry != null) {
-            return entry;
-        }
-
-        entry = new JosekiNodeEntry();
-        entry.path = path;
-        String parentPath = parentPath(path);
-        if (parentPath != null) {
-            JosekiNodeEntry parent = fetchNodeByPath(parentPath);
-            entry.parentId = parent == null ? null : parent.id;
-        }
-        return entry;
-    }
-
-    private JosekiNodeEntry fetchNodeByPath(String path) throws Exception {
-        List<String> params = new ArrayList<>();
-        addQueryParam(params, "path", path);
-        addQueryParam(params, "limit", "1");
-        String queryString = "?" + String.join("&", params);
-        AnalysisApiClient.ApiResponse<JosekiNodeListResponse> response = apiClient.makeGetRequest(
-            "api.joseki.nodes",
-            null,
-            queryString,
-            JosekiNodeListResponse.class,
-            props
-        );
-        if (!response.isSuccess()) {
-            throw new RuntimeException("Failed to fetch joseki node for path " + formatPath(path)
-                + ": HTTP " + response.getStatusCode() + " - " + response.getErrorMessage());
-        }
-
-        JosekiNodeListResponse page = response.getData();
-        List<JosekiNodeEntry> entries = page == null || page.entries == null
-            ? List.of()
-            : page.entries;
-        if (entries.isEmpty()) {
-            return null;
-        }
-        if (entries.size() != 1 || !path.equals(entries.get(0).path)) {
-            throw new IllegalStateException("Unexpected joseki node response for path " + formatPath(path));
-        }
-        return entries.get(0);
-    }
-
-    private Set<String> fetchChildMoves(int parentId) throws Exception {
-        if (parentId <= 0) {
-            return Set.of();
-        }
-        if (childMovesByParentId.containsKey(parentId)) {
-            return childMovesByParentId.get(parentId);
-        }
-
-        Set<String> childMoves = new LinkedHashSet<>();
-        int offset = 0;
-        while (true) {
-            JosekiNodeListResponse page = fetchChildNodePage(parentId, NODE_PAGE_LIMIT, offset);
-            List<JosekiNodeEntry> entries = page.entries == null ? List.of() : page.entries;
-            for (JosekiNodeEntry entry : entries) {
-                String move = lastMove(entry.path);
-                if (move != null) {
-                    childMoves.add(move);
-                }
-            }
-
-            if (entries.isEmpty() || offset + entries.size() >= page.totalRecords) {
-                break;
-            }
-            offset += entries.size();
-        }
-
-        childMovesByParentId.put(parentId, childMoves);
-        return childMoves;
-    }
-
-    private JosekiNodeListResponse fetchChildNodePage(int parentId, int limit, int offset) throws Exception {
-        List<String> params = new ArrayList<>();
-        addQueryParam(params, "parentId", String.valueOf(parentId));
-        addQueryParam(params, "limit", String.valueOf(limit));
-        addQueryParam(params, "offset", String.valueOf(offset));
-        String queryString = "?" + String.join("&", params);
-
-        return withApiRetries("fetch joseki child nodes parent=" + parentId
-            + " offset=" + offset + " limit=" + limit, () -> {
-                AnalysisApiClient.ApiResponse<JosekiNodeListResponse> response = apiClient.makeGetRequest(
-                    "api.joseki.nodes", null, queryString, JosekiNodeListResponse.class, props);
-                if (!response.isSuccess()) {
-                    throw new RuntimeException("Failed to fetch joseki child nodes for parent " + parentId + ": HTTP "
-                        + response.getStatusCode() + " - " + response.getErrorMessage());
-                }
-
-                JosekiNodeListResponse page = response.getData();
-                if (page == null) {
-                    page = new JosekiNodeListResponse();
-                    page.entries = List.of();
-                }
-                return page;
-            });
-    }
-
-    private <T> T withApiRetries(String operation, ThrowingSupplier<T> supplier) throws Exception {
-        int maxAttempts = apiMaxAttempts();
-        long retryDelayMs = apiRetryDelayMs();
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                return supplier.get();
-            } catch (Exception ex) {
-                if (attempt >= maxAttempts) {
-                    throw ex;
-                }
-
-                System.out.println(YELLOW + "Joseki API " + operation
-                    + " failed on attempt " + attempt + "/" + maxAttempts
-                    + ": " + describeException(ex)
-                    + "; retrying in " + retryDelayMs + "ms"
-                    + RESET);
-                sleepBeforeRetry(operation, retryDelayMs);
-            }
-        }
-
-        throw new RuntimeException("Joseki API " + operation + " failed without returning a result");
-    }
-
-    private void sleepBeforeRetry(String operation, long retryDelayMs) {
-        if (retryDelayMs <= 0) {
-            return;
-        }
-
-        try {
-            Thread.sleep(retryDelayMs);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Interrupted while retrying joseki API " + operation, ex);
-        }
-    }
-
-    private int apiMaxAttempts() {
-        return Math.max(1, Integer.parseInt(props.getProperty(
-            "joseki.api_max_attempts",
-            String.valueOf(DEFAULT_API_MAX_ATTEMPTS)
-        )));
-    }
-
-    private long apiRetryDelayMs() {
-        return Math.max(0L, Long.parseLong(props.getProperty(
-            "joseki.api_retry_delay_ms",
-            String.valueOf(DEFAULT_API_RETRY_DELAY_MS)
-        )));
-    }
-
-    private String describeException(Exception ex) {
-        return ex.getClass().getSimpleName()
-            + (ex.getMessage() == null ? "" : " - " + ex.getMessage());
-    }
-
     private List<AnalysisScope> analysisScopes() {
         String configured = props.getProperty("joseki.analysis_scopes");
         List<AnalysisScope> scopes = new ArrayList<>();
@@ -1043,9 +716,9 @@ public final class JosekiTaskAdapter {
         return scopes;
     }
 
-    private void addQueryParam(List<String> params, String key, String value) {
-        params.add(URLEncoder.encode(key, StandardCharsets.UTF_8)
-            + "=" + URLEncoder.encode(value, StandardCharsets.UTF_8));
+    private String describeException(Exception error) {
+        return error.getClass().getSimpleName()
+            + (error.getMessage() == null ? "" : " - " + error.getMessage());
     }
 
     private String katagoWeightsFile() {
@@ -1077,14 +750,6 @@ public final class JosekiTaskAdapter {
             }
         }
         return null;
-    }
-
-    private String parentPath(String path) {
-        if (path == null || path.isBlank()) {
-            return null;
-        }
-        int separator = path.lastIndexOf(',');
-        return separator < 0 ? "" : path.substring(0, separator);
     }
 
 }

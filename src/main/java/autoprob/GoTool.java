@@ -100,6 +100,10 @@ public class GoTool {
             new autoprob.validate.CrawlSubmitter(props).submit();
         } else if (command.equals("crawl-sync")) {
             new autoprob.validate.CrawlSubmitter(props).sync();
+        } else if (command.equals("line-ends")) {
+            new autoprob.validate.LineEndStudy(props).run();
+        } else if (command.equals("crawl-replay")) {
+            new autoprob.validate.CrawlReplay(props).run();
         } else {
             throw new RuntimeException("unknown command: " + command);
         }

@@ -66,6 +66,10 @@ import autoprob.katastruct.MoveInfo;
 // the other side could capture more stones there later, barring it would bar that too.
 public class RegimeWalker {
     private static final int MAX_STEPS = 12;
+    // how often in one walk the favored side may press on past where katago settled (pressOn),
+    // and how many more steps the walk gets for each
+    private static final int MAX_PRESSES = 3;
+    private static final int PRESS_STEPS = 3;
     // how deep in katago's search a dead ko may not be taken: all of it
     private static final int WHOLE_SEARCH = 1000;
 
@@ -130,7 +134,11 @@ public class RegimeWalker {
         StatusJudge.Status status = StatusJudge.Status.FAIL;
         double margin = 0;
         boolean settle = false; // a double ko: the line ends where the next look sees it
-        for (int step = 0; step < MAX_STEPS || settle; step++) {
+        int pressed = 0;        // how often the favored side pressed on past where katago settled (pressOn)
+        Walk unpressed = null;  // where katago first settled, before the favored side pressed on
+        boolean unansweredBefore = false;
+        boolean settled = false; // the walk ended where a line settles, not at the limit of its steps
+        for (int step = 0; step < MAX_STEPS + PRESS_STEPS * pressed || settle; step++) {
             Node first = null;
             try {
                 Node node = iso.problem;
@@ -146,7 +154,10 @@ public class RegimeWalker {
                 status = judge.status(node, kar);
                 margin = judge.margin(node, kar);
                 pv = bestLine(node, kar);
-                if (settle) break;
+                if (settle) {
+                    settled = true;
+                    break;
+                }
 
                 // the first ko the other side takes on katago's line, or the first place on it
                 // where a dead ko comes up, which katago's search here was free to take, or
@@ -196,7 +207,24 @@ public class RegimeWalker {
                     line.addAll(pv.subList(0, a));
                     continue;
                 }
-                if (k < 0) break; // no ko the other side keeps: this is where the line settles
+                if (k < 0) {
+                    // no ko the other side takes: katago's line settles here. when it settles
+                    // against the favored side with a ko still open, the favored side presses on
+                    if (pressed < MAX_PRESSES && !bestFor(favoredColor, status)) {
+                        List<String> on = pressOn(node, line, pv, visits, favoredColor, status);
+                        if (on != null) {
+                            if (unpressed == null) {
+                                unpressed = new Walk(status, new ArrayList<>(line), pv, kar, exchanges, margin);
+                                unansweredBefore = unanswered;
+                            }
+                            line.addAll(on);
+                            pressed++;
+                            continue;
+                        }
+                    }
+                    settled = true;
+                    break;
+                }
 
                 if (!taken.add(from + "|" + pv.get(k))) {
                     if (anotherKo(taken, from, pv.get(k))) {
@@ -218,6 +246,7 @@ public class RegimeWalker {
                 if (ex == null) {
                     // out of neutral points: the line stays where it is
                     unanswered = true;
+                    settled = true;
                     break;
                 }
                 String back = koPoint(through);
@@ -229,6 +258,22 @@ public class RegimeWalker {
                 if (first != null) iso.problem.removeChildNode(first);
             }
         }
+        // pressing on only ever helps the favored side: where it ran into the limit of the
+        // walk's steps before settling, or settled no better for it than where katago's line
+        // first did, the favored side would have left the position there, and that is the result
+        if (unpressed != null) {
+            boolean better = favoredColor == iso.solverColor ? status.compareTo(unpressed.status()) > 0
+                    : status.compareTo(unpressed.status()) < 0;
+            if (!settled || !better) {
+                status = unpressed.status();
+                line = new ArrayList<>(unpressed.line());
+                pv = unpressed.pv();
+                kar = unpressed.kar();
+                exchanges = unpressed.exchanges();
+                margin = unpressed.margin();
+                unanswered = unansweredBefore;
+            }
+        }
         // the favored side wins every ko: one the solver took and kept only because the
         // opponent could not be given it back is no result of the solver's
         if (unanswered && favoredColor != iso.solverColor) {
@@ -236,6 +281,97 @@ public class RegimeWalker {
             margin = 0;
         }
         return new Walk(status, line, pv, kar, exchanges, margin);
+    }
+
+    // whether the status is all the favored side could ask for
+    private boolean bestFor(int favoredColor, StatusJudge.Status status) {
+        return status == (favoredColor == iso.solverColor ? StatusJudge.Status.SUCCESS : StatusJudge.Status.FAIL);
+    }
+
+    // the favored side's way on from a position katago takes for settled against it while the
+    // other side still has a ko to take, or null. on a board without threats katago counts such
+    // a ko as the other side's to win, so it plays the favored side as if it were lost and
+    // gives up the moves that only work once the ko is won: a ko the favored side has to win
+    // twice over, say, to fill the liberties of the stones it decides. in gp-60421, after
+    // B M13, W L12, B N12 (on its 13x13 board), white takes the ko at N13 and black, given a
+    // threat, takes it back; black's N11 then puts white in atari, white takes the ko again,
+    // black takes it back again and captures at N10. katago's black never played N11: it
+    // expected white's second take to stand, the walk settled with white alive, and the
+    // author's ko came out a failure, with only the two stones another move captures at stake.
+    //
+    // so the favored side's move is asked for again with those takes barred to the other side
+    // in katago's whole search, which is what the regime comes to for a ko on its own: each
+    // take is taken back and leaves the position as it was. when the favored side does better
+    // for it, the walk goes on with that move, and from there without the bar: the other side
+    // may take the ko again, and the walk gives it back as ever. the bar only finds the
+    // favored side's move. it would not hold where the other side has a second ko to take in
+    // turn (a double ko, where its takes need no threat) or could capture more than the ko's
+    // stone at that point, so nothing is judged under it, and when the other side is to play
+    // first, its move is the one katago's own line has, chosen with nothing barred.
+    // pv: katago's line from the node
+    private List<String> pressOn(Node node, List<String> line, List<String> pv, int visits, int favoredColor,
+                                 StatusJudge.Status status) throws Exception {
+        if (openKos(node, favoredColor).isEmpty()) return null;
+        String favored = IsolationRecord.colorLetter(favoredColor);
+        List<String> on = new ArrayList<>();
+        Node at = node;
+        Node first = null;
+        try {
+            if (node.getToMove() != favoredColor) {
+                if (pv.isEmpty() || pv.get(0).startsWith(favored)) return null;
+                Point p = Intersection.gtp2point(pv.get(0).substring(2));
+                if (!node.legalMove(p)) return null;
+                on.add(pv.get(0));
+                first = node.addBasicMove(p.x, p.y);
+                at = first;
+            }
+            Set<String> open = openKos(at, favoredColor);
+            if (open.isEmpty()) return null;
+            open.addAll(deadKos(at, favoredColor));
+            List<String> to = new ArrayList<>(line);
+            to.addAll(on);
+            KataAnalysisResult barred = analyzeAt(at, to, visits, Set.of(), open, favoredColor);
+            if (barred.isError()) return null;
+            StatusJudge.Status with = judge.status(at, barred);
+            boolean better = favoredColor == iso.solverColor ? with.compareTo(status) > 0 : with.compareTo(status) < 0;
+            List<String> best = bestLine(at, barred);
+            if (!better || best.isEmpty() || !best.get(0).startsWith(favored) || !inZone(best.get(0))) return null;
+            if (!at.legalMove(Intersection.gtp2point(best.get(0).substring(2)))) return null;
+            on.add(best.get(0));
+            return on;
+        } finally {
+            if (first != null) node.removeChildNode(first);
+        }
+    }
+
+    // the kos the side not favored could take at the node: were it its turn, and once the ban
+    // of a ko just taken from it is over
+    Set<String> openKos(Node node, int favoredColor) throws Exception {
+        Node at = node;
+        Node pass = null;
+        if (node.getToMove() == favoredColor) {
+            pass = node.addBasicMove(19, 19);
+            at = pass;
+        }
+        try {
+            Set<String> out = koTakes(at);
+            Point ban = node.getKo();
+            if (ban != null && node.getToMove() != favoredColor) {
+                Node later = node.addBasicMove(19, 19);
+                try {
+                    Node again = later.addBasicMove(19, 19);
+                    if (again.legalMove(ban)) {
+                        Node take = again.addBasicMove(ban.x, ban.y);
+                        if (take.getKo() != null) out.add(Intersection.toGTPloc(ban.x, ban.y, 19));
+                    }
+                } finally {
+                    node.removeChildNode(later);
+                }
+            }
+            return out;
+        } finally {
+            if (pass != null) node.removeChildNode(pass);
+        }
     }
 
     // whether a move is played inside the problem area, rather than an exchange in the fill

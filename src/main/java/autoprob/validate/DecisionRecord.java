@@ -21,6 +21,10 @@ public class DecisionRecord {
     public List<String> alternatives = new ArrayList<>();
     public String reason; // why, in words
     public String error;  // set when the engine analysis failed
+    // an opponent's decision only: the solver's other moves that worked where the move before
+    // this position was chosen. when the answer to the opponent's try is one of them, the
+    // solver's last move only prepared it (redo.prepared_goes_on). null where not recorded
+    public List<String> others;
 
     public static String key(List<String> at) {
         return at.isEmpty() ? "root" : String.join(" ", at);
@@ -46,6 +50,7 @@ public class DecisionRecord {
         rec.role = role;
         rec.candidates = new ArrayList<>(candidates);
         rec.error = error;
+        rec.others = others;
         return rec;
     }
 

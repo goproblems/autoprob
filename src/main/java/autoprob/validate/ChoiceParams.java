@@ -24,6 +24,20 @@ public class ChoiceParams {
     // ...and only when at least this many real tries are left: authors still show a single
     // last resistance, even an obvious one
     public int routineMinTries;
+    // whether the engine's certainty of the answer is its prior summed over every answer that
+    // holds (as the human's is) rather than its best answer's alone: two answers that both hold
+    // split the prior between them, and the best one's alone takes such a try for a hard one
+    public boolean routineSummed;
+    // a try only the human policy offers (katago's search does not list it) counts as a
+    // resistance from this human policy up: one below it is a move nobody plays
+    public double minHumanTry;
+    // whether a line goes on where the solver's answer to the opponent's first try is another
+    // move that worked when its last move was chosen: that move only prepared the answer, and
+    // the line has to show it
+    public boolean preparedGoesOn;
+    // whether a solver move that takes a ko is left out while one that takes none works: for a
+    // line that shows a clean result, which no ko has to be taken for
+    public boolean solverAvoidsKo;
     public int threatRegionDist;     // only count threats near the stakes; -1 counts everywhere
 
     // solution tree branching. a solver move works when it reaches the life status the best
@@ -70,6 +84,9 @@ public class ChoiceParams {
         p.routineAnswerPrior = Double.parseDouble(props.getProperty("redo.routine_answer_prior", "0.8"));
         p.routineHumanAnswer = Double.parseDouble(props.getProperty("redo.routine_human_answer", "0.8"));
         p.routineMinTries = Integer.parseInt(props.getProperty("redo.routine_min_tries", "2"));
+        p.routineSummed = Boolean.parseBoolean(props.getProperty("redo.routine_summed", "false"));
+        p.preparedGoesOn = Boolean.parseBoolean(props.getProperty("redo.prepared_goes_on", "false"));
+        p.solverAvoidsKo = Boolean.parseBoolean(props.getProperty("redo.solver_avoids_ko", "false"));
         // redo.threat_region_dist is not applied to live generation yet (see docs/redo.md
         // known gaps); the tuner can try it offline first
         p.threatRegionDist = -1;
@@ -86,6 +103,7 @@ public class ChoiceParams {
         p.responseCandidates = Integer.parseInt(props.getProperty("redo.response_candidates", "4"));
         p.minResponsePrior = Double.parseDouble(props.getProperty("redo.min_response_prior", "0.02"));
         p.minHumanPolicy = Double.parseDouble(props.getProperty("redo.min_human_policy", "0.03"));
+        p.minHumanTry = Double.parseDouble(props.getProperty("redo.min_human_try", String.valueOf(p.minHumanPolicy)));
         p.humanThreatExtends = Boolean.parseBoolean(props.getProperty("redo.human_threat_extends", "true"));
         p.scanDist = Integer.parseInt(props.getProperty("redo.scan_dist", "-1"));
         p.scanVisits = Integer.parseInt(props.getProperty("redo.scan_visits", "150"));
@@ -105,6 +123,10 @@ public class ChoiceParams {
         p.routineAnswerPrior = routineAnswerPrior;
         p.routineHumanAnswer = routineHumanAnswer;
         p.routineMinTries = routineMinTries;
+        p.routineSummed = routineSummed;
+        p.minHumanTry = minHumanTry;
+        p.preparedGoesOn = preparedGoesOn;
+        p.solverAvoidsKo = solverAvoidsKo;
         p.threatRegionDist = threatRegionDist;
         p.statusThreshold = statusThreshold;
         p.statusStones = statusStones;
@@ -139,6 +161,10 @@ public class ChoiceParams {
             case "routine_answer_prior" -> routineAnswerPrior = Double.parseDouble(value);
             case "routine_human_answer" -> routineHumanAnswer = Double.parseDouble(value);
             case "routine_min_tries" -> routineMinTries = Integer.parseInt(value);
+            case "routine_summed" -> routineSummed = Boolean.parseBoolean(value);
+            case "min_human_try" -> minHumanTry = Double.parseDouble(value);
+            case "prepared_goes_on" -> preparedGoesOn = Boolean.parseBoolean(value);
+            case "solver_avoids_ko" -> solverAvoidsKo = Boolean.parseBoolean(value);
             case "threat_region_dist" -> threatRegionDist = Integer.parseInt(value);
             case "status_threshold" -> statusThreshold = Double.parseDouble(value);
             case "status_stones" -> statusStones = Integer.parseInt(value);

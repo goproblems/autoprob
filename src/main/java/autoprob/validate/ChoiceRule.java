@@ -84,6 +84,16 @@ public class ChoiceRule {
             kos = (int) working.stream().filter(m -> rec.candidate(m).koFight != null).count();
             working.removeIf(m -> rec.candidate(m).koFight != null);
         }
+        // and in a line that shows a clean result, a move that itself takes a ko does not count
+        // while one that takes none works (redo.solver_avoids_ko): with the opponent winning
+        // every ko the stone is taken back, so the capture shows nothing, and a tree where the
+        // solver takes a ko reads as a ko. of the crawl's suggestions at a clean level, review
+        // approved one of the eight whose lines had the solver take a ko, a move on its own
+        if (p.solverAvoidsKo && working.stream().anyMatch(m -> !takesKo(rec.candidate(m)))) {
+            int taking = (int) working.stream().filter(m -> takesKo(rec.candidate(m))).count();
+            kos += taking;
+            working.removeIf(m -> takesKo(rec.candidate(m)));
+        }
         // a move where the opponent keeps the point however the problem goes takes no part in
         // it: a peep or atari outside the wall around a group living inside, played and
         // answered there before the moves that decide it (redo.outside_owner). it does not
@@ -104,6 +114,10 @@ public class ChoiceRule {
                 + (kos > 0 ? " (" + kos + " more only through a ko)" : "")
                 + (outside > 0 ? " (" + outside + " more only outside)" : "");
         return new Choice(main, working, reason);
+    }
+
+    private static boolean takesKo(CandidateFeatures c) {
+        return Boolean.TRUE.equals(c.takesKo);
     }
 
     // whether a solver move is played outside: the opponent keeps its point once the best
@@ -234,7 +248,7 @@ public class ChoiceRule {
         for (CandidateFeatures c : candidates) {
             int threat = countThreat(c, p, stakes);
             if (threat < p.threatStones) continue;
-            if (!realTry(c, p)) {
+            if (!realTry(c, p) || !playedTry(c, p)) {
                 easy++;
                 continue;
             }
@@ -243,9 +257,13 @@ public class ChoiceRule {
         }
         if (threatening.isEmpty()) {
             return new Choice(DecisionRecord.END, easy > 0
-                    ? "no testing threat remains (" + easy + " threat" + (easy == 1 ? "" : "s") + " any of several answers handle)"
+                    ? "no testing threat remains (" + easy + " threat" + (easy == 1 ? "" : "s") + " any of several answers handle, or nobody plays)"
                     : "no opponent threat remains");
         }
+        // the solver's last move may only have prepared the move that answers the opponent's
+        // first try: then the line shows that answer, however obvious it is
+        Choice prepared = preparedLine(rec, threatening, p);
+        if (prepared != null) return prepared;
         Choice routine = routineEnd(threatening, p);
         if (routine != null) return routine;
         double severeFloor = maxThreat * p.severeThreatRatio;
@@ -282,6 +300,40 @@ public class ChoiceRule {
                     + String.join(", ", threatening.stream().map(CandidateFeatures::point).toList()) + ")");
         }
         return null;
+    }
+
+    // the line through the opponent's first try, when the solver's answer to it is another
+    // move that worked where the solver's last move was chosen (rec.others): that last move
+    // only prepared the answer, an exchange put in before the move that settles the position,
+    // and a line that ended on it would mark it right before the solver had shown the answer.
+    // review kept such lines to the answer and no further: in gp-60321, after B G2, W G1, B F1,
+    // W E1, the found H3 is answered at J2 and then black plays D1, the author's move there,
+    // though every white try after H3 has D1 for an obvious answer; and in gp-59989 B G12,
+    // W H10, B H11 ends where the author's H11, H10, G12 does. null when the line may end
+    private static Choice preparedLine(DecisionRecord rec, List<CandidateFeatures> threatening, ChoiceParams p) {
+        if (!p.preparedGoesOn || rec.others == null || rec.others.isEmpty()) return null;
+        if (!prepared(rec, threatening.get(0))) return null;
+        // of the tries so answered, the one a human would play
+        CandidateFeatures shown = threatening.get(0);
+        for (CandidateFeatures c : threatening) {
+            if (prepared(rec, c) && humanPolicy(c) > humanPolicy(shown)) shown = c;
+        }
+        return new Choice(shown.move, "response " + shown.point() + ": its answer " + shown.answer
+                + " worked a move earlier too, so the line goes on to show it");
+    }
+
+    // whether the solver's answer to the try is another move that worked where its last move
+    // was chosen
+    private static boolean prepared(DecisionRecord rec, CandidateFeatures c) {
+        return c.answer != null && rec.others.contains((rec.toMove.equals("B") ? "W" : "B") + " " + c.answer);
+    }
+
+    // whether anyone plays the try: katago's search lists it, or the human policy gives it at
+    // least min_human_try. a move only the human policy offers, and rarely, is no resistance
+    // to hold a line open for (gp-60235: after B S16, W T15, B T18, white's S15, human policy
+    // 0.06 and no katago prior, kept the line going past where review ended it)
+    static boolean playedTry(CandidateFeatures c, ChoiceParams p) {
+        return "katago".equals(c.source) || humanPolicy(c) >= p.minHumanTry;
     }
 
     // a threat is a real try only if few solver answers handle it: when many moves answer
@@ -441,8 +493,13 @@ public class ChoiceRule {
     // before human answers) is not obvious
     static boolean obviousAnswer(CandidateFeatures c, ChoiceParams p) {
         Double chance = c.humanAnswers != null ? c.humanAnswers : c.humanAnswer;
-        return c.answerPrior != null && chance != null
-                && c.answerPrior >= p.routineAnswerPrior && chance >= p.routineHumanAnswer;
+        // with routine_summed, katago's prior over every answer that holds, as the human's is:
+        // two answers that both hold split the prior, and the best one's alone took a try any
+        // of them answers for a hard one (gp-59959: after B K9, white's L11 has two answers,
+        // 0.56 on the better, 1.00 on both, and a human finds one 0.91 of the time)
+        Double prior = p.routineSummed && c.answerPriors != null ? c.answerPriors : c.answerPrior;
+        return prior != null && chance != null
+                && prior >= p.routineAnswerPrior && chance >= p.routineHumanAnswer;
     }
 
     // the testing criterion's measure, lower is a better main line resistance: easy to get

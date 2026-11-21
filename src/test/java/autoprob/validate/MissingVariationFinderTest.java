@@ -257,6 +257,103 @@ class MissingVariationFinderTest {
     }
 
     @Test
+    void aLineRunsNoDeeperThanTheProblemsOwnAndSevenMovesAtLeast() {
+        // the problem's own lines from the position are one and three moves long
+        MissingVariationFinder.Position shallow = new MissingVariationFinder.Position(List.of(), Set.of("B A19"),
+                List.of(List.of("B A19"), List.of("B A19", "W B18", "B C17")));
+        assertEquals(7, MissingVariationFinder.lineDepth(shallow));
+        // nine moves long: two more, on a solver's move
+        List<String> nine = List.of("B A1", "W A2", "B A3", "W A4", "B A5", "W A6", "B A7", "W A8", "B A9");
+        assertEquals(11, MissingVariationFinder.lineDepth(new MissingVariationFinder.Position(List.of(), Set.of("B A1"), List.of(nine))));
+        // a line of the problem's that ends on the opponent's move
+        assertEquals(11, MissingVariationFinder.lineDepth(new MissingVariationFinder.Position(List.of(), Set.of("B A1"),
+                List.of(nine.subList(0, 8)))));
+        // a line the depth stopped says so in words for a review
+        List<String> line = List.of("B S19", "W S17", "B S16", "W R15", "B T17", "W T16", "B S18");
+        List<MissingVariationFinder.Cut> cut = MissingVariationFinder.cutLines(List.of(),
+                List.of(new SolutionPathGenerator.Cut(line, "hit max moves (7)")), List.of(line));
+        assertEquals("as long as a line added to this position goes, 7 moves", cut.get(0).why);
+    }
+
+    @Test
+    void theAuthorsPositionsSayWhereALineEndsOrGoesOn() throws Exception {
+        // the problem: black A19, then W B18, B C17 or W B19, B A18
+        Node root = new Parser().parse(SGF);
+        ProblemIsolator.IsolatedProblem iso = new ProblemIsolator.IsolatedProblem();
+        iso.problem = new Node(null);
+        put(iso, "D16", Intersection.BLACK);
+        put(iso, "E15", Intersection.WHITE);
+        iso.solverColor = Intersection.BLACK;
+        iso.problem.defaultToMoveColor = Intersection.BLACK;
+        java.util.Map<String, Set<String>> spots = MissingVariationFinder.authorSpots(iso, root);
+        assertTrue(iso.problem.babies.isEmpty(), "the position is left as it was");
+        assertEquals(3, spots.size());
+        // after black's first move the author has two answers; its lines end after the next
+        assertEquals(Set.of("W B18", "W B19"), spots.get(Positions.key(Positions.play(iso, List.of("B A19")), iso)));
+        assertEquals(Set.of(), spots.get(Positions.key(Positions.play(iso, List.of("B A19", "W B18", "B C17")), iso)));
+        // the same position by another order of moves is the same spot
+        assertEquals(Set.of(), spots.get(Positions.key(Positions.play(iso, List.of("B C17", "W B18", "B A19")), iso)));
+        // a position the author's correct lines do not reach, or reach with the other side to play
+        assertNull(spots.get(Positions.key(Positions.play(iso, List.of("B C19")), iso)));
+        assertNull(spots.get(Positions.key(Positions.play(iso, List.of("B A19", "W B18")), iso)));
+    }
+
+    @Test
+    void aMoveElsewhereWhileTheAnswerTakesTheKoOnlySpendsAThreat() throws Exception {
+        ProblemIsolator.IsolatedProblem iso = new ProblemIsolator.IsolatedProblem();
+        iso.problem = new Node(null);
+        iso.problem.defaultToMoveColor = Intersection.BLACK;
+        // a ko on the top edge: black's C18 takes white's B18
+        for (String b : new String[]{"B19", "A18", "B17"}) put(iso, b, Intersection.BLACK);
+        for (String w : new String[]{"C19", "D18", "C17", "B18", "K10"}) put(iso, w, Intersection.WHITE);
+        MoveClassifier.Verdict take = verdict("B C18", MoveClassifier.Level.KO), other = verdict("B L10", MoveClassifier.Level.KO);
+        java.util.Map<String, MoveClassifier.Verdict> verdicts = java.util.Map.of("B C18", take, "B L10", other);
+        // gp-61191: the author takes the ko, the found move plays elsewhere first
+        MissingVariationFinder.Position pos = new MissingVariationFinder.Position(List.of(), Set.of("B C18"), List.of());
+        String why = MissingVariationFinder.leavesKo(iso.problem, pos, verdicts, other);
+        assertTrue(why != null && why.contains("C18 takes the ko"), why);
+        // a found move that takes the ko itself, or an author's answer that does not, is no such thing
+        assertNull(MissingVariationFinder.leavesKo(iso.problem, pos, verdicts, take));
+        assertNull(MissingVariationFinder.leavesKo(iso.problem, new MissingVariationFinder.Position(List.of(), Set.of("B L10"), List.of()),
+                verdicts, verdict("B M10", MoveClassifier.Level.KO)));
+    }
+
+    @Test
+    void aCleanLineWhereTheSolverTakesAKoShowsAKo() throws Exception {
+        ProblemIsolator.IsolatedProblem iso = new ProblemIsolator.IsolatedProblem();
+        iso.problem = new Node(null);
+        iso.problem.defaultToMoveColor = Intersection.BLACK;
+        // a ko on the top edge: black's C18 takes white's B18
+        for (String b : new String[]{"B19", "A18", "B17"}) put(iso, b, Intersection.BLACK);
+        for (String w : new String[]{"C19", "D18", "C17", "B18", "K10"}) put(iso, w, Intersection.WHITE);
+        String why = MissingVariationFinder.takesKoOnLine(iso.problem, List.of("B L10", "W L11", "B C18"));
+        assertTrue(why != null && why.contains("takes a ko, at C18"), why);
+        assertNull(MissingVariationFinder.takesKoOnLine(iso.problem, List.of("B L10", "W L11", "B M10")));
+        // the found move itself may take one, and so may the opponent
+        assertNull(MissingVariationFinder.takesKoOnLine(iso.problem, List.of("B C18")));
+        assertNull(MissingVariationFinder.takesKoOnLine(iso.problem, List.of("B C18", "W L10", "B L11", "W B18", "B M10")));
+        assertTrue(iso.problem.babies.isEmpty(), "the position is left as it was");
+    }
+
+    private static MoveClassifier.Verdict verdict(String move, MoveClassifier.Level level) {
+        MoveClassifier.Verdict v = new MoveClassifier.Verdict();
+        v.move = move;
+        v.level = level;
+        return v;
+    }
+
+    @Test
+    void theReadingAndTheAuthorDisagreeWhenEveryAcceptedMoveFallsShort() {
+        List<MoveClassifier.Verdict> wrong = List.of(verdict("B S19", MoveClassifier.Level.KO));
+        // gp-60421: the author's one answer came out a ko under a found move's clean kill
+        assertTrue(MissingVariationFinder.allFallShort(Set.of("B S19"), wrong));
+        // one of two answers reaching the best, the author is only partly wrong
+        assertFalse(MissingVariationFinder.allFallShort(Set.of("B S19", "B T18"), wrong));
+        assertFalse(MissingVariationFinder.allFallShort(Set.of("B S19"), List.of()));
+        assertFalse(MissingVariationFinder.allFallShort(Set.of(), wrong));
+    }
+
+    @Test
     void onlyStandardLifeAndDeathProblemsAreChecked() {
         Problem p = new Problem();
         p.genre = "tesuji";

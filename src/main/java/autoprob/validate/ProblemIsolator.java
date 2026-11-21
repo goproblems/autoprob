@@ -197,6 +197,8 @@ public class ProblemIsolator {
                 for (int y = 0; y < 19; y++) {
                     if (zone[x][y]) area += sign * w.kar().ownership.get(x + y * 19);
                 }
+            System.out.println("  with the solver winning every ko, " + String.join(" ", start) + " comes to " + df.format(area)
+                    + " of the problem area (" + w.exchanges() + " ko" + (w.exchanges() == 1 ? "" : "s") + " won on the way)");
             if (area > bestArea) {
                 bestArea = area;
                 best = w.kar();
@@ -209,6 +211,7 @@ public class ProblemIsolator {
             for (int y = 0; y < 19; y++) {
                 if (zone[x][y]) solvedArea += sign * iso.solvedKar.ownership.get(x + y * 19);
             }
+        System.out.println("  katago's own solved state comes to " + df.format(solvedArea));
         if (bestArea <= solvedArea + threshold) return null; // no more than katago found on its own
         // what the line decides, by color: the group the ko is for is the bulk of it, and the
         // other side's stones in it are the means, captured on the way or given up, which a
@@ -231,7 +234,29 @@ public class ProblemIsolator {
         for (Point p : swing) {
             if (iso.problem.board.board[p.x][p.y].stone == bulk && !stakes.contains(p)) stakes.add(p);
         }
-        if (stakes.size() == iso.stakes.size()) return null;
+        if (stakes.size() == iso.stakes.size()) {
+            // nothing more is at stake. but the stones at stake may have been found another
+            // way (the opponent's area swinging, as in a seki) while katago's own solved state
+            // leaves them to the opponent, the answer missed or its ko lost: then this one,
+            // where they go the solver's way, is the solved state all the same, and komi is
+            // balanced on it. left on katago's, the solver starts far behind its target and
+            // every level is read from a position the problem is not about (gp-60164: katago's
+            // first move at the start did not kill, so nothing swung and white's six stones
+            // came out at stake through their area; the author's lines kill them, 27 points
+            // better than katago's solved state, and a first-line crawl came out as good as
+            // the author's answer)
+            int held = 0;
+            for (Point s : iso.stakes) {
+                if (sign * (best.ownership.get(s.x + s.y * 19) - iso.solvedKar.ownership.get(s.x + s.y * 19)) > threshold) held++;
+            }
+            if (held * 2 <= iso.stakes.size()) return null;
+            iso.solvedKar = best;
+            String note = "with the solver winning every ko (after " + bestMove + "), " + held + " of the " + iso.stakes.size()
+                    + " stones at stake go the solver's way, where katago's own solved state leaves them to the opponent";
+            System.out.println(note);
+            iso.warnings.add(note);
+            return best;
+        }
         StringBuilder sb = new StringBuilder();
         for (Point p : stakes) {
             if (sb.length() > 0) sb.append(" ");

@@ -12,6 +12,8 @@ public class Confidence {
     public final int low, high;          // percent
     public final String label;
     public final List<String> reasons;   // "+ " for, "- " against
+    // the solver's share of the stakes on the raw board from which a clean answer looks settled
+    static final double RAW_SETTLED = 0.7;
 
     // what is known about a suggestion
     public static class Evidence {
@@ -29,6 +31,9 @@ public class Confidence {
         public double distance;          // missing: how far the move is from the nearest stone of the problem
         public boolean outside;          // missing: open lines to the edge on three sides
         public List<String> isolation = new ArrayList<>(); // what the isolation had to adjust
+        // missing, where the best is clean: how much of the stakes the author's best answer
+        // leaves the solver on the raw board, without the fill (null when not looked at)
+        public Double rawAuthor;
     }
 
     private Confidence(int low, int high, List<String> reasons) {
@@ -84,6 +89,18 @@ public class Confidence {
             against++;
             reasons.add(e.missing ? "- the problem has the move on a wrong line: the author looked at it and rejected it"
                     : "- the problem answers the move this way too and still accepts it");
+        }
+        // the raw board is the check adam makes by hand: stones fully the solver's after the
+        // answer are a clean result, about half a ko or something unsettled. where katago does
+        // not take the author's own answer for settled there, a clean reading is in doubt,
+        // whatever the found move does: of the suggestions at a clean level judged since the
+        // peep rule, review approved 9 of 26 with the author's answer under 0.7, and 37 of
+        // 43 above
+        if (e.rawAuthor != null && e.rawAuthor < RAW_SETTLED) {
+            score -= 20;
+            against++;
+            reasons.add("- on the raw board the author's own answer leaves the solver only " + String.format("%.2f", e.rawAuthor)
+                    + " of the stakes: the result may be a ko, or the stakes misjudged");
         }
         int adjusted = Math.min(3, e.isolation.size());
         if (adjusted > 0) {

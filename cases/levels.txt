@@ -43,3 +43,5 @@ gp-62623 | B E18,W D16 | B F15 CLEAN, B B19 CLEAN, B D19 CLEAN
 # gp-62416 (19x19, upper right): O17 kills cleanly; Q19 and Q16 only reach a ko (adam): W P19, and black's P18 takes Q18. the fill had no black eyes, so white could never be given the ko back, and it came out a clean kill. deep in the main line P18 kills too
 gp-62416 | start | B O17 CLEAN, B Q19 KO, B Q16 KO
 gp-62416 | B O17,W O18,B N17,W Q19,B Q16,W P16 | B P18 CLEAN, B N19 CLEAN
+# gp-60421 (13x13, columns +6): the author's M13 (S19 here) kills by ko: after W L12, B N12, white's ko at N13 has to be won twice, to fill N11 and N10 (adam: "this is ko in correct solution"). L12 (R18) captures two stones and lets the corner live at M13
+gp-60421 | start | B S19 KO, B R18 FAIL

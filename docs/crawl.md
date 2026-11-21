@@ -34,7 +34,7 @@ Each problem comes to one of:
 | `found` | correct moves missing: `suggestions/gp-<id>.json` holds the suggestion |
 | `unsuggested` | correct moves missing, but none could go into a suggestion (a line ending on the problem's own wrong line, with none through its refutation); the reason says why |
 | `clean` | nothing missing (accepted moves that fall short are noted, not suggested) |
-| `skipped` | no such problem, another genre, not standard, deleted, in the sandbox (`crawl.include_sandbox=true` takes those), a board the finder cannot play, or nothing at stake in the isolation |
+| `skipped` | no such problem, another genre, not standard, deleted, in the sandbox (`crawl.include_sandbox=true` takes those), a board the finder cannot play, nothing at stake in the isolation, or a start the isolation reads differently from the author (the problem's own first move falls short of another by its reading) |
 | `deferred` | a suggestion is open on it on the site: looked at again on later runs |
 | `error` | the finder failed: tried again, `crawl.attempts` (2) times in all |
 | `stale` | its sgf changed on the site after its suggestion was made: judged again first |
@@ -56,6 +56,10 @@ Each judged problem keeps the version that judged it, and `crawl.recheck=found` 
 `62299,62311`) judges just those problems again, whatever they came to before, and ends the
 run; its earlier suggestion and any review of it are replaced, as with any judging again. A
 problem whose suggestion went to the site is still left alone.
+
+Before a change to the judging goes to the crawl, `cmd=crawl-replay` judges the problems
+review has been through again and holds the result against the reviews, in a folder of its
+own (see [missing-variations.md](missing-variations.md#measuring-against-review)).
 
 A judged problem's findings stay in `findings/` with its sgf in `sgf/`. When only the drafting
 changes, `cmd=crawl-redraft` makes every suggestion again from them, with no engine, in

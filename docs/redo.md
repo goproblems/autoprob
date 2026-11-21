@@ -317,6 +317,18 @@ the author's W J1 B H2 W N1 B M1, and gp-28281 after its first move. It is trunc
 main line is reported as not ended naturally. The last solver move of every line is marked
 RIGHT.
 
+Three settings change where a line ends; they are off here, since they were fitted to
+lines added to a finished problem, not to an author's whole tree, and
+`missing-variations` turns them on for its lines
+([missing-variations.md](missing-variations.md)). `redo.routine_summed` takes KataGo's prior
+over every answer that holds, as the human's is: two answers that both hold split the
+prior, and the best answer's alone made a try either answers look hard. `redo.min_human_try`
+sets how natural a try has to be when only the human policy offers it.
+`redo.prepared_goes_on` keeps a line going where the solver's answer to the opponent's
+first try is another move that worked when its last move was chosen: the last move only
+prepared it. Each decision records those other moves (`others`), so the choice can still be
+made offline.
+
 **Order.** The main line is expanded first, then the other branches shallowest first. When
 the tree hits `redo.max_tree_decisions`, the cut falls on the deep ends of side branches,
 never on an alternative first move. A limit only stops a branch from going deeper: the
@@ -424,7 +436,11 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.end_on_obvious` | true | End the line when every real try left has an obvious answer |
 | `redo.routine_answer_prior` | 0.8 | An answer is obvious when KataGo's prior on it is at least this... |
 | `redo.routine_human_answer` | 0.8 | ...and a human finds an answer that holds at least this often |
-| `redo.routine_min_tries` | 2 | ...and at least this many real tries are left (a single last resistance is still shown) |
+| `redo.routine_min_tries` | 2 | ...and at least this many real tries are left (a single last resistance is still shown; `missing-variations` uses 1 for its lines) |
+| `redo.routine_summed` | false | Take KataGo's prior over every answer that holds, as the human's is, not the best answer's alone (`missing-variations` turns it on for its lines) |
+| `redo.min_human_try` | `redo.min_human_policy` | A try only the human policy offers counts as a resistance from this human policy up (`missing-variations` uses 0.1 for its lines) |
+| `redo.prepared_goes_on` | false | Go on where the answer to the opponent's first try is another move that worked when the solver's last move was chosen (`missing-variations` turns it on for its lines) |
+| `redo.solver_avoids_ko` | false | Leave out a solver move that itself takes a ko while one that takes none works (`missing-variations` turns it on for the lines of a move that reaches a clean result) |
 | `redo.force_first_move` | false | Pin the first solver move to the reference |
 | `redo.recalibrate` | true | Rebuild stakes and komi and regenerate on score drift |
 | `redo.response_candidates` | 4 | KataGo moves considered as opponent responses |

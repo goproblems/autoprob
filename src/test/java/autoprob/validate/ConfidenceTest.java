@@ -51,6 +51,19 @@ class ConfidenceTest {
     }
 
     @Test
+    void anAuthorsAnswerTheRawBoardDoesNotSettleCountsAgainstACleanReading() {
+        // gp-60421's L12: on the raw board the author's M13 left black 0.24 of the stakes
+        Confidence.Evidence e = missing();
+        e.rawAuthor = 0.24;
+        Confidence c = Confidence.of(e);
+        assertEquals("uncertain (45-65%)", c.text());
+        assertTrue(c.explained().contains("leaves the solver only 0.24 of the stakes"), c.explained());
+        // an answer the raw board takes for settled says nothing either way
+        e.rawAuthor = 0.9;
+        assertEquals("probably right (70-80%)", Confidence.of(e).text());
+    }
+
+    @Test
     void tellingTheAuthorAMoveIsWrongStartsLower() {
         assertEquals("probably right (65-75%)", Confidence.of(new Confidence.Evidence()).text());
     }

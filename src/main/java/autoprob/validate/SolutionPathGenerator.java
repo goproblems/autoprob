@@ -52,14 +52,20 @@ public class SolutionPathGenerator {
     // optional: the problem's own answers after the moves from here, the ones the site's
     // computer plays; none where the moves leave the problem's tree
     private Function<List<String>, Collection<String>> ownAnswers = at -> List.of();
+    // optional: the positions after a solver move on the author's correct lines, by the stones
+    // of the problem (Positions.key), each with the author's answers there on those lines, none
+    // where the author's line ends
+    private Map<String, ? extends Collection<String>> authorSpots = Map.of();
 
     private GenResult result;
     private boolean scoreDriftNoted = false;
     // decisions by position, so a transposition reuses the engine work
     private final Map<String, DecisionRecord> decided = new HashMap<>();
 
-    // a turn waiting to be expanded: main line first, then shallowest first, then in order
-    private record Turn(Node node, List<String> at, boolean main, boolean solverToMove, long seq) {}
+    // a turn waiting to be expanded: main line first, then shallowest first, then in order.
+    // others: at an opponent's turn, the solver's other moves that worked where its last move
+    // was chosen
+    private record Turn(Node node, List<String> at, boolean main, boolean solverToMove, long seq, List<String> others) {}
     private final PriorityQueue<Turn> pending = new PriorityQueue<>(Comparator
             .comparing((Turn t) -> !t.main())
             .thenComparingInt(t -> t.at().size())
@@ -101,14 +107,24 @@ public class SolutionPathGenerator {
         ownAnswers = answers;
     }
 
+    // the author's own tree by position: where a line reaches a position of the author's
+    // correct lines by another order of moves, it goes on with the author's answers there, and
+    // ends where the author's line does. the author already chose how far to take that
+    // position, and a line of its own from there would only say it differently (adam's edits
+    // in review: gp-59989's B G12, W H10, B H11 ends on the position the author's H11, H10,
+    // G12 ends on, where the generator went on W J12, B J11, W H12, B H13)
+    public void setAuthorSpots(Map<String, ? extends Collection<String>> spots) {
+        authorSpots = spots;
+    }
+
     // builds the tree under iso.problem; every leaf is marked RIGHT
     public GenResult generate() throws Exception {
         result = new GenResult();
-        enqueue(iso.problem, new ArrayList<>(), true, true);
+        enqueue(iso.problem, new ArrayList<>(), true, true, null);
         while (!pending.isEmpty()) {
             Turn t = pending.poll();
             if (t.solverToMove()) solverTurn(t.node(), t.at(), t.main());
-            else opponentTurn(t.node(), t.at(), t.main());
+            else opponentTurn(t.node(), t.at(), t.main(), t.others());
         }
         if (result.truncated > 0) {
             result.notes.add(result.truncated + " branch" + (result.truncated == 1 ? "" : "es") + " cut short");
@@ -116,8 +132,8 @@ public class SolutionPathGenerator {
         return result;
     }
 
-    private void enqueue(Node node, List<String> at, boolean main, boolean solverToMove) {
-        pending.add(new Turn(node, at, main, solverToMove, turnCount++));
+    private void enqueue(Node node, List<String> at, boolean main, boolean solverToMove, List<String> others) {
+        pending.add(new Turn(node, at, main, solverToMove, turnCount++, others));
     }
 
     // node: the solver is to move here
@@ -133,6 +149,8 @@ public class SolutionPathGenerator {
             return;
         }
         ChoiceRule.Choice choice = ChoiceRule.chooseSolver(solver, params, iso.stakes);
+        // every move that works here, for the opponent's turn after each: the others there
+        List<String> working = choice.isEnd() ? List.of() : choice.moves();
         if (at.isEmpty() && forcedFirstMove != null) {
             String forced = solver.toMove + " " + Intersection.toGTPloc(forcedFirstMove.x, forcedFirstMove.y, 19);
             if (!forced.equals(choice.move)) {
@@ -172,12 +190,14 @@ public class SolutionPathGenerator {
             next.add(move);
             boolean childMain = main && i == 0;
             if (childMain) result.endNode = child;
-            enqueue(child, next, childMain, false);
+            List<String> others = new ArrayList<>(working);
+            others.remove(move);
+            enqueue(child, next, childMain, false, others);
         }
     }
 
     // node: right after a solver move, the opponent is to move
-    private void opponentTurn(Node node, List<String> at, boolean main) throws Exception {
+    private void opponentTurn(Node node, List<String> at, boolean main, List<String> others) throws Exception {
         int moveCount = at.size();
         // on the problem's own tree the site's computer answers with the problem's moves, so the
         // line goes on through each of them and adds none of its own beside them: a correct line
@@ -198,7 +218,32 @@ public class SolutionPathGenerator {
                         + move.substring(2) + (main ? "" : " in " + DecisionRecord.key(at)));
                 List<String> next = new ArrayList<>(at);
                 next.add(move);
-                enqueue(child, next, main && i == 0, true);
+                enqueue(child, next, main && i == 0, true, null);
+            }
+            return;
+        }
+        // a position of the author's correct lines, reached another way: the line ends where
+        // the author's does, or goes on with the author's answers
+        Collection<String> authors = authorSpots.get(Positions.key(node, iso));
+        if (authors != null) {
+            List<String> answers = new ArrayList<>();
+            for (String m : authors) {
+                if (m.startsWith(color + " ") && node.legalMove(Intersection.gtp2point(m.substring(2)))) answers.add(m);
+            }
+            if (answers.isEmpty()) {
+                System.out.println("  the position is where a correct line of the problem ends: path ends after move " + moveCount);
+                node.result = Intersection.RIGHT;
+                return;
+            }
+            for (int i = 0; i < answers.size(); i++) {
+                String move = answers.get(i);
+                Point p = Intersection.gtp2point(move.substring(2));
+                Node child = node.addBasicMove(p.x, p.y);
+                System.out.println("move " + (moveCount + 1) + " (opponent, as on the problem's correct line from this position"
+                        + (i > 0 ? ", alternative" : "") + "): " + move.substring(2) + (main ? "" : " in " + DecisionRecord.key(at)));
+                List<String> next = new ArrayList<>(at);
+                next.add(move);
+                enqueue(child, next, main && i == 0, true, null);
             }
             return;
         }
@@ -226,6 +271,7 @@ public class SolutionPathGenerator {
             end(node, at, main, "analysis failed after move " + moveCount);
             return;
         }
+        opponent.others = others;
         ChoiceRule.Choice response = ChoiceRule.chooseOpponent(opponent, params, iso.stakes);
         record(opponent, response);
         if (response.isEnd()) {
@@ -244,7 +290,7 @@ public class SolutionPathGenerator {
                     + move.substring(2) + " (" + DecisionFeatureExtractor.describe(opponent.candidate(move)) + ")");
             List<String> next = new ArrayList<>(at);
             next.add(move);
-            enqueue(child, next, main && i == 0, true);
+            enqueue(child, next, main && i == 0, true, null);
         }
     }
 

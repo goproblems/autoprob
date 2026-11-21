@@ -75,6 +75,24 @@ coordinates; the console says how far the problem moved.
    `redo.visits`) before it counts. When no move reaches anything, even winning every
    ko, the isolation misreads the position and it is skipped.
 
+   The best level has to stand on a move the problem accepts or on one the deeper search
+   confirms. A move the problem lacks that only looked best at the quick look is taken down
+   to what the deeper search makes of it, and the best is worked out again, so the problem's
+   own moves are never held to a level nothing reaches.
+
+   Where every move the problem accepts falls short of a move it lacks, the reading and the
+   author disagree about what the position comes to, and nothing is suggested there. A
+   missing move is one that does as well as the author's; one that does better by this
+   reading has nearly always been a misreading. In gp-60421 the author's M13 is a ko for the
+   whole corner. The stones at stake had come out as the two that L12 captures, so L12, which
+   lets the corner live, was a clean kill and M13 a failure ("this is ko in correct
+   solution"). In gp-61415 one stone was at stake ("real solution is ko, this is nothing"),
+   and gp-61344's F2 "doesn't work". Review rejected 19 of the 21 moves found that way. At
+   the start the whole problem is passed over (`skipped`, "the isolation reads the problem
+   differently from its author"), since every level in it would be read the same way. The
+   two it approved were moves that work beside an answer the reading had undervalued
+   (gp-61100's K11, gp-60688's T17); those are no longer found.
+
    A position the solver could leave and still reach the best level is settled: every
    move that does not throw the result away reaches it there, so no move is missing.
    Playing elsewhere is a move in the solver's own fill. In gp-62860, after B E2, W E3,
@@ -124,6 +142,11 @@ coordinates; the console says how far the problem moved.
    R18 takes the ko first; after R19, W S18, Black can only take back the ko White takes at
    T19, or settle for the seki of B T19.
 
+   Where the best is a ko and the problem's answer takes it, a found move that plays
+   elsewhere first is not missing either: it only spends a ko threat. In gp-61191, after the
+   author's line to B M10, White's N11 and N10 came before the author's K12, which takes the
+   ko ("wastes ko threats").
+
    The author's moves are judged first. Once some move reaches a level, a move the
    problem does not accept only matters if it reaches that level too, so one that falls
    short of a clean result in the regime where the opponent wins every ko is not played
@@ -141,6 +164,53 @@ coordinates; the console says how far the problem moved.
    (`redo.response_criterion`): by default with the try a human is most likely to get
    wrong, not KataGo's strongest one, which may be a move nobody plays. The opponent plays
    one move at each turn (`redo.opponent_branches`).
+
+   A line ends as soon as the opponent has nothing left that tests the solver. It is added
+   to show that its move works, not to play the position out, and review cut the generator's
+   lines back in every one of the 42 suggestions it edited by hand, from 965 moves to 310.
+   The lines use `redo`'s rule for ending ([redo.md](redo.md)) with these settings:
+
+   - a single last try with an obvious answer ends the line too (`missing.routine_min_tries`,
+     1), where `redo` still shows one;
+   - katago's certainty of the answer counts every answer that holds, as the human's does
+     (`missing.routine_summed`). Two answers that both hold split katago's prior, and a try
+     either of them answers looked like a hard one: after gp-59959's B K9, White's L11 has
+     two answers, 0.56 on the better and 1.00 on both;
+   - a try that only the human policy offers has to be one people play
+     (`missing.min_human_try`, 0.1). After gp-60235's B S16, W T15, B T18, White's S15, at
+     0.06 and with no katago prior, kept the line going;
+   - the line still goes on where the solver's answer to the opponent's first try is another
+     move that worked when its last move was chosen (`missing.prepared_goes_on`). That last
+     move only prepared the answer, and a line ending on it would mark it right before the
+     solver had shown the answer. In gp-60321, after B G2, W G1, B F1, W E1, every white try
+     after the found H3 has D1 for an obvious answer, and D1 is the author's move there:
+     review kept B H3, W J2, B D1.
+
+   Where a line reaches a position of the author's correct lines by another order of moves,
+   it follows the author from there: it ends where the author's line ends and goes on with
+   the author's answers where it goes on. gp-59989's B G12, W H10, B H11 ends on the position
+   the author's H11, H10, G12 ends on; the generator had gone on W J12, B J11, W H12, B H13.
+
+   A line also runs no deeper than two moves past the problem's own longest correct line
+   from the position, and seven moves at least. One stopped there goes in as it is and is
+   listed as cut short, like a line any other limit stops. Of the crawl's 27 suggestions
+   with a line of ten moves or more that review did not edit, it approved one.
+
+   In a line for a move that reaches a clean result, the solver takes no ko. A clean result
+   is one the solver reaches with the opponent winning every ko, so it needs none taken, and
+   the opponent would take it back: a tree where the solver takes a ko reads as a ko. Where
+   another move works, a solver's move that itself takes a ko is left out
+   (`redo.solver_avoids_ko`). A line that still has one after its first move takes its
+   branch with it, or the found move when it is the move's own line. Of the crawl's
+   suggestions at a clean level, review approved one of the eight whose lines had the solver
+   take a ko (gp-61354: "ko shape"), and cut the ko out of three more by hand before
+   approving them. The found move itself may take a ko; its confidence says so.
+
+   `cmd=line-ends` measures the ending rule against review (see
+   [Measuring against review](#measuring-against-review)). On the 40 positions measured so
+   far from suggestions edited by hand, the rule as it was ended 6 of the 19 lines where
+   review did and the rule as it is now 14, both going on at all but one or two of the 21
+   positions review kept inside a line.
 
    Where the line runs on the problem's own tree, as it does from a move the problem has as
    wrong, the opponent plays the problem's own answers instead, each of them and no other.
@@ -302,6 +372,29 @@ back at A4, KataGo's line went on B C2 with White elsewhere and Black killing. S
 White's turn, White answers at A2 or C4, Black has to take the ko again, and C6 is only a
 ko, as the author has it.
 
+KataGo also gives up the moves that only work once a ko is won. A ko the favored side has
+to win twice, to fill the liberties of the stones it decides, is one it never starts on.
+In gp-60421 (13x13), after B M13, W L12, B N12, White takes the ko at N13 and Black, given
+a threat, takes it back. Black's N11 then puts White in atari, White takes the ko again,
+Black takes it back again and captures at N10. KataGo's Black never played N11, since it
+expected White's second take to stand, so the walk settled with White alive and the
+author's answer came out a failure, or a ko in the runs where the deviations happened on
+N11.
+
+So where KataGo's line settles against the favored side while the other side still has a
+ko to take, KataGo is asked for the favored side's move again with those takes barred to
+the other side in its whole search. For a ko on its own that is what the regime comes to:
+each take is taken back and leaves the position as it was. When the favored side does
+better for it, the walk goes on with that move, and from there without the bar: the other
+side may take the ko again, and the walk gives it back as ever. The bar only finds the
+favored side's move. Nothing is judged under it, since it would not hold where the other
+side has a second ko to take in turn (a double ko, below) or could capture more than the
+ko's stone at that point; and when the other side is to play first, its move is the one
+KataGo's own line has, chosen with nothing barred. Pressing on only ever helps the favored
+side: where the walk runs out of steps before it settles again, or settles no better for
+that side than where KataGo's line first did, the result is the one from before it pressed.
+With it gp-60421's M13 came out a ko, the stakes the whole corner, and L12 a failure.
+
 A ko the side winning every ko can take back but never end is no ko. In gp-62169, after
 B5, W B4, B A6, White's group has one eye, at D4. White can retake at B6 whenever Black
 takes at B5, but filling at B5 leaves the group a single liberty. So the group is dead as
@@ -362,6 +455,16 @@ stake; they never decide what a move comes to. In gp-36582 the author's line put
 corner at stake, and the answer comes out as a ko. This also steadies the isolation, since
 KataGo's search at the start does not always find the answer: some runs of gp-10330 had
 only Black's stones inside White's group at stake, and not the group Black's answer kills.
+The state a start comes to is the solved state too where it puts no more stones at stake
+but turns the ones there the solver's way. In gp-60164 KataGo's first move at the start did
+not kill, so nothing swung, and White's six stones came out at stake through their area
+(below). The author's lines kill them, 27 points better than KataGo's own solved state.
+Left on KataGo's, komi had the solver far behind its target, and a first-line crawl came
+out as good as the author's answer.
+
+The console shows what each start came to ("with the solver winning every ko, B S19 W R18
+B T18 comes to 89.90 of the problem area (2 kos won on the way)") beside KataGo's own
+solved state, so a problem whose stakes look too few can be checked there.
 
 When the answer is a seki, no stone swings: the opponent's stones live either way, and
 only their eye space changes hands. In gp-62860 nothing came out at stake, so no move
@@ -477,6 +580,7 @@ then moves:
 | missing move: the problem has it on a wrong line, so the author looked at it and rejected it | -15 |
 | move that falls short: the problem answers it this way too and still accepts it | -10 |
 | the isolation had to be adjusted (stakes on a retry, komi rebalanced, stakes settled under kos, only the opponent's area at stake) | -5 each, up to -15 |
+| missing move, the best clean: on the raw board the author's own best answer leaves the solver under 0.7 of the stakes, so the result may be a ko or the stakes misjudged | -20 |
 | the move's line reaches a position on the author's correct lines | +15 |
 | the author plays the same move on a correct line elsewhere in the problem | +5 |
 | it is KataGo's own first choice there | +5 |
@@ -488,6 +592,9 @@ doubtful below. The first two reviewed findings sit where they should: gp-62070'
 review confirmed, comes out likely right; gp-62080's B1, which review rejected (the author
 had it as wrong, and its line went through a ko), would have come out uncertain. The weights
 are a starting point to fit to reviews once there are enough of them in the case library.
+The raw-board weight is the first taken from the crawl's reviews: of the suggestions at a
+clean level judged since the peep rule, review approved 9 of the 26 where the author's
+answer came under 0.7 on the raw board, and 37 of the 43 above.
 
 ## Suggesting a finding to the site
 
@@ -540,6 +647,49 @@ The problems come from `sample_problems/`. A full run takes about 25 minutes. Ru
 any change to how moves are judged. gp-10330's Q3 and gp-62623's D19 miss in some runs (see
 [Caveats](#caveats)).
 
+## Measuring against review
+
+The crawl's reviews ([crawl.md](crawl.md)) are the other record of what is right: which
+suggestions were approved, which rejected and why, and where review cut a line short by
+hand. Two commands hold a change against them before the crawl runs on it. Neither writes
+to the crawl's folder or asks the site for anything.
+
+```
+bash gotool.sh cmd=crawl-replay replay.dir=crawl-replay replay.only=60421,59938
+bash gotool.sh cmd=crawl-replay replay.dir=crawl-replay replay.set=rejected replay.shard=0/2
+bash gotool.sh cmd=crawl-replay replay.dir=crawl-replay replay.report=true
+```
+
+`cmd=crawl-replay` judges reviewed problems again, from the sgf the crawl kept, and writes
+the findings and suggestions to `replay.dir`. For a suggestion review approved, the new
+tree is held against the one that went to the site, edits by hand included, node for node:
+how many of review's nodes it has, and how many more. For one review rejected, nothing
+should be suggested any more. `replay.only` takes a list of problems, `replay.set` the
+`approved`, `rejected` or `edited` reviews, and `replay.shard=0/2` every second problem, to
+run two engines side by side. A problem `replay.dir` already has is not judged again, so a
+run can be stopped and taken up, and `replay.report=true` prints the table from what is
+there:
+
+```
+gp-60421: review rejected "this is ko in correct solution"; now clean; 0 nodes suggested (the crawl's draft had 2)
+gp-59938: review approved (edited); now found; 1 of review's 1 nodes kept, 2 more (the crawl's draft had 74)
+```
+
+```
+bash gotool.sh cmd=line-ends study.out=line_ends.jsonl study.edited=true
+```
+
+`cmd=line-ends` measures where lines end. For every suggestion review approved, each
+position after a solver's move on its lines gets the opponent's decision as the generator
+measures it, with a label from the tree that went to the site: `END` where the line ends
+there (as the checker had it, or cut back to there by hand), `CONT` where it goes on. The
+decisions go to `study.out` as json lines with every candidate's numbers, so a rule for
+ending lines can be tried against them with no engine (`ChoiceRule` takes none).
+`study.edited=true` takes only the suggestions edited by hand, whose ends were chosen;
+`study.only`, `study.shard` and `study.max_nodes` (14 positions a problem, the ends first)
+limit it. The labels are a guide, not a ruling: review cuts where the checker's tree
+allows, so a position it kept inside a line could often have ended one.
+
 ## Caveats
 
 The verdict is KataGo's, on the isolated position, so look at each finding before adding
@@ -560,6 +710,12 @@ reported, so some missing variations go unnoticed.
   kill against it.
 - Ko levels are not split by steps. Who takes first only counts against a found move whose
   ko is worse than the author's.
+- The favored side presses on with a ko only where the ko is on the board when KataGo's line
+  settles. A ko the favored side would first have to set up, with a move that offers the
+  other side the first take, is still only found by the deviations, in the first six moves.
+- A problem whose own answer the reading takes for worse than another move is passed over,
+  so an author's real mistake of that kind is not reported as a missing move. It still
+  shows in the crawl's `problems.jsonl`, as skipped with the moves and levels in the reason.
 - The exchange rule reads "touches the fight" off the board: next to a stone at stake, or
   in an enclosed eye space. A key move out in the open, such as a net a step away from the
   stones, followed by the author's move after an answer that also stays clear of them,

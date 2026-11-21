@@ -28,10 +28,15 @@ public class CandidateFeatures {
     // the move that takes a ko katago's line after this move then fights over (taking a ko
     // again, or playing a ko threat), or null: a clean result comes ahead of it
     public String koFight;
+    // whether the move itself takes a ko: a capture of one stone the opponent could take back.
+    // a clean result has no need of one (redo.solver_avoids_ko). null where not looked at
+    public Boolean takesKo;
     // whose the move's point is once the best move is played: the ownership there after it,
     // from the solver's view. near -1 the opponent keeps the point however the problem goes,
     // so a move there takes no part in it (an outside peep, see redo.outside_owner). null
-    // where not measured (older records)
+    // where not measured (older records). for an opponent candidate, the ownership of its
+    // point before it is played, from the opponent's view: near -1 it plays inside what the
+    // solver has made its own
     public Double pointOwner;
 
     public Double humanPolicy;  // blended human policy for this move at the decision position
@@ -44,6 +49,10 @@ public class CandidateFeatures {
     // to 1: how likely a human is to find some correct answer. a response several moves
     // answer is easier than its best answer's policy suggests. older records lack it
     public Double humanAnswers;
+    // katago's prior summed the same way, over every answer that holds: how sure the engine
+    // is that the solver finds one. two answers that both hold split the prior between them,
+    // so the best answer's alone makes such a move look harder than it is. older records lack it
+    public Double answerPriors;
     // solver answers that hold the result after this move: katago moves its search took
     // seriously (a tenth of the top move's visits) scoring within alt_score_tolerance of the
     // best. one answer means the move tests the solver; many mean anything answers it

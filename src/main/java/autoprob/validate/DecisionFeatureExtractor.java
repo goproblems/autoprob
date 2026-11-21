@@ -141,6 +141,7 @@ public class DecisionFeatureExtractor {
             if (!node.legalMove(p)) continue;
             Node tike = node.addBasicMove(p.x, p.y);
             try {
+                c.takesKo = tike.getKo() != null;
                 KataAnalysisResult after = after(tike);
                 if (after.isError()) {
                     c.error = true;
@@ -366,6 +367,7 @@ public class DecisionFeatureExtractor {
                 if (hp.x == p.x && hp.y == p.y) c.humanPolicy = hp.policy;
             }
             c.stakeDist = distanceToStakes(p);
+            c.pointOwner = pointOwner(c.move, kar);
             measureThreat(node, c);
             System.out.println("  response candidate " + c.point() + " (" + describe(c) + "): threat " + c.threat
                     + ", answer prior " + fmt(c.answerPrior) + ", human answer " + fmt(c.humanAnswer)
@@ -417,6 +419,7 @@ public class DecisionFeatureExtractor {
             c.answerPrior = 1.0;
             c.humanAnswer = 1.0;
             c.humanAnswers = 1.0;
+            c.answerPriors = 1.0;
             List<String> holding = holdingAnswers(karMove);
             c.answers = holding.size();
             if (!karMove.moveInfos.isEmpty()) {
@@ -424,6 +427,9 @@ public class DecisionFeatureExtractor {
                 c.answer = answer.move;
                 c.answerPrior = answer.prior;
                 if (!answer.move.equals("pass")) {
+                    double priors = 0;
+                    for (MoveInfo mi : karMove.moveInfos) if (holding.contains(mi.move)) priors += mi.prior;
+                    c.answerPriors = Math.min(1.0, priors);
                     // how likely is a human to find the correct answer to this response: the
                     // best answer, and any answer that holds
                     List<KataAnalysisResult.Policy> human = blendedHumanPolicy(tike);

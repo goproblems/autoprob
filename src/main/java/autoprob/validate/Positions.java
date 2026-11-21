@@ -43,6 +43,17 @@ public class Positions {
         return out;
     }
 
+    // the position as the problem's own stones and the side to play, the fill left out: the
+    // same for two orders of moves that come to the same position
+    public static String key(Node node, ProblemIsolator.IsolatedProblem iso) {
+        StringBuilder sb = new StringBuilder(370);
+        for (int y = 0; y < 19; y++)
+            for (int x = 0; x < 19; x++) {
+                if (!iso.isFilled(x, y)) sb.append((char) ('0' + node.board.board[x][y].stone));
+            }
+        return sb.append(node.getToMove()).toString();
+    }
+
     static List<String> rows(Node node, ProblemIsolator.IsolatedProblem iso) {
         List<String> rows = new ArrayList<>();
         for (int y = 0; y < 19; y++) {

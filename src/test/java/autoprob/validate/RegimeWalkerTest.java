@@ -101,6 +101,22 @@ class RegimeWalkerTest {
     }
 
     @Test
+    void aKoTheOtherSideCouldStillTakeIsOpen() throws Exception {
+        ProblemIsolator.IsolatedProblem iso = problem();
+        RegimeWalker walker = new RegimeWalker(iso, null, null);
+        // white to play: black, were it its turn, takes the ko at B5
+        Node node = Positions.play(iso, moves("B B5,W B4,B A6"));
+        assertEquals(Set.of("B5"), walker.openKos(node, Intersection.WHITE));
+        // white has no ko to take there
+        assertEquals(Set.of(), walker.openKos(node, Intersection.BLACK));
+        // once black has taken it, white may not take back at once, but the ko is still open:
+        // the ban is over a move later
+        Node taken = Positions.play(iso, moves("B B5,W B4,B A6,W K18,B B5"));
+        assertFalse(taken.legalMove(Intersection.gtp2point("B6")));
+        assertEquals(Set.of("B6"), walker.openKos(taken, Intersection.BLACK));
+    }
+
+    @Test
     void aKoIsRealOnceTakingItBackCapturesTheStonesAroundIt() throws Exception {
         ProblemIsolator.IsolatedProblem iso = problem();
         RegimeWalker walker = new RegimeWalker(iso, null, null);

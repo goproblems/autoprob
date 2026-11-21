@@ -99,6 +99,80 @@ class ChoiceRuleTest {
     }
 
     @Test
+    void twoAnswersThatHoldAreAsSureAsOne() {
+        // gp-59959 after B K9, where review ended the line: white's L11 and K11 each have two
+        // answers that hold, with katago's prior split between them
+        CandidateFeatures l11 = cand("W L11", "katago", 0.01, 222, 0.0, 0.42, 16, 0);
+        CandidateFeatures k11 = cand("W K11", "katago", 0.01, 196, 0.0, 0.47, 16, 0);
+        for (CandidateFeatures c : List.of(l11, k11)) {
+            c.answers = 2;
+            c.answerPrior = 0.56;
+            c.answerPriors = 1.0;
+            c.humanAnswers = 0.91;
+        }
+        DecisionRecord rec = opponent(l11, k11);
+        assertEquals("W L11", ChoiceRule.chooseOpponent(rec, params(), STAKES).move);
+        ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(rec, params("routine_summed", "true"), STAKES);
+        assertTrue(choice.isEnd(), choice.reason);
+        assertTrue(choice.reason.startsWith("only routine tries remain"), choice.reason);
+        // a record from before the summed prior was kept goes by the best answer's
+        l11.answerPriors = null;
+        assertFalse(ChoiceRule.chooseOpponent(rec, params("routine_summed", "true"), STAKES).isEnd());
+    }
+
+    @Test
+    void aTryNobodyPlaysHoldsNoLineOpen() {
+        // gp-60235 after B S16, W T15, B T18, where review ended the line: white's S15 comes
+        // from the human policy alone, at 0.06, and its answer is one a human often misses
+        CandidateFeatures s15 = cand("W S15", "human", 0.0, 0, 0.06, 0.38, 13, 0);
+        s15.answerPrior = 0.99;
+        DecisionRecord rec = opponent(s15);
+        assertEquals("W S15", ChoiceRule.chooseOpponent(rec, params(), STAKES).move);
+        ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(rec, params("min_human_try", "0.1"), STAKES);
+        assertTrue(choice.isEnd(), choice.reason);
+        // a move katago's search lists is a try whatever the human policy makes of it
+        CandidateFeatures listed = cand("W S15", "katago", 0.05, 150, 0.06, 0.38, 13, 0);
+        listed.answerPrior = 0.99;
+        assertEquals("W S15", ChoiceRule.chooseOpponent(opponent(listed), params("min_human_try", "0.1"), STAKES).move);
+        // and so is one people do play
+        s15.humanPolicy = 0.2;
+        assertEquals("W S15", ChoiceRule.chooseOpponent(rec, params("min_human_try", "0.1"), STAKES).move);
+    }
+
+    @Test
+    void aLineGoesOnToTheAnswerItsLastMoveOnlyPrepared() {
+        // gp-60321 after B G2, W G1, B F1, W E1 and the found H3: every white try has D1 for an
+        // obvious answer, and D1 is the author's move at that position. review kept the line
+        // to B H3, W J2, B D1
+        CandidateFeatures h1 = cand("W H1", "katago", 0.33, 278, 0.15, 0.84, 15, 0);
+        CandidateFeatures j2 = cand("W J2", "katago", 0.53, 408, 0.79, 0.90, 15, 0);
+        for (CandidateFeatures c : List.of(h1, j2)) {
+            c.answer = "D1";
+            c.answers = 2;
+            c.answerPrior = 0.77;
+            c.answerPriors = 0.95;
+            c.humanAnswers = 0.9;
+        }
+        DecisionRecord rec = opponent(h1, j2);
+        ChoiceParams line = params("routine_min_tries", "1", "routine_summed", "true", "prepared_goes_on", "true");
+        // taken by itself the position has only routine tries left
+        assertTrue(ChoiceRule.chooseOpponent(rec, line, STAKES).isEnd());
+        // but D1 worked a move earlier too, where H3 was chosen: the natural try is shown
+        rec.others = List.of("B D1", "B H1");
+        ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(rec, line, STAKES);
+        assertEquals("W J2", choice.move);
+        assertTrue(choice.reason.contains("worked a move earlier"), choice.reason);
+        assertTrue(ChoiceRule.chooseOpponent(rec, params("routine_min_tries", "1", "routine_summed", "true"), STAKES).isEnd());
+        // an answer that did not work there is no reason to go on
+        rec.others = List.of("B F3");
+        assertTrue(ChoiceRule.chooseOpponent(rec, line, STAKES).isEnd());
+        // nor is it when only a lesser try is answered that way
+        rec.others = List.of("B D1");
+        h1.answer = "F1";
+        assertTrue(ChoiceRule.chooseOpponent(rec, line, STAKES).isEnd());
+    }
+
+    @Test
     void anyAnswerThatHoldsCountsTowardTheAnswerChance() {
         // after M18 four answers hold: together a human finds one about as often as Q18
         // after P17, so the two tie and naturalness decides even without its weight
@@ -333,6 +407,21 @@ class ChoiceRuleTest {
         // when every working move needs a ko, they all count
         t16.koFight = "B T17";
         assertEquals(List.of("B T15", "B T16"), ChoiceRule.chooseSolver(solver(t15, t16), params()).moves());
+    }
+
+    @Test
+    void aLineForACleanResultHasTheSolverTakeNoKo() {
+        // two moves keep the status, and katago's first choice takes a ko to do it
+        CandidateFeatures take = statusCand("B T18", "katago", 0.7);
+        CandidateFeatures quiet = statusCand("B T16", "katago", 0.5);
+        take.takesKo = true;
+        quiet.takesKo = false;
+        assertEquals(List.of("B T18", "B T16"), ChoiceRule.chooseSolver(solver(take, quiet), params()).moves());
+        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(solver(take, quiet), params("solver_avoids_ko", "true"));
+        assertEquals(List.of("B T16"), choice.moves());
+        assertEquals("the only move that works (1 more only through a ko)", choice.reason);
+        // when the ko is the only way, it is the way
+        assertEquals(List.of("B T18"), ChoiceRule.chooseSolver(solver(take), params("solver_avoids_ko", "true")).moves());
     }
 
     @Test

@@ -59,7 +59,7 @@ public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
     // (crawl.recheck): goes up with every change to how moves are judged
-    static final int JUDGING_VERSION = 11;
+    static final int JUDGING_VERSION = 12;
     // how many lines past the problem's stones and the author's moves a suggested line may play
     static final int OUTSIDE = 1;
     // the least number of moves a found move's lines may run to (lineDepth)
@@ -144,6 +144,10 @@ public class MissingVariationFinder {
         // of those, the ones a limit of the generator stopped short: they go in as they are,
         // and the review says so
         List<Cut> cut = new ArrayList<>();
+        // the solver's moves on those lines' way that work too by the generator's reading, but
+        // that the problem answers itself and has fail: left as the problem has them, each with
+        // the moves to it from the position (SolutionPathGenerator.withoutRefuted)
+        List<String> left = new ArrayList<>();
         Confidence confidence;  // how far to trust it, for the review before it reaches the site
         // on the raw board, without the fill: how much of the stakes the move leaves the solver,
         // and the author's best move there, with how much it leaves (RawBoard)
@@ -705,7 +709,7 @@ public class MissingVariationFinder {
         RawBoard raw = new RawBoard(own, board, pos, iso, best == MoveClassifier.Level.CLEAN ? rawGap : rawGapKo);
         for (MoveClassifier.Verdict v : missing) {
             String worse = best == MoveClassifier.Level.KO ? worseKo(j, node, pos, verdicts, v) : null;
-            if (worse == null && best == MoveClassifier.Level.KO) worse = leavesKo(node, pos, verdicts, v);
+            if (worse == null && best == MoveClassifier.Level.KO && !inFile.contains(v.move)) worse = leavesKo(node, pos, verdicts, v);
             if (worse != null) {
                 System.out.println("  " + where + ": " + pt(v.move) + " " + worse + ", so it is not suggested");
                 continue;
@@ -736,11 +740,16 @@ public class MissingVariationFinder {
             System.out.println("  " + where + ": " + pt(v.move) + " reaches " + level(best) + " too, generating its line");
             // through each of the problem's own answers to it, wherever the line runs on its tree
             boolean clean = best == MoveClassifier.Level.CLEAN;
-            m.lines.addAll(linesFrom(iso, root, node, pos.at(), List.of(), v.move, lineDepth(pos), clean, m.decisions, m.cut));
+            List<SolutionPathGenerator.Refuted> refuted = new ArrayList<>();
+            m.lines.addAll(linesFrom(iso, root, node, pos.at(), List.of(), v.move, lineDepth(pos), clean, m.decisions, m.cut, refuted));
+            for (SolutionPathGenerator.Refuted r : refuted) {
+                for (String move : r.moves()) m.left.add(String.join(" ", r.at()) + " " + move);
+            }
             // the lines go through the solver's other moves that work along the way, and one of
             // those with a line that fails a check is cut, the found move staying
             Set<List<String>> others = otherMoves(pos, m.decisions);
-            not = insertedExchange(iso, node, m.lines.isEmpty() ? List.of() : m.lines.get(0), working);
+            not = onlyThroughRefuted(refuted);
+            if (not == null) not = insertedExchange(iso, node, m.lines.isEmpty() ? List.of() : m.lines.get(0), working);
             if (not == null) not = check(where, m.lines, others, l -> leaksOut(root, List.of(l)));
             if (not == null) not = check(where, m.lines, others, l -> lineFallsShort(j, pos, v, l, m.cut));
             if (not == null && clean) not = check(where, m.lines, others, l -> takesKoOnLine(node, l));
@@ -885,22 +894,35 @@ public class MissingVariationFinder {
                 + plain(mine) + " and " + pt(whose) + " " + plain(theirs);
     }
 
-    // why a found move only spends a ko threat, or null: the best there is a ko, the problem's
-    // own answer takes it, and the found move does not. with the ko to take, a move elsewhere
-    // first is a threat used up before the fight has started, whatever it comes to once the
-    // ko is won anyway (adam's review of gp-61191: after the author's line to B M10, White's
-    // N11 and N10 before the author's K12, which takes the ko, "wastes ko threats")
+    // why a found move only spends a ko threat, or null: the best there is a ko, every answer
+    // of the problem's that reaches it takes the ko, and the found move does not. with the ko
+    // to take, a move elsewhere first is a threat used up before the fight has started,
+    // whatever it comes to once the ko is won anyway (adam's review of gp-61191: after the
+    // author's line to B M10, White's N11 and N10 before the author's K12, which takes the ko,
+    // "wastes ko threats"). with the solver winning every ko nearly any move that loses
+    // nothing there reaches the ko too: gp-60002 had six of them at one position.
+    //
+    // two kinds of move are not that, and review approved one of each. where the problem also
+    // accepts an answer that takes no ko, the found move may be another order of play before
+    // that one (gp-62278: after B D1, W E1 the author takes the ko at E2 or plays G1, and the
+    // found H1 goes on W C1, B G1). and a move the problem itself has, as wrong, is not asked
+    // about here (see findAt): the problem says it fails, and the line through the problem's
+    // own answer shows whether the ko is still there to take (gp-62098: after B D13 and the
+    // problem's W H12, the author's F13 takes the ko as before). review approved a third
+    // kind, which this still leaves out: gp-62668's Q18 and Q17, placements inside the eye
+    // space before the author's O18 takes the ko
     static String leavesKo(Node node, Position pos, Map<String, MoveClassifier.Verdict> verdicts, MoveClassifier.Verdict v)
             throws Exception {
         if (takesKo(node, Intersection.gtp2point(v.move.substring(2)))) return null;
+        String taker = null;
         for (String a : pos.correct()) {
             MoveClassifier.Verdict av = verdicts.get(a);
             if (av == null || av.level != MoveClassifier.Level.KO) continue;
-            if (takesKo(node, Intersection.gtp2point(a.substring(2)))) {
-                return "reaches ko too, but the problem's " + pt(a) + " takes the ko there: a move elsewhere first only spends a ko threat";
-            }
+            if (!takesKo(node, Intersection.gtp2point(a.substring(2)))) return null;
+            if (taker == null) taker = a;
         }
-        return null;
+        if (taker == null) return null;
+        return "reaches ko too, but the problem's " + pt(taker) + " takes the ko there: a move elsewhere first only spends a ko threat";
     }
 
     private static String plain(StatusJudge.Status s) {
@@ -1430,15 +1452,32 @@ public class MissingVariationFinder {
         return cur;
     }
 
+    // why a move the problem has as wrong is not suggested when, after one of the problem's
+    // answers to it, the only moves that work are ones the problem answers in turn: the author
+    // read the move out and has it fail, the reading here disagrees with that somewhere down
+    // the author's own refutation, and the lines do not go through it (see
+    // SolutionPathGenerator.withoutRefuted). so the problem's answer has no answer a line
+    // could add, and on the site the computer plays it. null when every answer has one
+    static String onlyThroughRefuted(List<SolutionPathGenerator.Refuted> refuted) {
+        for (SolutionPathGenerator.Refuted r : refuted) {
+            if (!r.only()) continue;
+            List<String> points = r.moves().stream().map(MissingVariationFinder::pt).toList();
+            return "works after " + String.join(" ", r.at()) + " only through " + String.join(" and ", points)
+                    + ", which the problem answers itself and has fail: the reading disagrees with the author's own refutation";
+        }
+        return null;
+    }
+
     // lines from a position, generated by the redo generator so they answer and end the way
     // redo's would: from after the given moves (the solver to play), with a first move
     // forced or not. the lines start with the given moves. where they run on the problem's
     // tree (root), the opponent plays the problem's own answers. the generator's decisions go
-    // to decisions, at from the root (at is the position's), and the lines a limit stopped
-    // short to cut
+    // to decisions, at from the root (at is the position's), the lines a limit stopped short
+    // to cut, and the solver's moves left as the problem has them to refuted
     private List<List<String>> linesFrom(ProblemIsolator.IsolatedProblem iso, Node root, Node node, List<String> at,
                                          List<String> moves, String forced, int depth, boolean clean,
-                                         List<DecisionRecord> decisions, List<Cut> cut) throws Exception {
+                                         List<DecisionRecord> decisions, List<Cut> cut,
+                                         List<SolutionPathGenerator.Refuted> refuted) throws Exception {
         ProblemIsolator.IsolatedProblem from = lineIsolation(iso, node, moves);
         if (from == null) return List.of();
         // the line only illustrates the move, whose level already holds against every answer,
@@ -1464,6 +1503,7 @@ public class MissingVariationFinder {
         generator.setOwnAnswers(ownAnswers(root, start));
         generator.setAuthorSpots(authorSpots(iso, root));
         SolutionPathGenerator.GenResult gen = generator.generate();
+        refuted.addAll(gen.refuted);
         for (DecisionRecord d : gen.decisions) {
             List<String> full = new ArrayList<>(at);
             full.addAll(moves);
@@ -1555,6 +1595,23 @@ public class MissingVariationFinder {
         lineProps.setProperty("redo.routine_summed", props.getProperty("missing.routine_summed", "true"));
         lineProps.setProperty("redo.min_human_try", props.getProperty("missing.min_human_try", "0.1"));
         lineProps.setProperty("redo.prepared_goes_on", props.getProperty("missing.prepared_goes_on", "true"));
+        // and it ends where more moves work for the solver than a real try leaves it
+        // (redo.max_answers): the result is plain there, and following each of them out is
+        // what made the longest drafts (gp-60619: after B A2 and the problem's W H1 five moves
+        // work, and their lines came to 56 added moves). a try of the generator's own that many
+        // moves answer comes out again; after the problem's own answer each move ends its line
+        lineProps.setProperty("redo.many_work_ends", props.getProperty("missing.many_work_ends", "true"));
+        // how many answers a real try may have can be set for these lines alone
+        // (missing.max_answers; redo.max_answers, three, otherwise). in the trees review edited by
+        // hand it kept a try the draft gave one answer 71 times of 97, one with two answers 9
+        // times of 21, with three 3 of 9, and with four or more 1 of 4, counting the tries whose
+        // move before them it kept
+        if (props.getProperty("missing.max_answers") != null) {
+            lineProps.setProperty("redo.max_answers", props.getProperty("missing.max_answers"));
+        }
+        // on the problem's own tree a line leaves the moves the problem answers itself as the
+        // problem has them (SolutionPathGenerator.withoutRefuted)
+        lineProps.setProperty("redo.through_refuted", props.getProperty("missing.through_refuted", "false"));
         return lineProps;
     }
 

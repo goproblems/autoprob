@@ -344,6 +344,48 @@ public class ChoiceRule {
         return c.answers >= 1 && c.answers <= p.maxAnswers;
     }
 
+    // whether so many moves work at a solver's turn that the result is plain there
+    // (redo.many_work_ends): more than a real try leaves the solver (max_answers). of the
+    // three trees review edited by hand that kept such a turn, two end every line on its
+    // moves, each marked right with nothing after it: gp-61269 (on its 13x13 board, after the
+    // found K10 and the problem's W N11, four moves; the draft's 15 added moves cut to those
+    // four) and gp-62261
+    static boolean plain(Choice solver, ChoiceParams p) {
+        return p.manyWorkEnds && p.maxAnswers > 0 && !solver.isEnd() && solver.moves().size() > p.maxAnswers;
+    }
+
+    // the opponent's turn decided again once its try turned out to be no real one: the solver's
+    // turn after it found that many moves that work, more than a real try leaves. the count the
+    // try was chosen on (CandidateFeatures.answers) came from the visits of one search after
+    // it, which follows its best answer and gives the rest too few to count (gp-59689: after
+    // B C16, W D19, B B15 the try E17 went in with one answer counted, and C15, A16, A17 and F17
+    // all work). review took such a try out by hand in gp-62299, on its 13x13 board: after
+    // B M13, W M11, B M10 the draft went on W L9, which four moves answer, and review ended
+    // the line on M10. the try keeps the real count, so it is not chosen again: another try,
+    // or the end of the line
+    public static Choice again(DecisionRecord rec, String tried, int answers, ChoiceParams p, List<Point> stakes) {
+        CandidateFeatures c = rec.candidate(tried);
+        if (c != null) c.answers = answers;
+        return chooseOpponent(rec, p, stakes);
+    }
+
+    // the opponent's try where the line cannot end: every move that still threatens counts,
+    // however routine its answer, however many moves answer it and whoever plays it, and the
+    // criterion picks among them as ever. END only when nothing threatens at all. the
+    // generator asks this where a line would end on a solver's move the problem itself has:
+    // such a line cannot go into the problem, since it would end on the problem's own wrong
+    // line (SgfEdit.addLine), so it shows one more exchange. review approved gp-60480's
+    // B S18, W Q18, B R18, W R19, B S19 that way: S18 and R18 are the problem's, and R19, the
+    // one try left, has an answer everyone finds
+    public static Choice goingOn(DecisionRecord rec, ChoiceParams p, List<Point> stakes) {
+        ChoiceParams q = p.copy();
+        q.endOnObvious = false;
+        q.maxAnswers = 0;
+        q.minHumanTry = 0;
+        q.preparedGoesOn = false;
+        return chooseOpponent(rec, q, stakes);
+    }
+
     // would a small change in the numbers change this decision? engine noise between runs
     // moves scores by a fraction of a point, human policies by a few hundredths and threat
     // counts by a stone, so a decision that changes under such nudges is a close call and

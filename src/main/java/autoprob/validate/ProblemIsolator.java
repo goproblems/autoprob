@@ -145,9 +145,9 @@ public class ProblemIsolator {
     // takes first, its solved state leaves the stones the ko decides alive for the opponent,
     // and they never come out at stake: in gp-36582 only the two stones the answer cuts off
     // did, while the corner its ko kills stayed black. katago does not even play the line on
-    // to the ko, since it expects the opponent to take it. so the solver's likely starts
-    // (katago's top first moves, and the hints: the author's lines, which can only add to what
-    // is at stake, never decide what a move comes to) are played out with the solver winning
+    // to the ko, since it expects the opponent to take it. so the solver's starts (see
+    // koStarts: the author's own first moves and lines, which can only add to what is at
+    // stake, never decide what a move comes to) are played out with the solver winning
     // every ko, and the one that gains the solver the most of the problem area is the solved
     // state. when it gains the solver more than katago's own solved state, the stones of the
     // group it decides join the ones katago found at stake, and it is the solved state from
@@ -174,15 +174,15 @@ public class ProblemIsolator {
         int visits = Integer.parseInt(props.getProperty("redo.visits_root", "2000"));
         double threshold = Double.parseDouble(props.getProperty("redo.stake_threshold", "1.3"));
         String color = IsolationRecord.colorLetter(iso.solverColor);
-        Set<List<String>> starts = new LinkedHashSet<>();
+        List<String> top = new ArrayList<>();
         KataAnalysisResult root = walker.analyze(List.of(), visits);
         if (!root.isError() && root.moveInfos != null) {
             for (MoveInfo mi : root.moveInfos) {
-                if (starts.size() >= 4) break;
-                if (!mi.move.equalsIgnoreCase("pass")) starts.add(List.of(color + " " + mi.move));
+                if (top.size() >= 4) break;
+                if (!mi.move.equalsIgnoreCase("pass")) top.add(color + " " + mi.move);
             }
         }
-        starts.addAll(hints);
+        Set<List<String>> starts = koStarts(top, hints, color);
         boolean[][] zone = RegimeWalker.zone(iso);
         int sign = iso.solverColor == Intersection.BLACK ? 1 : -1;
         KataAnalysisResult best = null;
@@ -270,6 +270,34 @@ public class ProblemIsolator {
         System.out.println(note);
         iso.warnings.add(note);
         return best;
+    }
+
+    // the starts played out with the solver winning every ko, for what may be at stake: the
+    // author's own first moves, each on its own with katago's play after it, and the author's
+    // lines as they stand. what a problem is about is what its answer decides, so a first move
+    // the author does not play adds nothing to it: where one gains the solver more than the
+    // author's answer does, it wins a fight the problem never asks for. in gp-61269, on its
+    // 13x13 board, the author's L10 kills six stones with no ko, as katago's own solved state
+    // has it, while M10 played first wins a ko four times over and takes six stones more;
+    // with those at stake the author's answer came out a failure and K10, which review had
+    // approved, with it. a ko won that often is only played out since the walker presses on
+    // (RegimeWalker.pressOn). katago's own top first moves stand in where the problem gives no
+    // line. top: katago's first moves at the start, best first, with their color
+    static Set<List<String>> koStarts(List<String> top, List<List<String>> hints, String color) {
+        Set<List<String>> starts = new LinkedHashSet<>();
+        Set<String> own = new LinkedHashSet<>();
+        for (List<String> h : hints) {
+            if (!h.isEmpty() && h.get(0).startsWith(color)) own.add(h.get(0));
+        }
+        if (own.isEmpty()) {
+            for (String m : top) starts.add(List.of(m));
+            return starts;
+        }
+        // in katago's order where it has them, so that a tie goes the way it did
+        for (String m : top) if (own.contains(m)) starts.add(List.of(m));
+        for (String m : own) starts.add(List.of(m));
+        starts.addAll(hints);
+        return starts;
     }
 
     // adjust komi so that with correct play the solver is slightly ahead:

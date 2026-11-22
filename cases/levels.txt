@@ -45,3 +45,8 @@ gp-62416 | start | B O17 CLEAN, B Q19 KO, B Q16 KO
 gp-62416 | B O17,W O18,B N17,W Q19,B Q16,W P16 | B P18 CLEAN, B N19 CLEAN
 # gp-60421 (13x13, columns +6): the author's M13 (S19 here) kills by ko: after W L12, B N12, white's ko at N13 has to be won twice, to fill N11 and N10 (adam: "this is ko in correct solution"). L12 (R18) captures two stones and lets the corner live at M13
 gp-60421 | start | B S19 KO, B R18 FAIL
+# gp-61269 (13x13, columns +6): the author's L10 (R16 here) kills six stones with no ko, and after L10, L9, M10, M9 the
+# found K10 (Q16 here) kills as well as the author's N9 (adam's review, approved). M10 played first wins a ko four times
+# for six stones more, which are not what the problem is about
+gp-61269 | start | B R16 CLEAN
+gp-61269 | B R16,W R15,B S16,W S15 | B T15 CLEAN, B Q16 CLEAN

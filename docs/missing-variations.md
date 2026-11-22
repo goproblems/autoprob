@@ -142,10 +142,23 @@ coordinates; the console says how far the problem moved.
    R18 takes the ko first; after R19, W S18, Black can only take back the ko White takes at
    T19, or settle for the seki of B T19.
 
-   Where the best is a ko and the problem's answer takes it, a found move that plays
-   elsewhere first is not missing either: it only spends a ko threat. In gp-61191, after the
-   author's line to B M10, White's N11 and N10 came before the author's K12, which takes the
-   ko ("wastes ko threats").
+   Where the best is a ko and every answer of the problem's that reaches it takes the ko, a
+   found move that plays elsewhere first is not missing either: it only spends a ko threat.
+   In gp-61191, after the author's line to B M10, White's N11 and N10 came before the
+   author's K12, which takes the ko ("wastes ko threats"). With the solver winning every ko,
+   nearly any move that loses nothing there reaches the ko too: gp-60002 had six at one
+   position. Two kinds of move are not that, and review approved one of each:
+
+   - where the problem also accepts an answer that takes no ko, the found move may be
+     another order of play before that one. In gp-62278, after B D1, W E1, the author takes
+     the ko at E2 or plays G1, and the found H1 goes on W C1, B G1;
+   - a move the problem itself has, as wrong, is judged by its line: the problem says it
+     fails, and the line through the problem's own answer shows whether the ko is still
+     there to take. In gp-62098, after B D13 and the problem's W H12, the author's F13 takes
+     the ko as before.
+
+   Review approved a third kind that the rule still leaves out: gp-62668's Q18 and Q17,
+   placements inside the eye space before the author's O18 takes the ko.
 
    The author's moves are judged first. Once some move reaches a level, a move the
    problem does not accept only matters if it reaches that level too, so one that falls
@@ -196,6 +209,33 @@ coordinates; the console says how far the problem moved.
    listed as cut short, like a line any other limit stops. Of the crawl's 27 suggestions
    with a line of ten moves or more that review did not edit, it approved one.
 
+   And a line ends where the result is plain: at a solver's turn where more moves work than
+   a real try leaves (`redo.max_answers`, three; `missing.many_work_ends`). What ends there
+   depends on the move before:
+
+   - after a try the generator chose, the try was no real one. The count of answers it was
+     chosen on comes from the visits of one search after it, which follows its best answer
+     and gives the others too few to count. The try comes out, and the opponent's turn is
+     decided again without it: another try, or the end of the line. In gp-59689, after
+     B C16, W D19, B B15, White's E17 went in with one answer counted, and C15, A16, A17 and
+     F17 all work; each was followed out. Review took such a try out by hand in gp-62299
+     (13x13): after B M13, W M11, B M10 the draft went on W L9, which four moves answer, and
+     review ended the line on M10;
+   - after an answer the line was given (the problem's own, or the author's at a position
+     reached by another order of moves), the opponent had no choice of it, so it stays, and
+     each move that works goes in and ends its line there. In gp-61269 (13x13), after the
+     found K10 and the problem's W N11, four moves work. The draft followed them out to 15
+     added moves, and review cut it to those four. It did the same in gp-62261, and kept
+     lines going past such a turn in one tree, gp-62045.
+
+   `missing.max_answers` sets the number for these lines alone, where `redo.max_answers`
+   would change `redo`'s trees too. Three is the lenient end of what review did: in the 40
+   suggestions it edited by hand and approved, counting the tries whose move before them
+   it kept, it kept a try the draft gave one answer 71 times of 97, one with two answers 9
+   times of 21, one with three 3 times of 9, and one with four or more once in 4. After
+   one of the problem's own answers it kept lines going where the draft added two moves
+   (7 of 9) and ended all four where it added four or more.
+
    In a line for a move that reaches a clean result, the solver takes no ko. A clean result
    is one the solver reaches with the opponent winning every ko, so it needs none taken, and
    the opponent would take it back: a tree where the solver takes a ko reads as a ko. Where
@@ -205,6 +245,11 @@ coordinates; the console says how far the problem moved.
    suggestions at a clean level, review approved one of the eight whose lines had the solver
    take a ko (gp-61354: "ko shape"), and cut the ko out of three more by hand before
    approving them. The found move itself may take a ko; its confidence says so.
+
+   The rule covers a move the problem itself has, too, and there it leaves out a line
+   review approved: in gp-60579, after B O18, W O19, the problem has Black's N19, which
+   takes a ko, and review kept W L19, B P19 after it. Of the three reviewed suggestions
+   whose lines ran on past such a move of the problem's, it approved that one.
 
    `cmd=line-ends` measures the ending rule against review (see
    [Measuring against review](#measuring-against-review)). On the 40 positions measured so
@@ -222,9 +267,30 @@ coordinates; the console says how far the problem moved.
    to one of the problem's moves is made whatever the limits (below): without it the line
    would end on the problem's wrong line, where it cannot go in.
 
+   For the same reason a line does not end on a solver's move the problem itself has. Where
+   the ending rule would stop there, the line goes on with the try that is left, however
+   routine its answer, and ends on the answer. Review approved gp-60480's B S18, W Q18,
+   B R18, W R19, B S19 that way: S18 and R18 are the problem's, and R19 has an answer
+   everyone finds. Ended on R18, the line could not go in, and the suggestion was lost. Only
+   where nothing threatens at all is there no try to show, and the line is left out with a
+   note.
+
+   A line on the problem's own tree does not go on through a solver's move the problem
+   answers itself (`missing.through_refuted`, off). The author read that move out and has
+   it fail. Where the generator reads it as working, the two disagree, and a line through
+   the author's own refutation cannot settle that. So after the problem's answer to the
+   found move, the moves that get a line are the ones the problem lacks there, or has with
+   nothing after them. One it answers is left as the problem has it: the finding lists it
+   under `left`, and the console says so. Where no other move works, the found move is not
+   suggested, since its only way runs through the author's refutation. Of the crawl's
+   suggestions with a line that went on through such a move and the problem's answer to
+   it, review approved none of nine (by its notes a ko four times, an escape once), and no
+   tree it approved or edited has such a line.
+
    The solver is never cut down to one move: at each of its turns on the line, every move
    that works goes in, each followed out the same way as the main one, as in `redo`'s
-   trees. On the site a correct move the tree lacks is marked wrong. In gp-62299 the line
+   trees (where so many work that the result is plain, above, each still goes in, and ends
+   its line). On the site a correct move the tree lacks is marked wrong. In gp-62299 the line
    kept one move of four: after B M13, W M11, B M10, W L9 (on its 13x13 board), Black's
    N11, M12 and N10 work as well as the line's M9, and they were left out. The same
    happened twice more further down the line. Every plausible solver move is played out,
@@ -443,9 +509,10 @@ The stones at stake come from KataGo's solved state, after its best first move. 
 without threats, when the opponent takes the ko first in a problem whose answer is a ko,
 that state leaves the stones the ko decides with the opponent, and they are not at stake.
 In gp-36582 only the two stones the answer cuts off came out at stake, so the answer looked
-like a clean kill of two stones. So KataGo's top first moves and the author's lines are
-also played out with the solver winning every ko. The one that gains the solver the most of
-the problem area is the solved state. When it gains the solver more than KataGo's own, the
+like a clean kill of two stones. So the author's own first moves, each on its own with
+KataGo playing on from it, and the author's lines as they stand are also played out with
+the solver winning every ko (KataGo's top first moves stand in where the problem gives no
+line). The one that gains the solver the most of the problem area is the solved state. When it gains the solver more than KataGo's own, the
 stones of the group it decides (the bulk of the stones it swings, by color) join the ones
 KataGo found, and it is the solved state from then on. The
 other side's stones it swings are only the means: in gp-62121 the author's line captures
@@ -455,6 +522,16 @@ stake; they never decide what a move comes to. In gp-36582 the author's line put
 corner at stake, and the answer comes out as a ko. This also steadies the isolation, since
 KataGo's search at the start does not always find the answer: some runs of gp-10330 had
 only Black's stones inside White's group at stake, and not the group Black's answer kills.
+
+A first move the author does not play adds nothing to the stakes. What a problem is about
+is what its answer decides, and a move that gains the solver more than the answer does so
+in a fight the problem never asks for. In gp-61269 (13x13) the author's L10 kills six
+stones with no ko, as KataGo's own solved state has it, while M10 played first wins a ko
+four times over and takes six stones more. KataGo's first moves used to be played out
+whoever's they were, and once kos were pressed on (see [Kos](#kos)) those twelve stones
+came out at stake: the author's answer read as a failure, and K10, which review had
+approved, with it.
+
 The state a start comes to is the solved state too where it puts no more stones at stake
 but turns the ones there the solver's way. In gp-60164 KataGo's first move at the start did
 not kill, so nothing swung, and White's six stones came out at stake through their area

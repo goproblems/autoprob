@@ -316,6 +316,13 @@ class MissingVariationFinderTest {
         assertNull(MissingVariationFinder.leavesKo(iso.problem, pos, verdicts, take));
         assertNull(MissingVariationFinder.leavesKo(iso.problem, new MissingVariationFinder.Position(List.of(), Set.of("B L10"), List.of()),
                 verdicts, verdict("B M10", MoveClassifier.Level.KO)));
+        // gp-62278: the author takes the ko or plays elsewhere, so a found move elsewhere may
+        // be another order of play before that answer
+        MissingVariationFinder.Position either = new MissingVariationFinder.Position(List.of(), Set.of("B C18", "B L10"), List.of());
+        assertNull(MissingVariationFinder.leavesKo(iso.problem, either, verdicts, verdict("B M10", MoveClassifier.Level.KO)));
+        // an accepted move that falls short of the ko does not count as such an answer
+        java.util.Map<String, MoveClassifier.Verdict> shortOf = java.util.Map.of("B C18", take, "B L10", verdict("B L10", MoveClassifier.Level.FAIL));
+        assertTrue(MissingVariationFinder.leavesKo(iso.problem, either, shortOf, verdict("B M10", MoveClassifier.Level.KO)) != null);
     }
 
     @Test
@@ -351,6 +358,56 @@ class MissingVariationFinderTest {
         assertFalse(MissingVariationFinder.allFallShort(Set.of("B S19", "B T18"), wrong));
         assertFalse(MissingVariationFinder.allFallShort(Set.of("B S19"), List.of()));
         assertFalse(MissingVariationFinder.allFallShort(Set.of(), wrong));
+    }
+
+    // black's C19 is wrong: white answers C18, and then black's D19 is answered at D18, while
+    // E19 has nothing after it
+    private static final String REFUTED = "(;SZ[19]AB[dd]AW[ee]"
+            + "(;B[aa]C[RIGHT])"
+            + "(;B[ca];W[cb](;B[da];W[db])(;B[ea])))";
+
+    @Test
+    void aMoveTheProblemAnswersItselfIsToldFromOneItOnlyHas() throws Exception {
+        Node root = new Parser().parse(REFUTED);
+        Function<List<String>, Collection<String>> own = MissingVariationFinder.ownAnswers(root, List.of());
+        // D19 the problem answers; E19 it has with no answer, and F19 it lacks
+        assertEquals(List.of("B D19"), SolutionPathGenerator.answered(List.of("B C19", "W C18"),
+                List.of("B D19", "B E19", "B F19"), own));
+        // off the problem's tree nothing is answered
+        assertEquals(List.of(), SolutionPathGenerator.answered(List.of("B C19", "W B18"), List.of("B D19"), own));
+        // and from a position down the tree, the same
+        Function<List<String>, Collection<String>> deeper = MissingVariationFinder.ownAnswers(root, List.of("B C19", "W C18"));
+        assertEquals(List.of("B D19"), SolutionPathGenerator.answered(List.of(), List.of("B E19", "B D19"), deeper));
+    }
+
+    @Test
+    void aMoveThatWorksOnlyThroughWhatTheProblemRefutesIsNotSuggested() {
+        assertNull(MissingVariationFinder.onlyThroughRefuted(List.of()));
+        // another move works beside the one the problem answers: the lines take that one
+        assertNull(MissingVariationFinder.onlyThroughRefuted(List.of(
+                new SolutionPathGenerator.Refuted(List.of("B T17", "W T18"), List.of("B S18"), false))));
+        // gp-60316: after B T17, W T18 only S18 works, which the problem answers at T15
+        String why = MissingVariationFinder.onlyThroughRefuted(List.of(
+                new SolutionPathGenerator.Refuted(List.of("B T17", "W T18"), List.of("B S18"), true)));
+        assertTrue(why.startsWith("works after B T17 W T18 only through S18, which the problem answers itself"), why);
+    }
+
+    @Test
+    void whatIsAtStakeUnderKosComesFromTheAuthorsOwnMoves() {
+        // gp-61269: katago's S16, T17 and T18 are not the author's, and S16 wins a ko four times
+        // over for six stones the problem is not about
+        List<String> top = List.of("B R16", "B S16", "B T17", "B T18");
+        List<String> line = List.of("B R16", "W R15", "B S16", "W S15", "B T15");
+        assertEquals(List.of(List.of("B R16"), line),
+                List.copyOf(ProblemIsolator.koStarts(top, List.of(line), "B")));
+        // an author's first move katago does not list is still played out on its own, after
+        // the ones it does list
+        List<String> other = List.of("B Q19", "W P19", "B T19");
+        assertEquals(List.of(List.of("B R16"), List.of("B Q19"), line, other),
+                List.copyOf(ProblemIsolator.koStarts(top, List.of(line, other), "B")));
+        // with no line of the author's, katago's first moves stand in
+        assertEquals(List.of(List.of("B R16"), List.of("B S16"), List.of("B T17"), List.of("B T18")),
+                List.copyOf(ProblemIsolator.koStarts(top, List.of(), "B")));
     }
 
     @Test

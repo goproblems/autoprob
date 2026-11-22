@@ -317,7 +317,7 @@ the author's W J1 B H2 W N1 B M1, and gp-28281 after its first move. It is trunc
 main line is reported as not ended naturally. The last solver move of every line is marked
 RIGHT.
 
-Three settings change where a line ends; they are off here, since they were fitted to
+Four settings change where a line ends; they are off here, since they were fitted to
 lines added to a finished problem, not to an author's whole tree, and
 `missing-variations` turns them on for its lines
 ([missing-variations.md](missing-variations.md)). `redo.routine_summed` takes KataGo's prior
@@ -327,7 +327,12 @@ sets how natural a try has to be when only the human policy offers it.
 `redo.prepared_goes_on` keeps a line going where the solver's answer to the opponent's
 first try is another move that worked when its last move was chosen: the last move only
 prepared it. Each decision records those other moves (`others`), so the choice can still be
-made offline.
+made offline. `redo.many_work_ends` ends the lines through a solver's turn where more than
+`redo.max_answers` moves work, since the result is plain there. A try of the generator's
+own that so many moves answer was no real try (the count it was chosen on, from one
+search's visits, missed the rest): it comes out, and the opponent's turn is decided again
+without it. After an answer the line was given, each of the moves goes in and ends its
+line.
 
 **Order.** The main line is expanded first, then the other branches shallowest first. When
 the tree hits `redo.max_tree_decisions`, the cut falls on the deep ends of side branches,
@@ -441,6 +446,8 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.min_human_try` | `redo.min_human_policy` | A try only the human policy offers counts as a resistance from this human policy up (`missing-variations` uses 0.1 for its lines) |
 | `redo.prepared_goes_on` | false | Go on where the answer to the opponent's first try is another move that worked when the solver's last move was chosen (`missing-variations` turns it on for its lines) |
 | `redo.solver_avoids_ko` | false | Leave out a solver move that itself takes a ko while one that takes none works (`missing-variations` turns it on for the lines of a move that reaches a clean result) |
+| `redo.many_work_ends` | false | End the lines through a solver's turn where more than `redo.max_answers` moves work: a try so answered is taken back and the opponent's turn decided again, and after an answer the line was given each move ends its line (`missing-variations` turns it on for its lines) |
+| `redo.through_refuted` | true | Where a line runs on a problem's own tree, go on through a solver's move the problem answers itself (only `missing-variations` gives its lines such a tree, and turns this off for them) |
 | `redo.force_first_move` | false | Pin the first solver move to the reference |
 | `redo.recalibrate` | true | Rebuild stakes and komi and regenerate on score drift |
 | `redo.response_candidates` | 4 | KataGo moves considered as opponent responses |

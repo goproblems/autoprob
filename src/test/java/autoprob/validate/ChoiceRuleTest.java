@@ -487,6 +487,68 @@ class ChoiceRuleTest {
     }
 
     @Test
+    void aTryMoreMovesAnswerThanWereCountedIsTakenBack() {
+        // gp-721 after B L1: N1, the most testing try, goes in on the one answer the search
+        // after it counted, and the solver's turn after it finds four moves that work
+        DecisionRecord rec = gp721();
+        rec.candidate("W F1").answers = 1;
+        rec.candidate("W J1").answers = 1;
+        rec.candidate("W N1").answers = 1;
+        ChoiceParams p = params("naturalness_weight", "0");
+        assertEquals("W N1", ChoiceRule.chooseOpponent(rec, p, STAKES).move);
+        // decided again, the try is no real one any more and the next one goes in
+        assertEquals("W F1", ChoiceRule.again(rec, "W N1", 4, p, STAKES).move);
+        assertEquals(4, rec.candidate("W N1").answers);
+        // and with that one taken back too, the line ends: J1 threatens too little
+        ChoiceRule.Choice end = ChoiceRule.again(rec, "W F1", 5, p, STAKES);
+        assertTrue(end.isEnd());
+        assertTrue(end.reason.startsWith("no testing threat remains"));
+    }
+
+    @Test
+    void theResultIsPlainWhereMoreMovesWorkThanARealTryLeaves() {
+        DecisionRecord rec = solver(solverCand("B L1", "katago", 2.4), solverCand("B K1", "katago", 2.2),
+                solverCand("B M1", "katago", 2.0), solverCand("B J1", "human", 1.9));
+        ChoiceRule.Choice four = ChoiceRule.chooseSolver(rec, params());
+        assertEquals(4, four.moves().size());
+        assertFalse(ChoiceRule.plain(four, params())); // only where it is asked for: redo's lines go on
+        assertTrue(ChoiceRule.plain(four, params("many_work_ends", "true")));
+        assertFalse(ChoiceRule.plain(four, params("many_work_ends", "true", "max_answers", "4")));
+        assertFalse(ChoiceRule.plain(four, params("many_work_ends", "true", "max_answers", "0")));
+        // three moves are what a real try may leave
+        rec.candidates.remove(3);
+        ChoiceRule.Choice three = ChoiceRule.chooseSolver(rec, params());
+        assertEquals(3, three.moves().size());
+        assertFalse(ChoiceRule.plain(three, params("many_work_ends", "true")));
+        assertFalse(ChoiceRule.plain(new ChoiceRule.Choice(DecisionRecord.END, "solver wants to pass"), params("many_work_ends", "true")));
+    }
+
+    @Test
+    void aLineThatCannotEndGoesOnWithTheTryThatIsLeft() {
+        // gp-60480 after B S18, W Q18, B R18: R19 threatens ten stones and everyone finds the
+        // answer, so the line would end; P16 and Q19 threaten nothing
+        CandidateFeatures r19 = cand("W R19", "katago", 0.05, 1001, 0.30, 0.82, 10, 0);
+        r19.answerPrior = 1.0;
+        r19.answers = 1;
+        DecisionRecord rec = opponent(r19, cand("W P16", "human", 0.0, 0, 0.16, 0.12, 0, 0),
+                cand("W Q19", "human", 0.0, 0, 0.07, 0.05, 0, 0));
+        ChoiceParams p = params("routine_min_tries", "1");
+        ChoiceRule.Choice end = ChoiceRule.chooseOpponent(rec, p, STAKES);
+        assertTrue(end.isEnd());
+        assertTrue(end.reason.startsWith("only routine tries remain"), end.reason);
+        assertEquals("W R19", ChoiceRule.goingOn(rec, p, STAKES).move);
+        // a try that many moves answer, or that only the human policy offers, serves too
+        r19.answers = 5;
+        assertTrue(ChoiceRule.chooseOpponent(rec, p, STAKES).isEnd());
+        assertEquals("W R19", ChoiceRule.goingOn(rec, p, STAKES).move);
+        // but with nothing that threatens, there is no try to show
+        assertTrue(ChoiceRule.goingOn(opponent(cand("W P16", "human", 0.0, 0, 0.16, 0.12, 0, 0)), p, STAKES).isEnd());
+        // and the settings the line is generated with are left as they were
+        assertTrue(p.endOnObvious);
+        assertEquals(3, p.maxAnswers);
+    }
+
+    @Test
     void extraOpponentBranchesFollowTheCriterion() {
         ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(gp721(), params("opponent_branches", "2"), STAKES);
         assertEquals("W F1", choice.move);

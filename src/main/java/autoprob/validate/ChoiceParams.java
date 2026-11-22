@@ -38,6 +38,10 @@ public class ChoiceParams {
     // whether a solver move that takes a ko is left out while one that takes none works: for a
     // line that shows a clean result, which no ko has to be taken for
     public boolean solverAvoidsKo;
+    // whether a solver's turn where more than maxAnswers moves work ends the lines through it:
+    // the result is plain there. after a try of the opponent's it means the try was no real
+    // one, and after an answer the line was given, each of the moves ends its line
+    public boolean manyWorkEnds;
     public int threatRegionDist;     // only count threats near the stakes; -1 counts everywhere
 
     // solution tree branching. a solver move works when it reaches the life status the best
@@ -87,6 +91,7 @@ public class ChoiceParams {
         p.routineSummed = Boolean.parseBoolean(props.getProperty("redo.routine_summed", "false"));
         p.preparedGoesOn = Boolean.parseBoolean(props.getProperty("redo.prepared_goes_on", "false"));
         p.solverAvoidsKo = Boolean.parseBoolean(props.getProperty("redo.solver_avoids_ko", "false"));
+        p.manyWorkEnds = Boolean.parseBoolean(props.getProperty("redo.many_work_ends", "false"));
         // redo.threat_region_dist is not applied to live generation yet (see docs/redo.md
         // known gaps); the tuner can try it offline first
         p.threatRegionDist = -1;
@@ -127,6 +132,7 @@ public class ChoiceParams {
         p.minHumanTry = minHumanTry;
         p.preparedGoesOn = preparedGoesOn;
         p.solverAvoidsKo = solverAvoidsKo;
+        p.manyWorkEnds = manyWorkEnds;
         p.threatRegionDist = threatRegionDist;
         p.statusThreshold = statusThreshold;
         p.statusStones = statusStones;
@@ -165,6 +171,7 @@ public class ChoiceParams {
             case "min_human_try" -> minHumanTry = Double.parseDouble(value);
             case "prepared_goes_on" -> preparedGoesOn = Boolean.parseBoolean(value);
             case "solver_avoids_ko" -> solverAvoidsKo = Boolean.parseBoolean(value);
+            case "many_work_ends" -> manyWorkEnds = Boolean.parseBoolean(value);
             case "threat_region_dist" -> threatRegionDist = Integer.parseInt(value);
             case "status_threshold" -> statusThreshold = Double.parseDouble(value);
             case "status_stones" -> statusStones = Integer.parseInt(value);

@@ -142,6 +142,7 @@ public class Board implements Cloneable {
         boolean wedead = checkDeadGroup(x, y);
         int enemy = (stone % 2) + 1;
         deathList = new Vector(); // remember what we kill. those who are about to die, i salute you.
+        killed = false; // this move's captures: a board copied from one after a capture must not make suicide legal
         if (removeDeadGroup(x - 1, y, enemy, deathList))
             killed = true;
         if (removeDeadGroup(x, y - 1, enemy, deathList))
@@ -152,7 +153,6 @@ public class Board implements Cloneable {
             killed = true;
         if (wedead && !killed) {
             board[x][y].setStone(Intersection.EMPTY);
-            System.out.println("illegal move");
             return false;
         }
 

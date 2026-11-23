@@ -20,10 +20,22 @@ public class KataBrain {
 	private BufferedReader reader;
 	private Map<String, KataAnalysisResult> results = new Hashtable<>();
 	private Map<String, String> errors = new Hashtable<>();
+	private volatile boolean processEnded = false;
 	private volatile String lastProcessOutput;
 	private static final DecimalFormat df = new DecimalFormat("0.00");
 	public String modelPath;
 	private Thread thread;
+	// a time (System.currentTimeMillis) after which no new query is taken, 0 for none. a caller
+	// that gives a piece of work a time limit sets it: doQuery then throws OutOfTime, and the
+	// work in hand unwinds to wherever the caller deals with it
+	private volatile long deadline;
+
+	// thrown by doQuery once the deadline is past (setDeadline)
+	public static class OutOfTime extends RuntimeException {
+		public OutOfTime() {
+			super("out of time");
+		}
+	}
 
     /** Allows a separate engine transport to reuse the existing analyzer API. */
     protected KataBrain() {
@@ -73,6 +85,7 @@ public class KataBrain {
 						} catch (Exception e) {
 							e.printStackTrace();
 						} finally {
+							processEnded = true; // wake up any getResult waiters
 							if (process != null) {
 								process.destroy(); // Ensure process is terminated when done
 							}
@@ -158,6 +171,9 @@ public class KataBrain {
 
 			if (line.startsWith("{")) {
 				KataAnalysisResult kres = gson.fromJson(line, KataAnalysisResult.class);
+				if (kres.id != null && kres.id.startsWith("nudge")) {
+					continue; // wake-up query, result is meaningless
+				}
 				total++;
 				double avgTime = (System.currentTimeMillis() - startTime) / (double)total;
 				if (printSummary)
@@ -182,7 +198,28 @@ public class KataBrain {
 		}
 	}
 
+	// the last thing the process printed, for the error a query gets when the process is gone
+	private String lastOutput() {
+		return lastProcessOutput == null ? "" : ": " + lastProcessOutput;
+	}
+
+	// false once the katago process has exited; pending queries will error out
+	public boolean isAlive() {
+		return !processEnded;
+	}
+
+	public void setDeadline(long deadline) {
+		this.deadline = deadline;
+	}
+
 	public void doQuery(KataQuery query) throws Exception {
+		long end = deadline;
+		if (end > 0 && System.currentTimeMillis() > end) throw new OutOfTime();
+		send(query);
+	}
+
+	// the query goes to katago whatever the deadline: the nudge has to get through
+	private void send(KataQuery query) {
 		Gson gson = new Gson();
 		String qjson = gson.toJson(query, KataQuery.class);
 		// System.out.println("KENG (" + "x" + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
@@ -196,12 +233,37 @@ public class KataBrain {
 	 * Waits for a KataGo result. Timeout is read from props (kata.query.timeout.ms).
 	 * A value of 0 means no timeout (wait indefinitely).
 	 */
+	// the analysis engine can lose the wakeup for a request it has already read and
+	// parsed: it then sits idle until the next request arrives, which flushes the
+	// stuck one immediately. when a result is overdue we send a trivial one-visit
+	// query purely to kick the scheduler.
+	private void nudgeEngine() {
+		try {
+			KataQuery kq = new KataQuery();
+			kq.id = "nudge" + Math.random();
+			kq.initialStones = new java.util.ArrayList<>();
+			kq.moves = new java.util.ArrayList<>();
+			kq.analyzeTurns = new java.util.ArrayList<>();
+			kq.analyzeTurns.add(0);
+			kq.maxVisits = 1;
+			System.out.println("result overdue, nudging katago scheduler");
+			send(kq);
+		} catch (Exception e) {
+			System.out.println("nudge failed: " + e.getMessage());
+		}
+	}
+
 	public KataAnalysisResult getResult(String id, int targetTurn) {
 //		System.out.println("brain fetching: " + id + " : " + targetTurn);
 		long timeoutMs = Long.parseLong(props.getProperty("kata.query.timeout.ms", "0"));
+		long nudgeMs = Long.parseLong(props.getProperty("kata.nudge.ms", "30000"));
 		String nm = id + targetTurn; // lookup
 		long startTime = System.currentTimeMillis();
+		long lastNudge = startTime;
 		while (true) {
+			// read before checking the maps: if the process ended, any result it
+			// produced is already visible, so a miss below means it will never come
+			boolean ended = processEnded;
 			synchronized (this) {
 				if (errors.containsKey(id)) {
 					String errorMsg = errors.remove(id);
@@ -217,13 +279,19 @@ public class KataBrain {
 					return results.remove(nm);
 				}
 			}
-			if (!process.isAlive()) {
+			if (ended) {
+				System.err.println("KataGo process ended while waiting for id=" + id + ", turn=" + targetTurn);
 				KataAnalysisResult errorResult = new KataAnalysisResult();
 				errorResult.id = id;
 				errorResult.turnNumber = targetTurn;
-				errorResult.error = "KataGo process exited with code " + process.exitValue()
-					+ (lastProcessOutput == null ? "" : ": " + lastProcessOutput);
+				errorResult.error = process != null && !process.isAlive()
+					? "KataGo process exited with code " + process.exitValue() + lastOutput()
+					: "katago process ended unexpectedly" + lastOutput();
 				return errorResult;
+			}
+			if (nudgeMs > 0 && System.currentTimeMillis() - lastNudge > nudgeMs) {
+				nudgeEngine();
+				lastNudge = System.currentTimeMillis();
 			}
 			if (timeoutMs > 0 && System.currentTimeMillis() - startTime > timeoutMs) {
 				System.err.println("KataGo query timed out after " + (timeoutMs / 1000) +

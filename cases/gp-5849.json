@@ -1,0 +1,366 @@
+{
+  "problem": "gp-5849",
+  "problemFile": "sample_problems/gp-5849.sgf",
+  "problemSha": "8a09e3de08a2145afb52849716692191fea97a2d",
+  "isolation": {
+    "solver": "B",
+    "komi": 25,
+    "targetLead": 2.5,
+    "stakes": ["P3", "Q3", "Q2", "R4", "R3", "R2", "S5", "S4", "S3"],
+    "rows": [
+      "x.x.x.x.x.o.o.o.o.o",
+      ".x.x.x.x...o.o.o.o.",
+      "x.x.x.x.x.o.o.o.o.o",
+      ".x.x.x.x...o.o.o.o.",
+      "x.x.x.x.x.o.o.o.o.o",
+      ".x.x.x.............",
+      "x.x.x..xxxxxxxxxxxx",
+      ".x.x.x.xooooooooooo",
+      "x.x.x..xo..........",
+      ".x.x.x.xo..........",
+      "x.x.x..xo..........",
+      ".x.x.x.xo..........",
+      "x.x.x..xo.......O..",
+      ".x.x.x.xo........O.",
+      "x.x.x..xo......OOXO",
+      ".x.x.x.xo....O.OXX.",
+      "x.x.x..xo....OXXOX.",
+      ".x.x.x.xo.....OXO..",
+      "x.x.x..xo.....O...."
+    ]
+  },
+  "acceptedLines": [
+    ["B R1", "W S2", "B T2", "W P4", "B S1"]
+  ],
+  "decisions": [
+    {
+      "at": [],
+      "toMove": "B",
+      "role": "solver",
+      "expect": {
+        "choose": ["B R1"],
+        "avoid": []
+      },
+      "source": "review",
+      "tags": [],
+      "by": "adam",
+      "created": "2026-10-22",
+      "observed": {
+        "run": "20261022-115025",
+        "commit": "21da7ab-dirty",
+        "model": "C:/Users/Adam/Downloads/weights/kata1-b28c512nbt-s7168446720-d4316919285.bin.gz",
+        "decision": {
+          "at": [],
+          "toMove": "B",
+          "role": "solver",
+          "candidates": [
+            {"move": "B R1", "source": "katago", "prior": 0.995, "visits": 1991, "scoreLead": 1.819, "afterLead": 1.797, "humanPolicy": 0.311, "stakeDist": 1},
+            {"move": "B S2", "source": "katago", "prior": 0.002, "visits": 1, "scoreLead": -28.82, "humanPolicy": 0.394, "stakeDist": 1},
+            {"move": "B S1", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -29.612, "humanPolicy": 0.007, "stakeDist": 1},
+            {"move": "B O2", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -29.563, "humanPolicy": 0.039, "stakeDist": 1},
+            {"move": "B T2", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -30.065, "humanPolicy": 0, "stakeDist": 1},
+            {"move": "B Q1", "source": "human", "afterLead": -28.826, "humanPolicy": 0.088, "stakeDist": 1},
+            {"move": "B T4", "source": "human", "afterLead": -28.768, "humanPolicy": 0.065, "stakeDist": 1}
+          ],
+          "chose": "B R1",
+          "alternatives": [],
+          "reason": "the only move that works"
+        }
+      }
+    },
+    {
+      "at": ["B R1"],
+      "toMove": "W",
+      "role": "opponent",
+      "expect": {
+        "choose": ["W S2"],
+        "avoid": []
+      },
+      "source": "review",
+      "tags": [],
+      "by": "adam",
+      "created": "2026-10-22",
+      "observed": {
+        "run": "20261022-115025",
+        "commit": "21da7ab-dirty",
+        "model": "C:/Users/Adam/Downloads/weights/kata1-b28c512nbt-s7168446720-d4316919285.bin.gz",
+        "decision": {
+          "at": ["B R1"],
+          "toMove": "W",
+          "role": "opponent",
+          "candidates": [
+            {
+              "move": "W P4",
+              "source": "katago",
+              "prior": 0.263,
+              "visits": 384,
+              "humanPolicy": 0.265,
+              "answer": "S2",
+              "answerPrior": 0.999,
+              "humanAnswer": 0.931,
+              "answers": 1,
+              "stakeDist": 1,
+              "threat": 10,
+              "deltas": {"P3": 1.996, "P2": 0.001, "P1": 0.001, "Q3": 1.992, "Q2": 1.993, "R4": 1.985, "R3": 1.999, "R2": 1.999, "R1": 1.99, "S5": 1.987, "S4": 1.984, "S3": 1.978}
+            },
+            {
+              "move": "W T4",
+              "source": "katago",
+              "prior": 0.151,
+              "visits": 313,
+              "humanPolicy": 0.127,
+              "answer": "S2",
+              "answerPrior": 0.961,
+              "humanAnswer": 0.824,
+              "answers": 1,
+              "stakeDist": 1,
+              "threat": 10,
+              "deltas": {"P3": 1.979, "P2": 0.001, "P1": 0.001, "Q3": 1.979, "Q2": 1.978, "R4": 1.989, "R3": 1.998, "R2": 1.998, "R1": 1.984, "S5": 1.989, "S4": 1.986, "S3": 1.99}
+            },
+            {
+              "move": "W S2",
+              "source": "katago",
+              "prior": 0.029,
+              "visits": 165,
+              "humanPolicy": 0.155,
+              "answer": "T2",
+              "answerPrior": 0.999,
+              "humanAnswer": 0.692,
+              "answers": 1,
+              "stakeDist": 1,
+              "threat": 11,
+              "deltas": {"P3": 1.984, "P2": 0.001, "P1": 0.001, "Q3": 1.98, "Q2": 1.98, "R4": 1.984, "R3": 1.999, "R2": 1.999, "R1": 1.985, "S5": 1.988, "S4": 1.982, "S3": 1.984, "S2": 1.999}
+            },
+            {
+              "move": "W Q1",
+              "source": "human",
+              "humanPolicy": 0.116,
+              "answer": "S2",
+              "answerPrior": 0.999,
+              "humanAnswer": 0.901,
+              "answers": 1,
+              "stakeDist": 1,
+              "threat": 10,
+              "deltas": {"P3": 1.993, "Q3": 1.991, "Q2": 1.992, "R4": 1.984, "R3": 1.999, "R2": 1.997, "R1": 1.989, "S5": 1.986, "S4": 1.984, "S3": 1.978, "T5": 0.089}
+            },
+            {
+              "move": "W O2",
+              "source": "human",
+              "humanPolicy": 0.085,
+              "answer": "T6",
+              "answerPrior": 0.02,
+              "humanAnswer": 0,
+              "answers": 3,
+              "stakeDist": 1,
+              "threat": 0,
+              "deltas": {"Q3": 0.001, "R2": 0.001, "R1": 0.001, "T5": 0.257}
+            }
+          ],
+          "chose": "W S2",
+          "alternatives": [],
+          "reason": "chose response S2 (human 0.16, threat 11, human answer 0.69)"
+        }
+      }
+    },
+    {
+      "at": ["B R1", "W S2"],
+      "toMove": "B",
+      "role": "solver",
+      "expect": {
+        "choose": ["B T2"],
+        "avoid": []
+      },
+      "source": "review",
+      "tags": [],
+      "by": "adam",
+      "created": "2026-10-22",
+      "observed": {
+        "run": "20261022-115025",
+        "commit": "21da7ab-dirty",
+        "model": "C:/Users/Adam/Downloads/weights/kata1-b28c512nbt-s7168446720-d4316919285.bin.gz",
+        "decision": {
+          "at": ["B R1", "W S2"],
+          "toMove": "B",
+          "role": "solver",
+          "candidates": [
+            {"move": "B T2", "source": "katago", "prior": 0.999, "visits": 995, "scoreLead": 1.81, "afterLead": 1.804, "humanPolicy": 0.692, "stakeDist": 1},
+            {"move": "B S1", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -28.321, "humanPolicy": 0.089, "stakeDist": 1},
+            {"move": "B O2", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -29.419, "humanPolicy": 0.047, "stakeDist": 1},
+            {"move": "B T6", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -29.593, "humanPolicy": 0, "stakeDist": 1},
+            {"move": "B Q1", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -29.606, "humanPolicy": 0.063, "stakeDist": 1}
+          ],
+          "chose": "B T2",
+          "alternatives": [],
+          "reason": "the only move that works"
+        }
+      }
+    },
+    {
+      "at": ["B R1", "W S2", "B T2"],
+      "toMove": "W",
+      "role": "opponent",
+      "expect": {
+        "choose": ["END"],
+        "avoid": ["W P4"]
+      },
+      "source": "review",
+      "tags": [],
+      "by": "adam",
+      "created": "2026-10-22",
+      "observed": {
+        "run": "20261022-115025",
+        "commit": "21da7ab-dirty",
+        "model": "C:/Users/Adam/Downloads/weights/kata1-b28c512nbt-s7168446720-d4316919285.bin.gz",
+        "decision": {
+          "at": ["B R1", "W S2", "B T2"],
+          "toMove": "W",
+          "role": "opponent",
+          "candidates": [
+            {
+              "move": "W P4",
+              "source": "katago",
+              "prior": 0.414,
+              "visits": 621,
+              "humanPolicy": 0.242,
+              "answer": "S1",
+              "answerPrior": 0.999,
+              "humanAnswer": 0.927,
+              "answers": 1,
+              "stakeDist": 1,
+              "threat": 12,
+              "deltas": {"P3": 1.998, "P2": 0.001, "P1": 0.001, "Q3": 1.995, "Q2": 1.995, "R4": 1.988, "R3": 1.999, "R2": 1.999, "R1": 1.989, "S5": 1.99, "S4": 1.986, "S3": 1.981, "S2": 2, "T2": 1.983}
+            },
+            {
+              "move": "W T4",
+              "source": "katago",
+              "prior": 0.086,
+              "visits": 284,
+              "humanPolicy": 0.174,
+              "answer": "S1",
+              "answerPrior": 0.999,
+              "humanAnswer": 0.923,
+              "answers": 1,
+              "stakeDist": 1,
+              "threat": 12,
+              "deltas": {"P3": 1.987, "P2": 0.001, "P1": 0.001, "Q3": 1.981, "Q2": 1.98, "R4": 1.995, "R3": 1.999, "R2": 1.999, "R1": 1.981, "S5": 1.996, "S4": 1.996, "S3": 1.992, "S2": 1.999, "T5": 0.001, "T4": 0.005, "T2": 1.989}
+            },
+            {
+              "move": "W O2",
+              "source": "human",
+              "humanPolicy": 0.106,
+              "answer": "T6",
+              "answerPrior": 0.034,
+              "humanAnswer": 0,
+              "answers": 3,
+              "stakeDist": 1,
+              "threat": 0,
+              "deltas": {"T5": 0.262}
+            },
+            {
+              "move": "W Q1",
+              "source": "human",
+              "humanPolicy": 0.091,
+              "answer": "S1",
+              "answerPrior": 0.999,
+              "humanAnswer": 0.811,
+              "answers": 1,
+              "stakeDist": 1,
+              "threat": 12,
+              "deltas": {"P3": 1.997, "Q3": 1.994, "Q2": 1.994, "R4": 1.988, "R3": 1.999, "R2": 1.999, "R1": 1.99, "S5": 1.99, "S4": 1.985, "S3": 1.981, "S2": 1.999, "T5": 0.111, "T2": 1.983}
+            }
+          ],
+          "chose": "W P4",
+          "alternatives": [],
+          "reason": "chose response P4 (human 0.24, threat 12, human answer 0.93)"
+        }
+      }
+    },
+    {
+      "at": ["B R1", "W S2", "B T2", "W P4"],
+      "toMove": "B",
+      "role": "solver",
+      "expect": {
+        "choose": ["B S1"],
+        "avoid": []
+      },
+      "source": "review",
+      "tags": [],
+      "by": "adam",
+      "created": "2026-10-22",
+      "observed": {
+        "run": "20261022-115025",
+        "commit": "21da7ab-dirty",
+        "model": "C:/Users/Adam/Downloads/weights/kata1-b28c512nbt-s7168446720-d4316919285.bin.gz",
+        "decision": {
+          "at": ["B R1", "W S2", "B T2", "W P4"],
+          "toMove": "B",
+          "role": "solver",
+          "candidates": [
+            {"move": "B S1", "source": "katago", "prior": 0.999, "visits": 991, "scoreLead": 1.816, "afterLead": 2.927, "humanPolicy": 0.927, "stakeDist": 1},
+            {"move": "B T6", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -29.602, "humanPolicy": 0, "stakeDist": 1},
+            {"move": "B O2", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -29.371, "humanPolicy": 0.004, "stakeDist": 1},
+            {"move": "B T3", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -28.864, "humanPolicy": 0.01, "stakeDist": 1},
+            {"move": "B N2", "source": "katago", "prior": 0, "visits": 1, "scoreLead": -29.311, "humanPolicy": 0, "stakeDist": 2}
+          ],
+          "chose": "B S1",
+          "alternatives": [],
+          "reason": "the only move that works"
+        }
+      }
+    },
+    {
+      "at": ["B R1", "W S2", "B T2", "W P4", "B S1"],
+      "toMove": "W",
+      "role": "opponent",
+      "expect": {
+        "choose": ["END"],
+        "avoid": []
+      },
+      "source": "review",
+      "tags": [],
+      "by": "adam",
+      "created": "2026-10-22",
+      "observed": {
+        "run": "20261022-115025",
+        "commit": "21da7ab-dirty",
+        "model": "C:/Users/Adam/Downloads/weights/kata1-b28c512nbt-s7168446720-d4316919285.bin.gz",
+        "decision": {
+          "at": ["B R1", "W S2", "B T2", "W P4", "B S1"],
+          "toMove": "W",
+          "role": "opponent",
+          "candidates": [
+            {
+              "move": "W T4",
+              "source": "katago",
+              "prior": 0.007,
+              "visits": 148,
+              "humanPolicy": 0.117,
+              "answer": "T3",
+              "answerPrior": 0.168,
+              "humanAnswer": 0.363,
+              "answers": 4,
+              "stakeDist": 1,
+              "threat": 0,
+              "deltas": {"P1": -0.001, "T4": 0.001}
+            },
+            {
+              "move": "W O2",
+              "source": "human",
+              "humanPolicy": 0.118,
+              "answer": "T4",
+              "answerPrior": 0.239,
+              "humanAnswer": 0.457,
+              "answers": 2,
+              "stakeDist": 1,
+              "threat": 0,
+              "deltas": {"T5": 0.946}
+            }
+          ],
+          "chose": "END",
+          "alternatives": [],
+          "reason": "no opponent threat remains"
+        }
+      }
+    }
+  ]
+}

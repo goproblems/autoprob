@@ -35,6 +35,22 @@ hs_err_pid*
 # VS Code workspace settings
 .vscode/
 
+# OS and build noise
+.DS_Store
+target/
+
+# autoprob scan progress and benchmark run output
+zpos
+*.stderr
+
+# redo run records, review output and case replay results (cases/ is committed)
+redo_runs/
+redo_out/
+cases_results/
+missing_variations/
+# the crawl's working folder: its index, drafts, reviews and what went to the site
+/crawl/
+
 # Local worker connection settings
 /analysis-worker-tf3.properties
 /analysis-worker-all.properties

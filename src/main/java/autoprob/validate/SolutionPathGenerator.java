@@ -1,0 +1,637 @@
+package autoprob.validate;
+
+import java.awt.Point;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Properties;
+import java.util.function.Function;
+
+import autoprob.KataBrain;
+import autoprob.go.Intersection;
+import autoprob.go.Node;
+import autoprob.katastruct.KataAnalysisResult;
+import autoprob.validate.ProblemIsolator.IsolatedProblem;
+
+// generates the correct part of the solution tree for an isolated problem.
+//
+// at a solver turn every move that works goes in the tree: in a problem, a move that
+// solves it but is missing gets a correct answer marked wrong. at an opponent turn the
+// strongest resistance that is still a real threat goes in (more with
+// redo.opponent_branches); when the opponent has no move the solver must answer, that
+// branch ends. where a line runs on a problem's own tree (setOwnAnswers), the opponent
+// plays the problem's own answers instead, each of them and nothing else.
+//
+// a line at a ko (setAuthorLines) follows the author's own: the opponent plays its strongest
+// move, the solver the author's next move where it works, and the line ends on the move that
+// takes the ko or once the author's line is played out.
+//
+// with redo.many_work_ends a line also ends where the result is plain: at a solver turn
+// where more moves work than a real try leaves (redo.max_answers). after a try the
+// generator chose itself, the try comes out and the opponent's turn is decided again
+// without it; after an answer the line was given (the problem's own), each of the moves
+// goes in and ends its line there. and with redo.through_refuted off, a line on the
+// problem's own tree does not go on through a solver's move the problem answers itself.
+//
+// each turn is a decision: DecisionFeatureExtractor asks the engine for the candidates
+// and their numbers, then ChoiceRule picks the moves. every decision is recorded so it
+// can be reviewed, replayed as a test case, and re-chosen offline under other settings.
+// the main line follows the first choice at every turn.
+//
+// turns are expanded main line first, then the other branches shallowest first, so when
+// the tree hits redo.max_tree_decisions the cut falls on the deep ends of side branches,
+// never on an alternative first move. a limit only keeps a branch from going deeper: every
+// move that works at a turn already decided stays in the tree, and the lines a limit stops
+// are listed (GenResult.cut) so whoever reviews the tree can see where it was cut short. a
+// time the tree has to be done by (setDeadline) works the same way.
+public class SolutionPathGenerator {
+    private static final DecimalFormat df = new DecimalFormat("0.00");
+
+    private final IsolatedProblem iso;
+    private final DecisionFeatureExtractor extractor;
+    private final ChoiceParams params;
+
+    private final int visits;
+    private final int visitsRoot;
+    private final int maxMoves;
+    private final int maxDecisions;
+    // whether a line on the problem's own tree goes on through a solver's move the problem
+    // answers itself (see withoutRefuted)
+    private final boolean throughRefuted;
+    private Point forcedFirstMove; // optional: use this as the first solver move
+    // optional: the problem's own answers after the moves from here, the ones the site's
+    // computer plays; none where the moves leave the problem's tree
+    private Function<List<String>, Collection<String>> ownAnswers = at -> List.of();
+    // optional: the positions after a solver move on the author's correct lines, by the stones
+    // of the problem (Positions.key), each with the author's answers there on those lines, none
+    // where the author's line ends
+    private Map<String, ? extends Collection<String>> authorSpots = Map.of();
+    // optional: the moves the problem's author accepts at the position the line starts from
+    private Collection<String> authorMoves = List.of();
+    // optional, for a line at a ko: the author's own correct lines from the position the line
+    // starts from, and the one of them the line follows (setAuthorLines). empty otherwise
+    private List<List<String>> authorLines = List.of();
+    private List<String> authorLine = List.of();
+    // optional: a time (System.currentTimeMillis) after which no turn is decided any more, and
+    // what the lines that stops say of it (setDeadline). 0 for none
+    private long deadline;
+    private String deadlineWhy;
+
+    private GenResult result;
+    private boolean scoreDriftNoted = false;
+    // decisions by position, so a transposition reuses the engine work
+    private final Map<String, DecisionRecord> decided = new HashMap<>();
+
+    // a turn waiting to be expanded: main line first, then shallowest first, then in order.
+    // others: at an opponent's turn, the solver's other moves that worked where its last move
+    // was chosen
+    private record Turn(Node node, List<String> at, boolean main, boolean solverToMove, long seq, List<String> others) {}
+    private final PriorityQueue<Turn> pending = new PriorityQueue<>(Comparator
+            .comparing((Turn t) -> !t.main())
+            .thenComparingInt(t -> t.at().size())
+            .thenComparingLong(Turn::seq));
+    private long turnCount = 0;
+
+    // the opponent's turns the generator decided itself, by the node they were decided at: one
+    // is decided again when the solver turns out to have more answers to its try than a real
+    // try leaves (ChoiceRule.again)
+    private record Tried(DecisionRecord rec, List<String> at, boolean main) {}
+    private final Map<Node, Tried> tried = new IdentityHashMap<>();
+
+    public static class GenResult {
+        public Node endNode; // end of the main line, marked RIGHT like every leaf
+        public boolean endedNaturally = true; // the main line ended by the threat rule
+        public int truncated; // branches cut short by the move or decision limit or a failed analysis
+        public List<Cut> cut = new ArrayList<>(); // the lines those end, each with why
+        // the solver's moves that work on the problem's own tree but are left as the problem
+        // has them, since it answers them itself (see withoutRefuted)
+        public List<Refuted> refuted = new ArrayList<>();
+        public List<String> notes = new ArrayList<>();
+        public List<DecisionRecord> decisions = new ArrayList<>();
+    }
+
+    // a line that stops at a limit or a failed analysis rather than where the opponent has no
+    // threat left: the moves to its last solver move, and why it stops there
+    public record Cut(List<String> at, String why) {}
+
+    // solver's moves that work at a turn on the problem's own tree, by the generator's reading,
+    // while the problem answers them itself and has them fail: the moves to the turn, the
+    // moves, and whether they are the only ones that work there, so no line goes through it
+    public record Refuted(List<String> at, List<String> moves, boolean only) {}
+
+    public SolutionPathGenerator(Properties props, KataBrain brain, IsolatedProblem iso) {
+        this.iso = iso;
+        this.params = ChoiceParams.fromProps(props);
+        this.extractor = new DecisionFeatureExtractor(props, brain, iso, params);
+
+        visits = Integer.parseInt(props.getProperty("redo.visits", "1000"));
+        visitsRoot = Integer.parseInt(props.getProperty("redo.visits_root", "2000"));
+        maxMoves = Integer.parseInt(props.getProperty("redo.max_moves", "20"));
+        maxDecisions = Integer.parseInt(props.getProperty("redo.max_tree_decisions", "60"));
+        throughRefuted = Boolean.parseBoolean(props.getProperty("redo.through_refuted", "true"));
+    }
+
+    // diagnostic: force the first solver move (e.g. the reference solution's first move)
+    public void setForcedFirstMove(Point p) {
+        forcedFirstMove = p;
+    }
+
+    // the problem's own tree, as its answers after the moves from here: where a line runs on
+    // it, the site's computer answers with the problem's moves, so the line takes those
+    public void setOwnAnswers(Function<List<String>, Collection<String>> answers) {
+        ownAnswers = answers;
+    }
+
+    // the author's own tree by position: where a line reaches a position of the author's
+    // correct lines by another order of moves, it goes on with the author's answers there, and
+    // ends where the author's line does. the author already chose how far to take that
+    // position, and a line of its own from there would only say it differently (adam's edits
+    // in review: gp-59989's B G12, W H10, B H11 ends on the position the author's H11, H10,
+    // G12 ends on, where the generator went on W J12, B J11, W H12, B H13)
+    public void setAuthorSpots(Map<String, ? extends Collection<String>> spots) {
+        authorSpots = spots;
+    }
+
+    // the author's own moves where the line's first move is played. a first move that only
+    // prepared one of them is followed to it, however routine the try before it: the line
+    // shows the way back to the author's answer (ChoiceRule.preparedLine)
+    public void setAuthorMoves(Collection<String> moves) {
+        authorMoves = moves;
+    }
+
+    // a line at a ko follows the author's own (lines: the author's correct lines from the
+    // position, first: the found move the line starts with). what a move comes to at a ko
+    // depends on the ko, and the finder cannot rank kos, so the line has to show the author's
+    // ko or the move is not the same answer. the site's reviewer rewrote the lines of six of
+    // the ten ko suggestions it approved, each time to the author's own line with the found
+    // move's exchange put in before it, run to the author's end: gp-61398 (B F5, W E5, then
+    // the author's D2, W D3, B E3, which takes the ko, where the line had stopped on D2),
+    // gp-60333 and gp-60685 (B T14, W T15, then the author's T18), gp-61669 (W N5, B M3, then
+    // the author's K1), gp-62045 (W H2 and the author's own answer G2, then the author's N3,
+    // K5, N1), and gp-60804 (see ChoiceRule.chooseKoOpponent). so on such a line the opponent
+    // plays its strongest move, the solver plays the author's next move where it works, and
+    // the line ends on the move that takes the ko, as the author's ko lines do, or once the
+    // author's line is played out
+    public void setAuthorLines(List<List<String>> lines, String first) {
+        authorLines = lines;
+        authorLine = AuthorLine.follow(lines, first);
+    }
+
+    // the time the tree has to be done by. once it is past no branch goes deeper, as at the
+    // tree limit: every move in the tree stays, a line still open ends on its last solver
+    // move, and those lines are listed with why (GenResult.cut). the turn being decided when
+    // the time runs out is still finished
+    public void setDeadline(long deadline, String why) {
+        this.deadline = deadline;
+        this.deadlineWhy = why;
+    }
+
+    private boolean outOfTime() {
+        return deadline > 0 && System.currentTimeMillis() > deadline;
+    }
+
+    // whether the tree's time is up at an opponent's turn (node, after the solver's move): the
+    // line then ends on that move
+    private boolean stopsForTime(Node node, List<String> at, boolean main) {
+        if (!outOfTime()) return false;
+        end(node, at, main, deadlineWhy);
+        return true;
+    }
+
+    // builds the tree under iso.problem; every leaf is marked RIGHT
+    public GenResult generate() throws Exception {
+        result = new GenResult();
+        enqueue(iso.problem, new ArrayList<>(), true, true, null);
+        while (!pending.isEmpty()) {
+            Turn t = pending.poll();
+            if (t.solverToMove()) solverTurn(t.node(), t.at(), t.main());
+            else opponentTurn(t.node(), t.at(), t.main(), t.others());
+        }
+        if (result.truncated > 0) {
+            result.notes.add(result.truncated + " branch" + (result.truncated == 1 ? "" : "es") + " cut short");
+        }
+        return result;
+    }
+
+    private void enqueue(Node node, List<String> at, boolean main, boolean solverToMove, List<String> others) {
+        pending.add(new Turn(node, at, main, solverToMove, turnCount++, others));
+    }
+
+    // node: the solver is to move here
+    private void solverTurn(Node node, List<String> at, boolean main) throws Exception {
+        int moveNumber = at.size() + 1;
+        if (!at.isEmpty() && outOfTime()) {
+            cut(node, at, main, deadlineWhy);
+            return;
+        }
+        if (!at.isEmpty() && result.decisions.size() >= maxDecisions && !answersOwn(at)) {
+            cut(node, at, main, "reached the tree limit of " + maxDecisions + " decisions");
+            return;
+        }
+        DecisionRecord solver = decide(node, at, true, null);
+        if (solver.error != null) {
+            cut(node, at, main, "analysis failed at move " + moveNumber);
+            return;
+        }
+        ChoiceRule.Choice choice = ChoiceRule.chooseSolver(solver, params, iso.stakes);
+        // every move that works here, for the opponent's turn after each: the others there
+        List<String> working = choice.isEnd() ? List.of() : choice.moves();
+        // whether so many moves work that the result is plain: the lines through here end
+        boolean plain = false;
+        if (at.isEmpty() && forcedFirstMove != null) {
+            String forced = solver.toMove + " " + Intersection.toGTPloc(forcedFirstMove.x, forcedFirstMove.y, 19);
+            if (!forced.equals(choice.move)) {
+                result.notes.add("forced first move " + forced.substring(2) + " over katago choice "
+                        + (choice.isEnd() ? "pass" : choice.move.substring(2)));
+            }
+            choice = new ChoiceRule.Choice(forced, "forced first move");
+        } else if (!at.isEmpty() && !choice.isEnd()) {
+            plain = ChoiceRule.plain(choice, params);
+            Tried before = tried.get(node.mom);
+            if (plain && before != null) {
+                // the opponent's move before was a try of the generator's own, and no real one
+                takeBack(node, before, at.get(at.size() - 1), working.size());
+                return;
+            }
+            choice = withoutRefuted(node, at, choice);
+            if (choice == null) return;
+        }
+        if (!authorLine.isEmpty() && !at.isEmpty() && !choice.isEnd()) choice = authorFirst(at, choice);
+        record(solver, choice);
+        if (choice.isEnd()) {
+            // the opponent's last move needs no answer: the line ends before it
+            result.notes.add("solver wants to pass at move " + moveNumber + ", ending");
+            if (!at.isEmpty()) {
+                Node mom = node.mom;
+                mom.removeChildNode(node);
+                if (mom.babies.isEmpty()) mom.result = Intersection.RIGHT;
+            }
+            return;
+        }
+        if (!choice.also.isEmpty()) {
+            System.out.println("  " + choice.reason + ": " + String.join(", ",
+                    choice.moves().stream().map(m -> m.substring(2)).toList()));
+        }
+        if (plain) {
+            // after an answer the line was given: the opponent had no choice of it, so it stays,
+            // and each move that works ends its line
+            System.out.println("  more than " + params.maxAnswers + " moves work, so the result is plain: each ends its line here");
+        }
+
+        List<String> moves = choice.moves();
+        for (int i = 0; i < moves.size(); i++) {
+            String move = moves.get(i);
+            Point p = Intersection.gtp2point(move.substring(2));
+            Node child = node.addBasicMove(p.x, p.y);
+            CandidateFeatures c = solver.candidate(move);
+            String desc = c == null ? "forced" : "policy " + df.format(c.prior == null ? 0 : c.prior)
+                    + ", visits " + c.visits + (c.afterLead != null ? ", lead after " + df.format(c.afterLead)
+                    : c.scoreLead != null ? ", score " + df.format(c.scoreLead) : "");
+            System.out.println("move " + moveNumber + " (solver" + (i > 0 ? ", alternative" : "") + "): "
+                    + move.substring(2) + " (" + desc + ")" + (main ? "" : " in " + DecisionRecord.key(at)));
+            List<String> next = new ArrayList<>(at);
+            next.add(move);
+            boolean childMain = main && i == 0;
+            if (childMain) result.endNode = child;
+            if (plain) {
+                child.result = Intersection.RIGHT;
+                continue;
+            }
+            String ends = authorLine.isEmpty() ? null : koLineEnds(child, next);
+            if (ends != null) {
+                System.out.println("  " + ends + ": path ends after move " + moveNumber);
+                child.result = Intersection.RIGHT;
+                continue;
+            }
+            List<String> others = new ArrayList<>(working);
+            others.remove(move);
+            enqueue(child, next, childMain, false, others);
+        }
+    }
+
+    // on a line at a ko the author's next move goes first where it works: the line follows
+    // the author's own. the other moves that work stay, each with its line
+    private ChoiceRule.Choice authorFirst(List<String> at, ChoiceRule.Choice choice) {
+        String next = AuthorLine.next(authorLine, at);
+        if (next == null || next.equals(choice.move) || !choice.also.contains(next)) return choice;
+        List<String> rest = new ArrayList<>(choice.moves());
+        rest.remove(next);
+        return new ChoiceRule.Choice(next, rest, choice.reason + ", the author's " + next.substring(2) + " first");
+    }
+
+    // why a line at a ko ends on the solver's move just played (child, the last of at), or
+    // null: the move takes the ko, where the author's own ko lines end and the fight over it
+    // starts, or the author's line is played out
+    private String koLineEnds(Node child, List<String> at) {
+        if (child.getKo() != null) return "the solver takes the ko with " + at.get(at.size() - 1).substring(2);
+        if (AuthorLine.done(authorLine, at)) return "the author's line is played out";
+        return null;
+    }
+
+    // the opponent's move on a line at a ko: its strongest (ChoiceRule.chooseKoOpponent), the
+    // author's answer where katago rates it as high. the line ends before a move that takes
+    // the ko itself: the solver's last move is then the one the ko is fought from
+    private ChoiceRule.Choice koResponse(Node node, List<String> at, DecisionRecord opponent) throws Exception {
+        String answer = AuthorLine.answer(authorLines, at);
+        if (answer != null && !node.legalMove(Intersection.gtp2point(answer.substring(2)))) answer = null;
+        ChoiceRule.Choice response = ChoiceRule.chooseKoOpponent(opponent, params, iso.stakes, answer);
+        if (!response.isEnd() && MissingVariationFinder.takesKo(node, Intersection.gtp2point(response.move.substring(2)))) {
+            return new ChoiceRule.Choice(DecisionRecord.END, response.reason + ", which takes the ko: the line ends before it");
+        }
+        return response;
+    }
+
+    // the try before this solver's turn (node) comes out of the tree, and the opponent's turn it
+    // was chosen at is decided again without it (ChoiceRule.again): the line goes on with
+    // another try, or ends on the solver's move before
+    private void takeBack(Node node, Tried before, String attempt, int answers) throws Exception {
+        Node mom = node.mom;
+        mom.removeChildNode(node);
+        System.out.println("  " + answers + " moves answer " + attempt.substring(2) + ", more than a real try leaves ("
+                + params.maxAnswers + "): it is taken back");
+        DecisionRecord rec = before.rec();
+        ChoiceRule.Choice response = ChoiceRule.again(rec, attempt, answers, params, iso.stakes);
+        rec.chose = response.move;
+        rec.alternatives = new ArrayList<>(response.also);
+        rec.reason = response.reason;
+        if (response.isEnd()) {
+            System.out.println("  " + response.reason + ": path ends after move " + before.at().size());
+            if (mom.babies.isEmpty()) mom.result = Intersection.RIGHT;
+            return;
+        }
+        System.out.println("  " + response.reason);
+        List<String> moves = response.moves();
+        for (int i = 0; i < moves.size(); i++) {
+            String move = moves.get(i);
+            Point p = Intersection.gtp2point(move.substring(2));
+            if (mom.getChildWithMove(p) != null) continue; // a try that went in before, and stays
+            Node child = mom.addBasicMove(p.x, p.y);
+            System.out.println("move " + (before.at().size() + 1) + " (opponent" + (i > 0 ? ", alternative" : "") + "): "
+                    + move.substring(2) + " (" + DecisionFeatureExtractor.describe(rec.candidate(move)) + ")");
+            List<String> next = new ArrayList<>(before.at());
+            next.add(move);
+            enqueue(child, next, before.main() && i == 0, true, null);
+        }
+    }
+
+    // on the problem's own tree (the opponent's move before this turn was the problem's), a
+    // solver's move the problem answers itself is left as the problem has it: the author
+    // read it out and has it fail, and where the generator reads it as working the two
+    // disagree, which a line through the author's own refutation cannot settle. of the
+    // crawl's suggestions with a line that went on through such a move and the problem's
+    // answer to it, review approved none of nine (by its notes a ko four times, an escape
+    // once), and no tree it approved or edited kept one. the choice without those moves, or
+    // null when no other move works: then no line goes through this turn, and the problem's
+    // answer before it comes out of the tree
+    private ChoiceRule.Choice withoutRefuted(Node node, List<String> at, ChoiceRule.Choice choice) {
+        if (throughRefuted) return choice;
+        List<String> refuted = answered(at, choice.moves(), ownAnswers);
+        if (refuted.isEmpty()) return choice;
+        List<String> rest = new ArrayList<>(choice.moves());
+        rest.removeAll(refuted);
+        result.refuted.add(new Refuted(List.copyOf(at), refuted, rest.isEmpty()));
+        String points = String.join(", ", refuted.stream().map(m -> m.substring(2)).toList());
+        if (rest.isEmpty()) {
+            System.out.println("  " + (refuted.size() == 1 ? "the only move that works here, " + points + ", is one"
+                    : "the only moves that work here, " + points + ", are ones")
+                    + " the problem answers itself: no line goes through " + DecisionRecord.key(at));
+            node.mom.removeChildNode(node);
+            return null;
+        }
+        System.out.println("  " + points + (refuted.size() == 1 ? " works" : " work") + " here too by this reading, but the problem answers "
+                + (refuted.size() == 1 ? "it" : "them") + " itself: left as the problem has " + (refuted.size() == 1 ? "it" : "them"));
+        return new ChoiceRule.Choice(rest.get(0), new ArrayList<>(rest.subList(1, rest.size())),
+                choice.reason + " (" + refuted.size() + " of them left as the problem has " + (refuted.size() == 1 ? "it" : "them") + ")");
+    }
+
+    // of the solver's moves after the moves from the start, the ones the problem has with an
+    // answer of its own after them
+    static List<String> answered(List<String> at, List<String> moves, Function<List<String>, Collection<String>> ownAnswers) {
+        List<String> out = new ArrayList<>();
+        for (String m : moves) {
+            List<String> next = new ArrayList<>(at);
+            next.add(m);
+            if (!ownAnswers.apply(next).isEmpty()) out.add(m);
+        }
+        return out;
+    }
+
+    // node: right after a solver move, the opponent is to move
+    private void opponentTurn(Node node, List<String> at, boolean main, List<String> others) throws Exception {
+        int moveCount = at.size();
+        // on the problem's own tree the site's computer answers with the problem's moves, so the
+        // line goes on through each of them and adds none of its own beside them: a correct line
+        // the computer never takes shows nothing (adam's review of gp-62134: after B B3, W B2,
+        // B D1, the line took W C4, the try a human gets wrong most, beside the problem's C3,
+        // the stronger one)
+        String color = IsolationRecord.colorLetter(node.getToMove());
+        List<String> own = new ArrayList<>();
+        for (String m : ownAnswers.apply(at)) {
+            if (m.startsWith(color + " ") && node.legalMove(Intersection.gtp2point(m.substring(2)))) own.add(m);
+        }
+        if (!own.isEmpty()) {
+            if (stopsForTime(node, at, main)) return;
+            for (int i = 0; i < own.size(); i++) {
+                String move = own.get(i);
+                Point p = Intersection.gtp2point(move.substring(2));
+                Node child = node.addBasicMove(p.x, p.y);
+                System.out.println("move " + (moveCount + 1) + " (opponent, the problem's" + (i > 0 ? ", alternative" : "") + "): "
+                        + move.substring(2) + (main ? "" : " in " + DecisionRecord.key(at)));
+                List<String> next = new ArrayList<>(at);
+                next.add(move);
+                enqueue(child, next, main && i == 0, true, null);
+            }
+            return;
+        }
+        // a position of the author's correct lines, reached another way: the line ends where
+        // the author's does, or goes on with the author's answers
+        Collection<String> authors = authorSpots.get(Positions.key(node, iso));
+        if (authors != null) {
+            List<String> answers = new ArrayList<>();
+            for (String m : authors) {
+                if (m.startsWith(color + " ") && node.legalMove(Intersection.gtp2point(m.substring(2)))) answers.add(m);
+            }
+            if (answers.isEmpty()) {
+                System.out.println("  the position is where a correct line of the problem ends: path ends after move " + moveCount);
+                node.result = Intersection.RIGHT;
+                return;
+            }
+            if (stopsForTime(node, at, main)) return;
+            for (int i = 0; i < answers.size(); i++) {
+                String move = answers.get(i);
+                Point p = Intersection.gtp2point(move.substring(2));
+                Node child = node.addBasicMove(p.x, p.y);
+                System.out.println("move " + (moveCount + 1) + " (opponent, as on the problem's correct line from this position"
+                        + (i > 0 ? ", alternative" : "") + "): " + move.substring(2) + (main ? "" : " in " + DecisionRecord.key(at)));
+                List<String> next = new ArrayList<>(at);
+                next.add(move);
+                enqueue(child, next, main && i == 0, true, null);
+            }
+            return;
+        }
+        if (stopsForTime(node, at, main)) return;
+        if (moveCount >= maxMoves) {
+            end(node, at, main, "hit max moves (" + maxMoves + ")");
+            return;
+        }
+        if (result.decisions.size() >= maxDecisions) {
+            end(node, at, main, "reached the tree limit of " + maxDecisions + " decisions");
+            return;
+        }
+        KataAnalysisResult karAfter = extractor.after(node);
+        if (karAfter.isError()) {
+            end(node, at, main, "analysis failed after move " + moveCount);
+            return;
+        }
+        if (main) {
+            checkStakesHeld(karAfter, moveCount, result);
+            checkScoreDrift(karAfter, moveCount, result);
+        }
+
+        // ending check: does the opponent have any real threat left?
+        DecisionRecord opponent = decide(node, at, false, karAfter);
+        if (opponent.error != null) {
+            end(node, at, main, "analysis failed after move " + moveCount);
+            return;
+        }
+        opponent.others = others;
+        opponent.authors = at.size() == 1 && !authorMoves.isEmpty() ? new ArrayList<>(authorMoves) : null;
+        ChoiceRule.Choice response = authorLine.isEmpty() ? ChoiceRule.chooseOpponent(opponent, params, iso.stakes)
+                : koResponse(node, at, opponent);
+        if (response.isEnd() && answersOwn(at)) {
+            // the solver's last move is one the problem has itself: the line cannot end on it
+            ChoiceRule.Choice on = ChoiceRule.goingOn(opponent, params, iso.stakes);
+            if (!on.isEnd()) {
+                response = new ChoiceRule.Choice(on.move, on.also, on.reason + ": " + response.reason
+                        + ", but the line cannot end on " + at.get(at.size() - 1).substring(2) + ", which the problem has");
+            }
+        }
+        record(opponent, response);
+        // a try of the generator's own can be taken back for another; the strongest move at a ko
+        // is no such try
+        if (authorLine.isEmpty()) tried.put(node, new Tried(opponent, at, main));
+        if (response.isEnd()) {
+            System.out.println("  " + response.reason + ": path ends after move " + moveCount);
+            node.result = Intersection.RIGHT;
+            return;
+        }
+        System.out.println("  " + response.reason);
+
+        List<String> moves = response.moves();
+        for (int i = 0; i < moves.size(); i++) {
+            String move = moves.get(i);
+            Point p = Intersection.gtp2point(move.substring(2));
+            Node child = node.addBasicMove(p.x, p.y);
+            System.out.println("move " + (moveCount + 1) + " (opponent" + (i > 0 ? ", alternative" : "") + "): "
+                    + move.substring(2) + " (" + DecisionFeatureExtractor.describe(opponent.candidate(move)) + ")");
+            List<String> next = new ArrayList<>(at);
+            next.add(move);
+            enqueue(child, next, main && i == 0, true, null);
+        }
+    }
+
+    // whether the last move is one of the problem's own: an answer of its that the site's
+    // computer plays, so the solver answers it whatever the limits, or a solver's move it has,
+    // which the line goes on past (see opponentTurn). either way the line would otherwise end on
+    // the problem's wrong line, which it cannot be added to
+    private boolean answersOwn(List<String> at) {
+        return ownAnswers.apply(at.subList(0, at.size() - 1)).contains(at.get(at.size() - 1));
+    }
+
+    // the decision at this position, reusing one made at the same position reached by
+    // another move order
+    private DecisionRecord decide(Node node, List<String> at, boolean solverToMove, KataAnalysisResult karAfter)
+            throws Exception {
+        String key = DecisionFeatureExtractor.positionKey(node);
+        DecisionRecord known = decided.get(key);
+        if (known != null) {
+            System.out.println("  " + DecisionRecord.key(at) + " transposes to " + known.key());
+            return known.copyAt(at);
+        }
+        DecisionRecord rec = solverToMove
+                ? extractor.solver(node, at, at.isEmpty() ? visitsRoot : visits)
+                : extractor.opponent(node, at, karAfter);
+        if (rec.error == null) decided.put(key, rec);
+        return rec;
+    }
+
+    private void record(DecisionRecord rec, ChoiceRule.Choice choice) {
+        rec.chose = choice.move;
+        rec.alternatives = new ArrayList<>(choice.also);
+        rec.reason = choice.reason;
+        result.decisions.add(rec);
+    }
+
+    // a branch stops after a solver move: that move is the end of a correct line
+    private void end(Node node, List<String> at, boolean main, String why) {
+        node.result = Intersection.RIGHT;
+        stopped(at, main, why);
+    }
+
+    // a branch stops at a solver turn (node follows an opponent move): drop that move, and
+    // the solver move before it becomes the end of the line unless other branches remain
+    private void cut(Node node, List<String> at, boolean main, String why) {
+        List<String> end = null;
+        if (node.mom != null) {
+            Node mom = node.mom;
+            mom.removeChildNode(node);
+            if (mom.babies.isEmpty()) {
+                mom.result = Intersection.RIGHT;
+                if (!at.isEmpty()) end = at.subList(0, at.size() - 1);
+            }
+        }
+        stopped(end, main, why);
+    }
+
+    // end: the line the stop ends, or null when other branches go on past it
+    private void stopped(List<String> end, boolean main, String why) {
+        result.truncated++;
+        if (end != null) result.cut.add(new Cut(List.copyOf(end), why));
+        String note = why + ", truncating";
+        if (main) {
+            result.endedNaturally = false;
+            result.notes.add(note);
+        }
+        System.out.println("  " + note);
+    }
+
+    // a big gap between the score and the komi balance target means the isolation
+    // baseline missed part of the solution -- the game is no longer close
+    private void checkScoreDrift(KataAnalysisResult kar, int moveCount, GenResult result) {
+        if (scoreDriftNoted) return;
+        double drift = kar.blackScore() - iso.targetLead;
+        if (Math.abs(drift) > 15) {
+            String note = "WARNING: score drifted " + df.format(drift) + " from the komi target after move "
+                    + moveCount + " -- komi baseline likely missed the solution";
+            System.out.println(note);
+            result.notes.add(note);
+            scoreDriftNoted = true;
+        }
+    }
+
+    // warn if the stake stones are no longer settled the way the root solution expects.
+    // an isolation rebuilt from a record has no solved state to compare with
+    private void checkStakesHeld(KataAnalysisResult kar, int moveCount, GenResult result) {
+        if (iso.solvedKar == null) return;
+        int flipped = 0;
+        for (Point s : iso.stakes) {
+            double rootOwn = iso.solvedKar.ownership.get(s.x + s.y * 19);
+            double nowOwn = kar.ownership.get(s.x + s.y * 19);
+            if (rootOwn * nowOwn < 0 && Math.abs(nowOwn) > 0.3) {
+                flipped++;
+            }
+        }
+        if (flipped * 3 > iso.stakes.size() && !iso.stakes.isEmpty()) {
+            String note = "WARNING: " + flipped + "/" + iso.stakes.size()
+                    + " stake stones flipped after move " + moveCount;
+            System.out.println(note);
+            result.notes.add(note);
+        }
+    }
+}

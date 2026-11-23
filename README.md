@@ -92,3 +92,28 @@ Many problems need a little touching up in an SGF editor after this stage before
 
 
 
+
+# Redoing existing problems (validation)
+
+The `redo` command takes an existing, well crafted problem SGF, excises the correct (RIGHT) solution paths, regenerates the correct part of the solution tree from scratch with katago plus the human policy network, and scores it against the original human data. This measures how close automated path creation is to high quality human choices, especially where paths should end.
+
+```
+java -cp autoprob.jar autoprob.GoTool config.properties cmd=redo path=sample_problems/gp-721.sgf
+```
+
+Pass a directory as `path` to evaluate every problem in it and print a summary table (`sample_problems/` contains 20 validated goproblems.com life and death problems for this purpose). Add `csvout.path=results.csv` to record results for comparing tuning runs.
+
+How it works:
+
+1. The problem position is isolated: the rest of the board is filled with balanced static stones (see `BalancedFortress`) and komi is adjusted so that the life and death result decides the game, with the solver slightly ahead after correct play.
+2. The stones at stake are identified by comparing best play with the solver passing.
+3. The correct tree is generated turn by turn: at a solver turn every move that works goes in (each plausible move is played and evaluated, since a working move missing from the tree marks a correct answer wrong); at an opponent turn the most testing resistance goes in, but only while it still constitutes a real threat (measured by the ownership change if the move were ignored). When the opponent has no real threat left, that line ends.
+4. The main line (the first choice at every turn) is compared against every RIGHT path in the original: first move match, common prefix, and length difference. The whole tree is compared against the author's correct tree: working moves missing or extra, resistances missing or extra, and where lines end. A regenerated SGF with the generated tree grafted in (comment GENERATED) is written to `redo.output.dir` for eyeballing.
+
+The `redo.*` settings in config.properties control visits, threat thresholds, and ending behavior.
+
+Full details are in [docs/redo.md](docs/redo.md). Every run is recorded to `redo_runs/`, and generated trees can be reviewed in a local web page, next to the author's tree, and turned into a library of test cases for replay and tuning: see [docs/cases.md](docs/cases.md).
+
+The `missing-variations` command uses the same machinery to look for correct lines a problem lacks: moves that also solve it but that the problem would mark wrong. It checks a local SGF, given goproblems.com problems, or scans the site's standard life and death problems by id, remembering where it stopped, and shows the first one it finds with its line: see [docs/missing-variations.md](docs/missing-variations.md).
+
+Tip: wrap long batch runs in `caffeinate -i` so the machine cannot idle-sleep mid-run (a sleeping Mac freezes katago while wall clock timeouts keep counting, which looks exactly like an engine stall). `tools/kata_latency_bench.py` measures raw engine latency for your setup if runs seem slow.

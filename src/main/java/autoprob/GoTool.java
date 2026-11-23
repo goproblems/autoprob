@@ -13,6 +13,7 @@ import autoprob.problem.DifficultyEstimator;
 import autoprob.problem.SiteProblem;
 import autoprob.scenario.ScenarioNodeRecalculator;
 import autoprob.scenario.ScenarioTestSuite;
+import autoprob.validate.ProblemRedoer;
 
 import java.awt.Point;
 import java.io.File;
@@ -75,6 +76,38 @@ public class GoTool {
             runJosekiNodeCompleteCommand(props);
         } else if (command.equals("josekiprecalculate")) {
             new autoprob.analysis.JosekiPrecalculateCommand(props).run();
+        } else if (command.equals("redo")) {
+            runRedoCommand(props);
+        } else if (command.equals("cases")) {
+            new autoprob.validate.cases.CaseReplayer(props).run();
+        } else if (command.equals("cases-seed")) {
+            new autoprob.validate.cases.CaseSeeder(props).run();
+        } else if (command.equals("cases-export")) {
+            new autoprob.validate.cases.CaseExporter(props).run();
+        } else if (command.equals("cases-tune")) {
+            new autoprob.validate.cases.CaseTuner(props).run();
+        } else if (command.equals("review")) {
+            new autoprob.validate.review.ReviewServer(props).run();
+        } else if (command.equals("missing-variations")) {
+            new autoprob.validate.MissingVariationFinder(props).run();
+        } else if (command.equals("levels")) {
+            new autoprob.validate.LevelChecker(props).run();
+        } else if (command.equals("suggest")) {
+            new autoprob.validate.SuggestionSubmitter(props).run();
+        } else if (command.equals("crawl")) {
+            new autoprob.validate.Crawler(props).run();
+        } else if (command.equals("crawl-redraft")) {
+            new autoprob.validate.Crawler(props).redraft();
+        } else if (command.equals("crawl-review")) {
+            new autoprob.validate.CrawlReviewServer(props).run();
+        } else if (command.equals("crawl-submit")) {
+            new autoprob.validate.CrawlSubmitter(props).submit();
+        } else if (command.equals("crawl-sync")) {
+            new autoprob.validate.CrawlSubmitter(props).sync();
+        } else if (command.equals("line-ends")) {
+            new autoprob.validate.LineEndStudy(props).run();
+        } else if (command.equals("crawl-replay")) {
+            new autoprob.validate.CrawlReplay(props).run();
         } else {
             throw new RuntimeException("unknown command: " + command);
         }
@@ -119,6 +152,13 @@ public class GoTool {
     private void runJosekiNodeCompleteCommand(Properties props) throws Exception {
         System.out.println("Finding missing high-policy joseki nodes...");
         new JosekiNodeCompleter(props).run();
+    }
+
+    // regenerate the solution path of an existing problem and score it against the original
+    private void runRedoCommand(Properties props) throws Exception {
+        System.out.println("Running problem redo...");
+        ProblemRedoer redoer = new ProblemRedoer(props);
+        redoer.run();
     }
 
     private Node loadPassedSgf(Properties props) throws Exception {

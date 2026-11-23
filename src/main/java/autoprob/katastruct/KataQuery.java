@@ -60,6 +60,12 @@ public class KataQuery {
 	@Expose
 	public List<AllowMove> allowMoves = null;
 
+	// avoidMoves (list of dicts): moves the search may not explore for a player until a ply.
+	// katago takes either this or allowMoves, never both
+	@SerializedName("avoidMoves")
+	@Expose
+	public List<AllowMove> avoidMoves = null;
+
 	@SerializedName("focusMoves")
 	@Expose
 	public List<String> focusMoves = null;

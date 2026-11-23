@@ -1,0 +1,92 @@
+package autoprob.validate.cases;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Properties;
+import java.util.Set;
+
+import autoprob.validate.RunRecorder;
+
+// reads and writes the case library: one json file per problem in cases/ (or cases.dir).
+// files are written compactly (see CaseJson) with a stable decision order so git diffs
+// stay small. files in the older format, with an isolation in every case, read the same.
+public class CaseStore {
+    private final File dir;
+
+    public CaseStore(Properties props) {
+        this(new File(props.getProperty("cases.dir", "cases")));
+    }
+
+    public CaseStore(File dir) {
+        this.dir = dir;
+    }
+
+    public File getDir() {
+        return dir;
+    }
+
+    public CaseFile load(String problem) throws IOException {
+        File f = file(problem);
+        if (!f.exists()) return null;
+        return read(f);
+    }
+
+    private static CaseFile read(File f) throws IOException {
+        CaseFile cf = RunRecorder.GSON.fromJson(Files.readString(f.toPath()), CaseFile.class);
+        // a case keeps its own isolation only where it differs from the file's
+        for (DecisionCase c : cf.decisions) {
+            if (c.isolation == null) c.isolation = cf.isolation;
+        }
+        return cf;
+    }
+
+    public CaseFile loadOrCreate(String problem) throws IOException {
+        CaseFile cf = load(problem);
+        if (cf == null) {
+            cf = new CaseFile();
+            cf.problem = problem;
+        }
+        return cf;
+    }
+
+    // every case file, optionally only the named problems (comma separated)
+    public List<CaseFile> loadAll(String problemFilter) throws IOException {
+        Set<String> only = new HashSet<>();
+        if (problemFilter != null && !problemFilter.isBlank()) {
+            only.addAll(Arrays.asList(problemFilter.split(",")));
+        }
+        List<CaseFile> out = new ArrayList<>();
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".json"));
+        if (files == null) return out;
+        Arrays.sort(files, Comparator.comparing(File::getName));
+        for (File f : files) {
+            CaseFile cf = read(f);
+            if (only.isEmpty() || only.contains(cf.problem)) out.add(cf);
+        }
+        return out;
+    }
+
+    public void save(CaseFile cf) throws IOException {
+        // a problem with no cases and no accepted lines left needs no file
+        if (cf.decisions.isEmpty() && cf.acceptedLines.isEmpty()) {
+            Files.deleteIfExists(file(cf.problem).toPath());
+            return;
+        }
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IOException("cannot create case directory: " + dir);
+        }
+        cf.decisions.sort(Comparator.comparingInt((DecisionCase c) -> c.at.size()).thenComparing(DecisionCase::key));
+        // a case file holds a reviewer's work: never leave it half written
+        RunRecorder.writeAtomically(file(cf.problem), CaseJson.write(cf) + "\n");
+    }
+
+    private File file(String problem) {
+        return new File(dir, problem + ".json");
+    }
+}

@@ -1,0 +1,85 @@
+package autoprob.validate;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+// the numbers behind one candidate move in a decision. these come from the engine
+// (the expensive part) and are everything ChoiceRule needs to pick a move, so a
+// decision can be re-chosen offline under different settings.
+// optional fields are left null where they do not apply (gson omits nulls).
+public class CandidateFeatures {
+    public String move;   // with color, e.g. "W F1"
+    public String source; // katago, human or scan: how the candidate was found
+
+    // katago's view of the move at the decision position
+    public Double prior;
+    public Integer visits;
+    public Double scoreLead; // solver candidates only
+
+    // solver candidates only, when alternatives are evaluated: the position after the
+    // move analyzed on its own, so every plausible move gets a reliable verdict
+    public Double afterLead; // the solver's score lead after this move (solver's perspective)
+    // the life status after this move against the best move's: the ownership change of each
+    // real stone at the decision position, keyed by the stone with its color ("W S19"), from
+    // the solver's view (below 0: worse for the solver than after the best move), for the
+    // stones that moved more than 0.5. ChoiceRule counts a stone moving more than
+    // redo.status_threshold as changing fate. null where not measured (older records)
+    public Map<String, Double> statusDeltas;
+    // the move that takes a ko katago's line after this move then fights over (taking a ko
+    // again, or playing a ko threat), or null: a clean result comes ahead of it
+    public String koFight;
+    // whether the move itself takes a ko: a capture of one stone the opponent could take back.
+    // a clean result has no need of one (redo.solver_avoids_ko). null where not looked at
+    public Boolean takesKo;
+    // whose the move's point is once the best move is played: the ownership there after it,
+    // from the solver's view. near -1 the opponent keeps the point however the problem goes,
+    // so a move there takes no part in it (an outside peep, see redo.outside_owner). null
+    // where not measured (older records). for an opponent candidate, the ownership of its
+    // point before it is played, from the opponent's view: near -1 it plays inside what the
+    // solver has made its own
+    public Double pointOwner;
+
+    public Double humanPolicy;  // blended human policy for this move at the decision position
+
+    // opponent candidates only
+    public String answer;       // the solver's best answer after this move
+    public Double answerPrior;  // katago prior of that answer: how obvious it is to the engine
+    public Double humanAnswer;  // human policy of that answer: how obvious it is to a human
+    // human policy summed over every solver answer that holds (those answers counts), up
+    // to 1: how likely a human is to find some correct answer. a response several moves
+    // answer is easier than its best answer's policy suggests. older records lack it
+    public Double humanAnswers;
+    // katago's prior summed the same way, over every answer that holds: how sure the engine
+    // is that the solver finds one. two answers that both hold split the prior between them,
+    // so the best answer's alone makes such a move look harder than it is. older records lack it
+    public Double answerPriors;
+    // solver answers that hold the result after this move: katago moves its search took
+    // seriously (a tenth of the top move's visits) scoring within alt_score_tolerance of the
+    // best. one answer means the move tests the solver; many mean anything answers it
+    public Integer answers;
+    public Integer stakeDist;   // distance to the nearest stake stone
+    public Integer threat;      // stones changing fate if ignored, at the recording threshold
+    // ownership change per real stone between answering and ignoring this move
+    // (answered minus ignored). threat recounts these, so threshold changes can be
+    // scored offline.
+    public Map<String, Double> deltas;
+    public Boolean error;       // the threat analysis failed, threat counts as 0
+
+    public CandidateFeatures() {
+    }
+
+    public CandidateFeatures(String move, String source) {
+        this.move = move;
+        this.source = source;
+    }
+
+    public void putDelta(String gtp, double delta) {
+        if (deltas == null) deltas = new LinkedHashMap<>();
+        deltas.put(gtp, Math.round(delta * 1000.0) / 1000.0);
+    }
+
+    // just the point, e.g. "F1"
+    public String point() {
+        return move.substring(2);
+    }
+}

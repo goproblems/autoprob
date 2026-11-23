@@ -1,0 +1,433 @@
+package autoprob.validate;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import com.google.gson.JsonObject;
+
+import autoprob.go.parse.SgfEditTest;
+
+class CrawlerTest {
+    @TempDir
+    Path tmp;
+
+    // the site: problems by id, the newest the highest
+    static class FakeSite implements Crawler.Site {
+        final Map<Integer, JsonObject> problems = new HashMap<>();
+        // the problems read, in order
+        final List<Integer> reads = new ArrayList<>();
+
+        public int newestId() {
+            return problems.keySet().stream().max(Integer::compare).orElse(0);
+        }
+
+        public JsonObject problem(int id) {
+            reads.add(id);
+            return problems.get(id);
+        }
+
+        void add(int id, String genre, boolean standard, boolean sandbox, int open) {
+            JsonObject p = new JsonObject();
+            p.addProperty("id", id);
+            p.addProperty("genre", genre);
+            p.addProperty("isStandard", standard);
+            p.addProperty("alive", true);
+            p.addProperty("sandbox", sandbox);
+            p.addProperty("suggestionsOpenCount", open);
+            p.addProperty("sgf", SgfEditTest.GP62070);
+            JsonObject rank = new JsonObject();
+            rank.addProperty("value", 18);
+            rank.addProperty("unit", "kyu");
+            p.add("rank", rank);
+            problems.put(id, p);
+        }
+    }
+
+    // the finder: R19 missing in the problems listed, nothing in the others
+    static class FakeAnalyzer implements Crawler.Analyzer {
+        final List<String> judged = new ArrayList<>();
+        final List<String> headings = new ArrayList<>();
+        final List<String> finds = new ArrayList<>();
+        // what the finder's time left undone, for the problems it ran out on
+        final Map<String, String> unfinished = new HashMap<>();
+
+        public MissingVariationFinder.Outcome analyze(String name, String sgf, String difficulty, String heading) {
+            judged.add(name);
+            headings.add(heading);
+            MissingVariationFinder.Outcome o = new MissingVariationFinder.Outcome();
+            o.problem = name;
+            o.positions = 5;
+            o.result = "kill";
+            if (finds.contains(name)) {
+                o.findings.add(SuggestionDraftTest.r19());
+                o.finding = o.findings.get(0);
+                o.status = "found";
+            } else {
+                o.status = "clean";
+            }
+            o.unfinished = unfinished.get(name);
+            if (o.unfinished != null && o.status.equals("clean")) o.status = "unfinished";
+            return o;
+        }
+    }
+
+    Crawler crawler(String... settings) {
+        Properties props = new Properties();
+        props.setProperty("crawl.dir", tmp.toString());
+        for (String s : settings) props.setProperty(s.substring(0, s.indexOf('=')), s.substring(s.indexOf('=') + 1));
+        return new Crawler(props);
+    }
+
+    @Test
+    void newestFirstJudgingOnlyStandardLifeAndDeathAndWritingASuggestion() throws Exception {
+        FakeSite site = new FakeSite();
+        site.add(10, "life and death", true, false, 0);
+        site.add(9, "tesuji", true, false, 0);
+        site.add(8, "life and death", false, false, 0);
+        site.add(7, "life and death", true, true, 0);
+        site.add(6, "life and death", true, false, 1);
+        site.add(4, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        finder.finds.add("gp-4");
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-10", "gp-4"), finder.judged);
+        CrawlIndex index = CrawlIndex.load(tmp.resolve("problems.jsonl").toFile());
+        assertEquals("clean", index.get(10).status);
+        assertEquals("genre tesuji", index.get(9).reason);
+        assertEquals("deferred", index.get(8).status);
+        assertEquals("not marked standard yet", index.get(8).reason);
+        assertEquals("in the sandbox", index.get(7).reason);
+        assertEquals("deferred", index.get(6).status);
+        assertEquals("no such problem", index.get(5).reason);
+        assertEquals("found", index.get(4).status);
+        assertEquals("18 kyu", index.get(4).difficulty);
+        assertEquals(MissingVariationFinder.JUDGING_VERSION, index.get(4).version);
+        assertEquals("kill", index.get(4).result);
+        assertEquals("kill", index.get(10).result);
+        SuggestionDraft d = RunRecorder.GSON.fromJson(Files.readString(tmp.resolve("suggestions/gp-4.json")), SuggestionDraft.class);
+        assertEquals(4, d.problemId);
+        assertEquals(3, d.addedNodes);
+        assertTrue(Files.exists(tmp.resolve("findings/gp-4.json")));
+        assertTrue(Files.readString(tmp.resolve("sgf/gp-4.sgf")).startsWith(SgfEditTest.GP62070));
+        assertFalse(Files.exists(tmp.resolve("suggestions/gp-10.json")));
+    }
+
+    @Test
+    void aProblemTheFindersTimeRanOutOnKeepsWhatWasFoundAndIsUnfinishedWithNothing() throws Exception {
+        FakeSite site = new FakeSite();
+        site.add(10, "life and death", true, false, 0);
+        site.add(9, "life and death", true, false, 0);
+        site.add(8, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        finder.finds.add("gp-9");
+        String left = "the time limit of 60 min stopped it: 2 of 5 positions judged";
+        finder.unfinished.put("gp-10", left);
+        finder.unfinished.put("gp-9", left);
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-10", "gp-9", "gp-8"), finder.judged);
+        CrawlIndex index = CrawlIndex.load(tmp.resolve("problems.jsonl").toFile());
+        // nothing found in time: not clean, since the positions left may lack a move
+        assertEquals("unfinished", index.get(10).status);
+        assertEquals(left, index.get(10).reason);
+        assertEquals(MissingVariationFinder.JUDGING_VERSION, index.get(10).version);
+        // what was found in time stands
+        assertEquals("found", index.get(9).status);
+        assertTrue(index.get(9).reason.endsWith(" missing (1 position); " + left), index.get(9).reason);
+        assertEquals(left, index.get(9).unfinished);
+        // and its suggestion says so to the review
+        assertEquals(left, RunRecorder.GSON.fromJson(Files.readString(tmp.resolve("suggestions/gp-9.json")), SuggestionDraft.class).unfinished);
+        assertEquals("clean", index.get(8).status);
+        assertNull(index.get(8).unfinished);
+        assertEquals("crawled so far this run: 3 in 10 s (1 found, 1 unfinished, 1 clean)",
+                Crawler.progress(3, Map.of("unfinished", 1, "found", 1, "clean", 1), 10));
+        // a later run leaves an unfinished problem alone
+        finder.judged.clear();
+        crawler().crawl(site, finder);
+        assertEquals(List.of(), finder.judged);
+        // unless it is asked for, with more time: the version that judged it judges it again
+        finder.unfinished.clear();
+        crawler("crawl.recheck=unfinished").crawl(site, finder);
+        assertEquals(List.of("gp-10"), finder.judged);
+        assertEquals("clean", CrawlIndex.load(tmp.resolve("problems.jsonl").toFile()).get(10).status);
+    }
+
+    @Test
+    void eachProblemJudgedIsHeadedByWhatTheRunHasCrawledSoFar() throws Exception {
+        FakeSite site = new FakeSite();
+        site.add(10, "life and death", true, false, 0);
+        site.add(9, "tesuji", true, false, 0);
+        site.add(8, "life and death", true, false, 1);
+        site.add(6, "life and death", true, false, 0);
+        site.add(5, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        finder.finds.add("gp-6");
+        Crawler c = crawler();
+        c.clock = () -> 0;
+        c.crawl(site, finder);
+        // gp-7 is no problem on the site, skipped like the tesuji
+        assertEquals(List.of("crawled so far this run: 0 in 0 s",
+                "crawled so far this run: 4 in 0 s (1 clean, 1 deferred, 2 skipped)",
+                "crawled so far this run: 5 in 0 s (1 found, 1 clean, 1 deferred, 2 skipped)"), finder.headings);
+        // a later run counts from nothing again
+        site.add(11, "life and death", true, false, 0);
+        finder.headings.clear();
+        c = crawler();
+        c.clock = () -> 0;
+        c.crawl(site, finder);
+        assertEquals(List.of("crawled so far this run: 0 in 0 s"), finder.headings);
+        // and a long run says how long in hours
+        assertEquals("crawled so far this run: 290 in 26 h 5 min (3 found, 287 skipped)",
+                Crawler.progress(290, Map.of("skipped", 287, "found", 3), 26 * 3600 + 5 * 60 + 59));
+        assertEquals("47 min", Crawler.duration(47 * 60 + 30));
+    }
+
+    @Test
+    void aLaterRunJudgesOnlyWhatIsNewOrWaitedAndStopsWhenAsked() throws Exception {
+        FakeSite site = new FakeSite();
+        for (int id = 1; id <= 5; id++) site.add(id, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        crawler("crawl.max=2").crawl(site, finder);
+        assertEquals(List.of("gp-5", "gp-4"), finder.judged);
+        // two new problems on the site, and a stop: the new ones first, then on down
+        site.add(6, "life and death", true, false, 0);
+        site.add(7, "life and death", true, false, 0);
+        finder.judged.clear();
+        crawler("crawl.max=3").crawl(site, finder);
+        assertEquals(List.of("gp-7", "gp-6", "gp-3"), finder.judged);
+        finder.judged.clear();
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-2", "gp-1"), finder.judged);
+        finder.judged.clear();
+        crawler().crawl(site, finder);
+        assertEquals(List.of(), finder.judged);
+    }
+
+    @Test
+    void aNewProblemNotMarkedStandardYetIsReadAgainAndJudgedOnceItIs() throws Exception {
+        FakeSite site = new FakeSite();
+        site.add(3, "life and death", true, false, 0);
+        site.add(2, "life and death", false, false, 0);
+        site.add(1, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-3", "gp-1"), finder.judged);
+        File file = tmp.resolve("problems.jsonl").toFile();
+        assertEquals("deferred", CrawlIndex.load(file).get(2).status);
+        assertEquals("not marked standard yet", CrawlIndex.load(file).get(2).reason);
+        // the next run reads it from the site again and nothing else. it is as it was: nothing
+        // is judged and nothing written
+        String lines = Files.readString(file.toPath());
+        site.reads.clear();
+        finder.judged.clear();
+        crawler().crawl(site, finder);
+        assertEquals(List.of(2), site.reads);
+        assertEquals(List.of(), finder.judged);
+        assertEquals(lines, Files.readString(file.toPath()));
+        // the site marks it standard: the run after that judges it, and it is done
+        site.problems.get(2).addProperty("isStandard", true);
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-2"), finder.judged);
+        assertEquals("clean", CrawlIndex.load(file).get(2).status);
+        site.reads.clear();
+        crawler().crawl(site, finder);
+        assertEquals(List.of(), site.reads);
+    }
+
+    @Test
+    void aProblemAnEarlierCrawlSkippedAsNotStandardIsJudgedOnceItIs() throws Exception {
+        // lines as the crawl wrote them before it waited: gp-2 has been marked standard since
+        FakeSite site = new FakeSite();
+        site.add(2, "life and death", true, false, 0);
+        site.add(1, "life and death", false, false, 0);
+        String lines = "{\"id\":2,\"status\":\"skipped\",\"reason\":\"not marked standard\",\"attempts\":0}\n"
+                + "{\"id\":1,\"status\":\"skipped\",\"reason\":\"not marked standard\",\"attempts\":0}\n";
+        File file = tmp.resolve("problems.jsonl").toFile();
+        Files.writeString(file.toPath(), lines);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-2"), finder.judged);
+        assertEquals("clean", CrawlIndex.load(file).get(2).status);
+        // gp-1 waits on, with no new line
+        assertEquals("deferred", CrawlIndex.load(file).get(1).status);
+        assertEquals(3, Files.readAllLines(file.toPath()).size());
+    }
+
+    @Test
+    void aProblemNotStandardIsWaitedForOnlyWhileItIsNew() throws Exception {
+        long day = 86_400_000L, now = java.time.Instant.parse("2026-11-22T08:00:00Z").toEpochMilli();
+        FakeSite site = new FakeSite();
+        // gp-2 was made ten days ago, gp-1 a year ago
+        site.add(2, "life and death", false, false, 0);
+        site.add(1, "life and death", false, false, 0);
+        site.problems.get(2).addProperty("createdAt", "2026-11-12T02:55:05+00:00");
+        site.problems.get(1).addProperty("createdAt", "2025-11-12T02:55:05+00:00");
+        FakeAnalyzer finder = new FakeAnalyzer();
+        Crawler c = crawler();
+        c.clock = () -> now;
+        c.crawl(site, finder);
+        File file = tmp.resolve("problems.jsonl").toFile();
+        assertEquals("deferred", CrawlIndex.load(file).get(2).status);
+        assertEquals("skipped", CrawlIndex.load(file).get(1).status);
+        assertEquals("not marked standard in its first 180 days", CrawlIndex.load(file).get(1).reason);
+        // the old one is done with: the next run reads only the new one
+        site.reads.clear();
+        c = crawler();
+        c.clock = () -> now + day;
+        c.crawl(site, finder);
+        assertEquals(List.of(2), site.reads);
+        // half a year on it is still not standard, and is not waited for any longer
+        c = crawler();
+        c.clock = () -> now + 200 * day;
+        c.crawl(site, finder);
+        assertEquals("skipped", CrawlIndex.load(file).get(2).status);
+        assertEquals("not marked standard in its first 180 days", CrawlIndex.load(file).get(2).reason);
+        site.reads.clear();
+        c = crawler();
+        c.clock = () -> now + 201 * day;
+        c.crawl(site, finder);
+        assertEquals(List.of(), site.reads);
+        assertEquals(List.of(), finder.judged);
+        // crawl.wait_days says how long: with five, a problem ten days old is not waited for
+        site.add(3, "life and death", false, false, 0);
+        site.problems.get(3).addProperty("createdAt", "2026-11-12T02:55:05+00:00");
+        c = crawler("crawl.wait_days=5");
+        c.clock = () -> now;
+        c.crawl(site, finder);
+        assertEquals("not marked standard in its first 5 days", CrawlIndex.load(file).get(3).reason);
+    }
+
+    @Test
+    void whatReadingTheDeferredProblemsAgainCameTo() {
+        assertEquals("deferred problems read again: 34 can be judged now, 22 still deferred", Crawler.deferredLine(56, 34, 0, 0));
+        assertEquals("deferred problems read again: 0 can be judged now, 1 came to something else, 4 still deferred (2 of them could not be read)",
+                Crawler.deferredLine(5, 0, 1, 2));
+    }
+
+    @Test
+    void aProblemChangedOnTheSiteIsJudgedAgainFirst() throws Exception {
+        FakeSite site = new FakeSite();
+        for (int id = 1; id <= 3; id++) site.add(id, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        finder.finds.add("gp-2");
+        crawler("crawl.max=2").crawl(site, finder);
+        // its suggestion was reviewed, then the problem changed on the site
+        Files.createDirectories(tmp.resolve("approvals"));
+        Files.writeString(tmp.resolve("approvals/gp-2.json"), "{\"decision\":\"approved\"}");
+        CrawlIndex.load(tmp.resolve("problems.jsonl").toFile()).append(CrawlIndexTest.entry(2, "stale", null, 0));
+        finder.judged.clear();
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-2", "gp-1"), finder.judged);
+        // the review was of the old suggestion: it is kept aside, and the new one waits for one
+        assertFalse(Files.exists(tmp.resolve("approvals/gp-2.json")));
+        assertTrue(Files.exists(tmp.resolve("approvals/gp-2.old.json")));
+        assertEquals("found", CrawlIndex.load(tmp.resolve("problems.jsonl").toFile()).get(2).status);
+    }
+
+    @Test
+    void findingsNoSuggestionCanCarryAreKeptAndDraftedAgainLater() throws Exception {
+        FakeSite site = new FakeSite();
+        site.add(3, "life and death", true, false, 0);
+        site.add(2, "life and death", true, false, 0);
+        // the finder finds M9 at the start, a move the problem has as wrong, with no line on
+        // through its refutation: no suggestion can carry it
+        FakeAnalyzer finder = new FakeAnalyzer() {
+            @Override
+            public MissingVariationFinder.Outcome analyze(String name, String sgf, String difficulty, String heading) {
+                MissingVariationFinder.Outcome o = super.analyze(name, sgf, difficulty, heading);
+                if (name.equals("gp-3")) {
+                    o.findings.add(SuggestionDraftTest.finding(List.of(), List.of("B S16"), "B S15", List.of("B S15")));
+                    o.status = "found";
+                }
+                return o;
+            }
+        };
+        crawler().crawl(site, finder);
+        CrawlIndex index = CrawlIndex.load(tmp.resolve("problems.jsonl").toFile());
+        assertEquals("unsuggested", index.get(3).status);
+        assertTrue(index.get(3).reason.contains("on a wrong line"), index.get(3).reason);
+        assertFalse(Files.exists(tmp.resolve("suggestions/gp-3.json")));
+        // the drafting learns to go on past the refutation: its findings are drafted again, no
+        // engine needed
+        java.lang.reflect.Type type = new com.google.gson.reflect.TypeToken<List<MissingVariationFinder.Finding>>() {}.getType();
+        List<MissingVariationFinder.Finding> fs = RunRecorder.GSON.fromJson(Files.readString(tmp.resolve("findings/gp-3.json")), type);
+        fs.get(0).moves.get(0).lines.add(List.of("B S15", "W S16", "B R16"));
+        Files.writeString(tmp.resolve("findings/gp-3.json"), RunRecorder.GSON.toJson(fs));
+        finder.judged.clear();
+        crawler().redraft();
+        assertEquals(List.of(), finder.judged);
+        assertEquals("found", CrawlIndex.load(tmp.resolve("problems.jsonl").toFile()).get(3).status);
+        assertTrue(Files.exists(tmp.resolve("suggestions/gp-3.json")));
+    }
+
+    @Test
+    void judgingAgainLeavesNothingOfTheEarlierJudgingBehind() throws Exception {
+        FakeSite site = new FakeSite();
+        site.add(1, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        finder.finds.add("gp-1");
+        crawler().crawl(site, finder);
+        assertTrue(Files.exists(tmp.resolve("suggestions/gp-1.json")));
+        Files.createDirectories(tmp.resolve("approvals"));
+        Files.writeString(tmp.resolve("approvals/gp-1.json"), "{\"decision\":\"approved\"}");
+        // judged by an older version, which found what the current one does not
+        CrawlIndex.load(tmp.resolve("problems.jsonl").toFile()).append(CrawlIndexTest.entry(1, "found", MissingVariationFinder.JUDGING_VERSION - 1, 0));
+        finder.finds.clear();
+        crawler("crawl.recheck=found").crawl(site, finder);
+        assertEquals("clean", CrawlIndex.load(tmp.resolve("problems.jsonl").toFile()).get(1).status);
+        assertFalse(Files.exists(tmp.resolve("suggestions/gp-1.json")));
+        assertFalse(Files.exists(tmp.resolve("findings/gp-1.json")));
+        assertTrue(Files.exists(tmp.resolve("approvals/gp-1.old.json")));
+        // so a redraft has nothing to bring back
+        crawler().redraft();
+        assertFalse(Files.exists(tmp.resolve("suggestions/gp-1.json")));
+        assertEquals("clean", CrawlIndex.load(tmp.resolve("problems.jsonl").toFile()).get(1).status);
+    }
+
+    @Test
+    void onlyTheProblemsAskedForAreJudgedAgain() throws Exception {
+        FakeSite site = new FakeSite();
+        for (int id = 1; id <= 4; id++) site.add(id, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        finder.finds.add("gp-3");
+        crawler().crawl(site, finder);
+        // gp-3 judged already by this version, gp-1's suggestion sent: only gp-3 again, with
+        // nothing else looked at, and its review of the old draft kept aside
+        Files.createDirectories(tmp.resolve("submitted"));
+        Files.writeString(tmp.resolve("submitted/gp-1.json"), "{\"suggestionId\":1}");
+        Files.createDirectories(tmp.resolve("approvals"));
+        Files.writeString(tmp.resolve("approvals/gp-3.json"), "{\"decision\":\"approved\"}");
+        site.add(5, "life and death", true, false, 0);
+        finder.judged.clear();
+        crawler("crawl.only=3,1").crawl(site, finder);
+        assertEquals(List.of("gp-3"), finder.judged);
+        assertTrue(Files.exists(tmp.resolve("suggestions/gp-3.json")));
+        assertTrue(Files.exists(tmp.resolve("approvals/gp-3.old.json")));
+        assertFalse(CrawlIndex.load(tmp.resolve("problems.jsonl").toFile()).entries().stream().anyMatch(e -> e.id == 5));
+    }
+
+    @Test
+    void aProblemWhoseSuggestionWentToTheSiteIsLeftAlone() throws Exception {
+        FakeSite site = new FakeSite();
+        for (int id = 1; id <= 2; id++) site.add(id, "life and death", true, false, 0);
+        Files.createDirectories(tmp.resolve("submitted"));
+        Files.writeString(tmp.resolve("submitted/gp-2.json"), "{\"suggestionId\":1}");
+        FakeAnalyzer finder = new FakeAnalyzer();
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-1"), finder.judged);
+        assertTrue(new File(tmp.toFile(), "state.json").exists());
+    }
+}

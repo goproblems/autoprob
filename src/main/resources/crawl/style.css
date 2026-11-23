@@ -1,0 +1,150 @@
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --text: #22201c; --muted: #6b665d; --line: #dcd8cf;
+  --accent: #2f6fd6; --good: #2e8b57; --bad: #c0392b; --wood: #e3c27a; --grid: #5a4520;
+  --t-right: #65a30d; --t-wrong: #dc2626; --tree-bg: #f6f5f2; --t-black-edge: #000; --t-fade: .55;
+  --t-edit: #38bdf8; --t-edit-text: #0369a1; --t-sel: #fcd34d;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1a18; --panel: #24221f; --text: #ebe7df; --muted: #a39d92; --line: #3a3732;
+    --accent: #6ea3ff; --good: #5cc28a; --bad: #ef6b5e; --wood: #c9a65d; --grid: #3d2e12;
+    --t-right: #84cc16; --t-wrong: #f87171; --tree-bg: #34312c; --t-black-edge: #a39d92; --t-fade: .75;
+    --t-edit: #7dd3fc; --t-edit-text: #7dd3fc; --t-sel: #ca8a04;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+h1 { font-size: 17px; margin: 0; }
+h1 a { color: inherit; text-decoration: none; }
+h1 a:hover { text-decoration: underline; }
+.keys { margin-left: auto; color: var(--muted); font-size: 12px; }
+nav button { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 14px; padding: 3px 10px; margin-right: 4px; cursor: pointer; }
+nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+nav button span { opacity: .75; }
+main { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 50px); }
+aside { border-right: 1px solid var(--line); overflow-y: auto; max-height: calc(100vh - 50px); background: var(--panel); }
+.row { display: block; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--text); text-decoration: none; }
+.row small { display: block; color: var(--muted); }
+.row.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.row.approved b { color: var(--good); }
+.row.rejected b { color: var(--bad); }
+.row.sent b { color: var(--accent); }
+#item { padding: 16px 20px; overflow-y: auto; max-height: calc(100vh - 50px); }
+h2 { margin: 0 0 10px; font-size: 19px; }
+h2 small { color: var(--muted); font-weight: normal; font-size: 13px; }
+h2 a { color: var(--accent); }
+h2 .result { font-size: 13px; font-weight: 600; vertical-align: 2px; border: 1px solid var(--line); border-radius: 10px; padding: 1px 8px; margin-left: 4px; }
+h2 .result.old { font-weight: normal; color: var(--muted); border-style: dashed; }
+h3 { font-size: 14px; margin: 14px 0 6px; }
+.place, .confidence, .decide { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; }
+.legend { color: var(--muted); margin: 0 0 6px; }
+.key-new, .key-accepted { display: inline-block; width: 10px; height: 10px; margin: 0 4px 0 8px; vertical-align: -1px; }
+.key-new { border: 2px solid var(--accent); }
+.key-accepted { border-radius: 50%; background: var(--good); }
+.boards { display: flex; gap: 16px; flex-wrap: wrap; }
+figure { margin: 0; }
+figcaption { text-align: center; color: var(--muted); margin-top: 4px; }
+figcaption button { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 4px; cursor: pointer; }
+.step { display: grid; grid-template-columns: 1fr 9em 1fr; align-items: center; }
+.step button:first-child { justify-self: end; }
+.step button:last-child { justify-self: start; }
+figure.on .goban { outline: 2px solid var(--accent); outline-offset: 2px; }
+.goban .wood { fill: var(--wood); }
+.goban line { stroke: var(--grid); stroke-width: 1; }
+.goban .coord { font-size: 10px; fill: var(--grid); text-anchor: middle; }
+.goban .black { fill: #111; }
+.goban .white { fill: #fafafa; stroke: #333; stroke-width: 1; }
+.goban .mark-new { fill: none; stroke: var(--accent); stroke-width: 3; }
+.goban .mark-accepted { fill: var(--good); }
+.goban .mark-last { fill: none; stroke: #e0402f; stroke-width: 2.5; }
+.goban .label { font-size: 11px; text-anchor: middle; fill: #111; font-weight: 600; }
+.goban .label.on-black { fill: #fff; }
+.goban .next { cursor: pointer; }
+.goban .mark-next { fill: none; stroke-width: 3; }
+.goban .mark-next.right { stroke: var(--t-right); }
+.goban .mark-next.added, .goban .mark-next.changed { stroke: var(--accent); }
+.goban .mark-next.changed { stroke-dasharray: 4 3; }
+.goban .mark-next.wrong { stroke: var(--t-wrong); stroke-width: 1.2; }
+h3 .to-tree, h3 .wrong-toggle { margin-left: 10px; font-weight: normal; font-size: 12px; color: var(--muted); }
+h3 .to-tree { border: 1px solid var(--line); background: transparent; border-radius: 4px; padding: 1px 7px; cursor: pointer; }
+.legend .sw { display: inline-block; width: 16px; border-top: 3px solid; margin: 0 4px 0 8px; vertical-align: 3px; }
+.legend .sw.right { border-color: var(--t-right); }
+.legend .sw.added { border-color: var(--accent); }
+.legend .sw.changed { border-color: var(--accent); border-top-style: dashed; }
+.legend .sw.wrong { border-color: var(--t-wrong); opacity: .6; }
+.legend .sw.end { width: 10px; height: 10px; border: none; border-radius: 50%; background: var(--t-right); vertical-align: -1px; }
+.tree-wrap { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.tree { flex: 1 1 260px; min-width: 0; overflow: auto; background: var(--tree-bg); border: 1px solid var(--line); border-radius: 6px; }
+.tree svg { display: block; }
+.tree .tnode { cursor: pointer; }
+.tree .edge { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tree .edge.thick { stroke-width: 4.5; }
+.tree .edge.right { stroke: var(--t-right); }
+.tree .edge.added, .tree .edge.changed { stroke: var(--accent); }
+.tree .edge.changed { stroke-dasharray: 5 5; }
+.tree .edge.wrong { stroke: var(--t-wrong); stroke-opacity: .55; }
+.tree .halo.right { fill: var(--t-right); }
+.tree .halo.added { fill: var(--accent); }
+.tree .tsel { fill: var(--t-sel); }
+.tree .house { fill: var(--muted); }
+.tree .tpass { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.tree .tbg { fill: var(--tree-bg); }
+.tree .tstone { stroke-width: .8; }
+.tree .tstone.b { fill: #1f1f1f; stroke: var(--t-black-edge); }
+@media (prefers-color-scheme: dark) { .tree .tstone.b { stroke-width: 1.3; } }
+.tree .tstone.w { fill: #f2f2f2; stroke: #838383; }
+.tree .tstone.wrong { opacity: var(--t-fade); }
+.tree-note { color: var(--muted); margin: 6px 0 0; min-height: 1.45em; }
+.tree-note q { color: var(--text); }
+/* lines a limit of the finder stopped short */
+.cut-note { margin: 0 0 8px; padding: 4px 10px; border-left: 3px solid var(--t-sel); }
+.cut-note ul { margin: 2px 0 0; padding-left: 18px; }
+.cut-note small { color: var(--muted); }
+.confidence ul { margin: 0; padding-left: 18px; }
+.confidence li.for::marker { content: "+  "; color: var(--good); }
+.confidence li.against::marker { content: "−  "; color: var(--bad); }
+.decide label { display: block; color: var(--muted); margin-bottom: 8px; }
+.decide textarea, .decide input { display: block; width: 100%; margin-top: 4px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.buttons { display: flex; gap: 8px; }
+.buttons button { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; font: inherit; }
+.buttons .approve { background: var(--good); border-color: var(--good); color: #fff; }
+.buttons .reject { background: var(--bad); border-color: var(--bad); color: #fff; }
+.buttons button:disabled { opacity: .45; cursor: default; }
+.status, .error { color: var(--bad); }
+/* what a pressed button is doing, said under it while the server has it */
+.status.working { color: var(--muted); }
+/* a request is out: a bar runs along the top of the page and the cursor says so. it shows
+   after a moment only, so that a quick one does not flicker */
+#busy { position: fixed; top: 0; left: 0; right: 0; height: 3px; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .1s; z-index: 10; }
+#busy::after { content: ""; position: absolute; top: 0; bottom: 0; width: 30%; background: var(--accent); animation: busy 1.1s linear infinite; }
+body.busy #busy { opacity: 1; transition-delay: .15s; }
+body.busy, body.busy button, body.busy .row { cursor: progress; }
+@keyframes busy { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { #busy::after { animation: none; left: 0; width: 100%; opacity: .6; } }
+/* the suggestion shown while the one picked is on its way */
+#item.loading { opacity: .45; pointer-events: none; transition: opacity .1s .15s; }
+.empty { color: var(--muted); padding: 12px; }
+@media (max-width: 700px) {
+  main { grid-template-columns: 1fr; }
+  aside { max-height: 35vh; border-right: none; border-bottom: 1px solid var(--line); }
+}
+/* edits to the tree not saved yet are light blue */
+.legend .sw.edit { border-color: var(--t-edit); }
+h3 .edited { margin-left: 8px; font-weight: normal; font-size: 12px; color: var(--t-edit-text); }
+.tree .edge.fresh, .tree .edge.pend { stroke: var(--t-edit); stroke-opacity: 1; }
+.tree .edge.ghost { stroke: var(--t-edit); stroke-dasharray: 3 4; stroke-opacity: .8; }
+.tree .tstone.ghost { opacity: .35; }
+.tree .halo.pend { fill: var(--t-edit); }
+.tree .unhalo { fill: none; stroke: var(--t-edit); stroke-width: 2; stroke-dasharray: 3 2; }
+.goban .mark-next.fresh, .goban .mark-next.pend { stroke: var(--t-edit); }
+.goban .mark-next.ghost { stroke: var(--t-edit); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.goban.adding { cursor: crosshair; }
+.tree-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.tree-edit button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; font: inherit; font-size: 13px; }
+.tree-edit button:disabled { opacity: .45; cursor: default; }
+.tree-edit .copy { margin-right: 10px; }
+.tree-edit button.on { background: var(--t-edit); border-color: var(--t-edit); color: #0b2537; }
+.tree-edit .save:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tree-edit .ed-state { margin-left: auto; color: var(--t-edit-text); font-size: 13px; }
+.tree-edit .ed-msg { flex-basis: 100%; margin: 0; min-height: 1.45em; color: var(--muted); font-size: 13px; }

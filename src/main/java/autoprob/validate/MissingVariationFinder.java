@@ -55,6 +55,9 @@ import autoprob.katastruct.KataQuery;
 // sources: path=<sgf file or directory>, id=<goproblems ids, comma separated>, or neither
 // to scan the goproblems database by id from where the last scan stopped. problems from
 // the site are only checked when they are life and death and marked standard.
+//
+// a problem gets missing.max_minutes (60) and no longer. when its time is up the positions not
+// judged yet are left as they are, and the lines being generated end where they are (check).
 public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
@@ -64,6 +67,11 @@ public class MissingVariationFinder {
     static final int OUTSIDE = 1;
     // the least number of moves a found move's lines may run to (lineDepth)
     static final int LINE_MOVES = 7;
+    // what a line the problem's time stopped says of itself, first (missing.max_minutes)
+    static final String OUT_OF_TIME = "out of time";
+    // how much longer than its time a problem gets for the turn its lines were at when the time
+    // ran out, and for the checks of what those lines came to
+    static final int GRACE_MINUTES = 10;
 
     private final Properties props;
     private final ChoiceParams params;
@@ -80,6 +88,9 @@ public class MissingVariationFinder {
     private final double outsideOwner; // a living group's move whose point the opponent keeps past this is played outside
     private final boolean skipKo;
     private final boolean allPositions;
+    private final double maxMinutes; // the time one problem gets, 0 for no limit
+    // the time the problem in hand has to be done by, 0 for no limit
+    private long timeEnd;
     private KataBrain brain;
 
     // a position on the author's correct lines where the solver is to play, and the moves
@@ -109,6 +120,12 @@ public class MissingVariationFinder {
         int koSkipped; // of those, passed over because the author's line goes through a ko
         long seconds;
         String result; // what its correct lines come to where first judged: live, kill, ko or seki (result)
+        // when the problem's time ran out before it was judged to the end (missing.max_minutes),
+        // what that left undone; null when it was judged to the end
+        String unfinished;
+        // the counts behind it: the positions on the author's lines in all, the lines the time
+        // stopped where they were, and the moves found that it left unchecked
+        transient int inAll, linesStopped, movesLeft;
         Finding finding;
         // with missing.all_positions, the finding at every position that has one
         transient List<Finding> findings = new ArrayList<>();
@@ -212,6 +229,39 @@ public class MissingVariationFinder {
         // with all_positions (the crawl), a problem's every position is checked rather than
         // up to the first finding, and the caller writes the findings out
         this.allPositions = Boolean.parseBoolean(props.getProperty("missing.all_positions", "false"));
+        // a problem gets this long and no longer (adam: "I don't want to get stuck on one
+        // problem for 13 hours", cap it at an hour and end the branches where they are). most
+        // take minutes, but a few take many hours and are seldom worth them: of the 1765
+        // problems the crawl had judged by 2026-11-23, 63 took more than an hour, and they took
+        // 196 of its 426 hours (gp-62959: 13 hours for the 37 positions of a ko, and nothing
+        // missing; gp-60030: 46 hours for one uncertain move). 34 of those 63 had a find, of the
+        // 157 problems with one: an hour stops about one find in five short. 0 for no limit
+        this.maxMinutes = Double.parseDouble(props.getProperty("missing.max_minutes", "60"));
+    }
+
+    // the time a problem gets, as a run says it when it starts
+    String timeLimit() {
+        return maxMinutes > 0 ? "a problem gets up to " + minutes(maxMinutes) + " min (missing.max_minutes)" : "no time limit for a problem";
+    }
+
+    private boolean outOfTime() {
+        return timeEnd > 0 && System.currentTimeMillis() > timeEnd;
+    }
+
+    // "60", "0.5"
+    static String minutes(double minutes) {
+        return minutes == Math.rint(minutes) ? String.valueOf((long) minutes) : String.valueOf(minutes);
+    }
+
+    // what the problem's time left undone, as its outcome says it: how many of the positions
+    // on the author's lines were judged, how many lines ended where they were, and how many
+    // moves were found but not checked
+    static String unfinished(double minutes, int judged, int inAll, int linesStopped, int movesLeft) {
+        String limit = "the time limit of " + minutes(minutes) + " min stopped it";
+        if (inAll == 0) return limit + " before any position was judged";
+        return limit + ": " + judged + " of " + inAll + " position" + (inAll == 1 ? "" : "s") + " judged"
+                + (linesStopped == 0 ? "" : ", " + linesStopped + " line" + (linesStopped == 1 ? " ended where it was" : "s ended where they were"))
+                + (movesLeft == 0 ? "" : ", " + movesLeft + " move" + (movesLeft == 1 ? "" : "s") + " found but not checked");
     }
 
     // the engine, for a caller that checks problems itself (the crawl)
@@ -381,15 +431,41 @@ public class MissingVariationFinder {
         return check(name, sgf, difficulty, null);
     }
 
-    // heading: a line for the console above the problem's own, or null (the crawl's progress)
+    // heading: a line for the console above the problem's own, or null (the crawl's progress).
+    //
+    // the problem's time (missing.max_minutes) runs from here. once it is up katago takes no
+    // more queries (KataBrain.setDeadline), so whatever is being worked out stops at its next
+    // one, and what stands is what was done by then:
+    // - a position judged to the end keeps its finding, and the positions not judged are left;
+    // - a position half judged is dropped: its moves have no verdict to go by yet;
+    // - the lines being generated for a found move end where they are, each on its last solver
+    //   move, like the lines any limit of the generator stops, and the review says so. the turn
+    //   in hand then is finished and what the lines came to is still checked (GRACE_MINUTES),
+    //   since a move not checked is not suggested;
+    // - a move found whose lines are still to come goes in alone, its line ending on it, once
+    //   it has passed the checks a found move gets before its lines. one there is no time to
+    //   check either is not suggested.
+    // the outcome says what was left (unfinished), and with nothing found it is unfinished
+    // rather than clean: the positions never judged may lack a move
     Outcome check(String name, String sgf, String difficulty, String heading) {
         Outcome o = new Outcome();
         o.problem = name;
         long start = System.currentTimeMillis();
+        timeEnd = maxMinutes > 0 ? start + (long) (maxMinutes * 60_000) : 0;
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
+                brain.setDeadline(timeEnd);
                 o.finding = find(name, sgf, difficulty, heading, o);
-                if (o.status == null) o.status = o.finding != null ? "found" : "clean";
+                if (o.status == null) o.status = o.finding != null ? "found" : o.unfinished != null ? "unfinished" : "clean";
+                break;
+            } catch (KataBrain.OutOfTime e) {
+                // find keeps what was judged where the time runs out. it ran out somewhere
+                // else, before any position was judged (the isolation), and nothing is kept
+                o.finding = null;
+                o.findings.clear();
+                o.unfinished = unfinished(maxMinutes, 0, 0, 0, 0);
+                o.status = "unfinished";
+                System.out.println("  " + o.unfinished);
                 break;
             } catch (Exception e) {
                 e.printStackTrace();
@@ -409,12 +485,19 @@ public class MissingVariationFinder {
                 o.reason = null;
                 o.result = null;
                 o.findings.clear();
+                o.unfinished = null;
+                o.linesStopped = 0;
+                o.movesLeft = 0;
             }
         }
+        KataBrain engine = brain; // null once a stop has come in (stop)
+        if (engine != null) engine.setDeadline(0);
+        timeEnd = 0;
         o.seconds = (System.currentTimeMillis() - start) / 1000;
         System.out.println(name + ": " + o.status + (o.reason != null ? " (" + o.reason + ")" : "")
                 + ", " + o.positions + " position" + (o.positions == 1 ? "" : "s") + " checked"
-                + (o.koSkipped > 0 ? " (" + o.koSkipped + " not judged for a ko)" : "") + " in " + o.seconds + " s");
+                + (o.koSkipped > 0 ? " (" + o.koSkipped + " not judged for a ko)" : "") + " in " + o.seconds + " s"
+                + (o.unfinished != null ? "; " + o.unfinished : ""));
         return o;
     }
 
@@ -459,7 +542,15 @@ public class MissingVariationFinder {
         // what each of the problem's own moves came to where it was judged, for the positions
         // further down its line (lineLevel)
         Map<String, MoveClassifier.Level> reached = new HashMap<>();
-        for (Position pos : authorPositions(refs, IsolationRecord.colorLetter(iso.solverColor))) {
+        List<Position> positions = authorPositions(refs, IsolationRecord.colorLetter(iso.solverColor));
+        o.inAll = positions.size();
+        boolean timeUp = false;
+        for (Position pos : positions) {
+            // the problem's time is up (check): the positions not judged yet are left
+            if (outOfTime()) {
+                timeUp = true;
+                break;
+            }
             o.positions++;
             if (skipKo) {
                 Node at;
@@ -475,7 +566,18 @@ public class MissingVariationFinder {
                     continue;
                 }
             }
-            Finding f = findAt(name, sgf, root, own, embedded, judging, pos, reached, o);
+            Finding f;
+            try {
+                f = findAt(name, sgf, root, own, embedded, judging, pos, reached, o);
+            } catch (KataBrain.OutOfTime e) {
+                // out of time in the middle of judging the position: its moves have no verdict
+                // to go by yet, so nothing of it is kept
+                o.positions--;
+                timeUp = true;
+                System.out.println("  " + (pos.at().isEmpty() ? "at the start" : "after " + String.join(" ", pos.at()))
+                        + ": out of time before it was judged to the end, so nothing of it is kept");
+                break;
+            }
             if ("skipped".equals(o.status)) return null; // the start is read differently from the author
             if (f != null) {
                 f.difficulty = difficulty;
@@ -488,10 +590,20 @@ public class MissingVariationFinder {
                 } catch (Exception e) {
                     System.out.println("could not add the finding to the review run: " + e.getMessage());
                 }
+                timeLeft(o, false);
                 return f;
             }
         }
+        timeLeft(o, timeUp);
         return o.findings.isEmpty() ? null : o.findings.get(0);
+    }
+
+    // what the problem's time left undone goes with the outcome, and is said. positionsLeft:
+    // the time ran out with positions still to judge
+    private void timeLeft(Outcome o, boolean positionsLeft) {
+        if (!positionsLeft && o.linesStopped == 0 && o.movesLeft == 0) return;
+        o.unfinished = unfinished(maxMinutes, o.positions, o.inAll, o.linesStopped, o.movesLeft);
+        System.out.println("  " + o.unfinished);
     }
 
     // where the problem disagrees with what the position allows at one position, or null
@@ -737,64 +849,106 @@ public class MissingVariationFinder {
         for (MoveClassifier.Verdict v : verdicts.values()) if (v.level == top) working.add(v.move);
         RawBoard raw = new RawBoard(own, board, pos, iso, best == MoveClassifier.Level.CLEAN ? rawGap : rawGapKo,
                 best == MoveClassifier.Level.KO ? rawScoreGapKo : 0);
-        for (MoveClassifier.Verdict v : missing) {
-            String worse = best == MoveClassifier.Level.KO ? worseKo(j, node, pos, verdicts, v) : null;
-            if (worse == null && best == MoveClassifier.Level.KO) worse = leavesKo(node, pos, verdicts, v);
-            if (worse != null) {
-                System.out.println("  " + where + ": " + pt(v.move) + " " + worse + ", so it is not suggested");
-                continue;
+        // whether the problem's time ran out here on moves that could not even be checked
+        boolean timeUpHere = false;
+        for (int i = 0; i < missing.size(); i++) {
+            MoveClassifier.Verdict v = missing.get(i);
+            // once the problem's time is up (check) no lines are generated any more. a move
+            // found is still checked, a little past the time (GRACE_MINUTES), and goes in
+            // alone, its line ending on it and saying so: a move that works is not left out
+            // for a limit (adam, 2026-10-30), it is cut short and the review says so
+            boolean late = outOfTime();
+            try {
+                if (late) brain.setDeadline(timeEnd + GRACE_MINUTES * 60_000L);
+                String worse = best == MoveClassifier.Level.KO ? worseKo(j, node, pos, verdicts, v) : null;
+                if (worse == null && best == MoveClassifier.Level.KO) worse = leavesKo(node, pos, verdicts, v);
+                if (worse != null) {
+                    System.out.println("  " + where + ": " + pt(v.move) + " " + worse + ", so it is not suggested");
+                    continue;
+                }
+                FoundMove m = new FoundMove();
+                m.move = v.move;
+                m.level = v.level;
+                m.line = withoutExchanges(v.line, iso);
+                CandidateFeatures c = rec.candidate(v.move);
+                if (c != null) {
+                    m.source = c.source;
+                    m.prior = c.prior;
+                    m.visits = c.visits;
+                    m.humanPolicy = c.humanPolicy;
+                    m.stakeDist = c.stakeDist;
+                } else if (fromAuthor.contains(v.move)) {
+                    m.source = "author";
+                }
+                m.inFileAsWrong = inFile.contains(v.move);
+                // where the move is played, and the raw board, before the lines, which they do not
+                // need and which take the longest
+                String not = playedOutside(j, node, rec, v.move);
+                if (not == null) not = raw.worse(m);
+                if (not != null) {
+                    System.out.println("  " + where + ": " + pt(v.move) + " " + not + ", so it is not suggested");
+                    continue;
+                }
+                boolean clean = best == MoveClassifier.Level.CLEAN;
+                List<SolutionPathGenerator.Refuted> refuted = new ArrayList<>();
+                if (late) {
+                    System.out.println("  " + where + ": " + pt(v.move) + " reaches " + level(best) + " too, but the problem's time is up: it goes in alone");
+                    m.lines.add(List.of(v.move));
+                    m.cut.add(new Cut(List.of(v.move), OUT_OF_TIME + ": the problem's " + minutes(maxMinutes)
+                            + " min were up before its line was generated"));
+                } else {
+                    System.out.println("  " + where + ": " + pt(v.move) + " reaches " + level(best) + " too, generating its line");
+                    // the lines get what is left of the problem's time and end where they are when
+                    // it is up (linesFrom). the turn in hand then is finished, and what the lines
+                    // came to is still checked, since a move not checked is not suggested: those
+                    // get a little longer than the problem's time
+                    if (timeEnd > 0) brain.setDeadline(timeEnd + GRACE_MINUTES * 60_000L);
+                    // through each of the problem's own answers to it, wherever the line runs on its tree
+                    m.lines.addAll(linesFrom(iso, root, node, pos.at(), List.of(), v.move, pos.correct(), lineDepth(pos), clean,
+                            best == MoveClassifier.Level.KO ? pos.lines() : List.of(), m.decisions, m.cut, refuted));
+                    for (SolutionPathGenerator.Refuted r : refuted) {
+                        for (String move : r.moves()) m.left.add(String.join(" ", r.at()) + " " + move);
+                    }
+                }
+                // the lines go through the solver's other moves that work along the way, and one of
+                // those with a line that fails a check is cut, the found move staying
+                Set<List<String>> others = otherMoves(pos, m.decisions);
+                not = onlyThroughRefuted(refuted);
+                if (not == null) not = insertedExchange(iso, node, m.lines.isEmpty() ? List.of() : m.lines.get(0), working);
+                if (not == null) not = check(where, m.lines, others, l -> leaksOut(root, List.of(l)));
+                if (not == null) not = check(where, m.lines, others, l -> lineFallsShort(j, pos, v, l, m.cut));
+                if (not == null && clean) not = check(where, m.lines, others, l -> takesKoOnLine(node, l));
+                if (not != null) {
+                    System.out.println("  " + where + ": " + pt(v.move) + " " + not + ", so it is not suggested");
+                    continue;
+                }
+                m.cut.removeIf(stop -> !m.lines.contains(stop.line));
+                for (Cut stop : m.cut) {
+                    System.out.println("  " + where + ": " + pt(v.move) + "'s line " + String.join(" ", stop.line) + " stops short (" + stop.why + ")");
+                    if (stop.why.startsWith(OUT_OF_TIME)) o.linesStopped++;
+                }
+                m.confidence = confidence(j, root, node, pos, rec, best, verdicts, v, m.lines, true,
+                        best == MoveClassifier.Level.CLEAN ? m.rawAuthor : null);
+                f.moves.add(m);
+            } catch (KataBrain.OutOfTime e) {
+                // the time ran out in the middle of the move's checks or lines: it is taken
+                // again, as a move the time is up for
+                if (!late) {
+                    i--;
+                    continue;
+                }
+                // past the time and what its checks were given on top: a move not checked is
+                // not suggested, and neither are the ones after it
+                List<String> rest = missing.subList(i, missing.size()).stream().map(x -> pt(x.move)).toList();
+                System.out.println("  " + where + ": out of time, so " + String.join(" and ", rest)
+                        + (rest.size() == 1 ? " is" : " are") + " not checked, and not suggested");
+                o.movesLeft += rest.size();
+                timeUpHere = true;
+                break;
+            } finally {
+                // only a found move's checks and lines run past the problem's time
+                brain.setDeadline(timeEnd);
             }
-            FoundMove m = new FoundMove();
-            m.move = v.move;
-            m.level = v.level;
-            m.line = withoutExchanges(v.line, iso);
-            CandidateFeatures c = rec.candidate(v.move);
-            if (c != null) {
-                m.source = c.source;
-                m.prior = c.prior;
-                m.visits = c.visits;
-                m.humanPolicy = c.humanPolicy;
-                m.stakeDist = c.stakeDist;
-            } else if (fromAuthor.contains(v.move)) {
-                m.source = "author";
-            }
-            m.inFileAsWrong = inFile.contains(v.move);
-            // where the move is played, and the raw board, before the lines, which they do not
-            // need and which take the longest
-            String not = playedOutside(j, node, rec, v.move);
-            if (not == null) not = raw.worse(m);
-            if (not != null) {
-                System.out.println("  " + where + ": " + pt(v.move) + " " + not + ", so it is not suggested");
-                continue;
-            }
-            System.out.println("  " + where + ": " + pt(v.move) + " reaches " + level(best) + " too, generating its line");
-            // through each of the problem's own answers to it, wherever the line runs on its tree
-            boolean clean = best == MoveClassifier.Level.CLEAN;
-            List<SolutionPathGenerator.Refuted> refuted = new ArrayList<>();
-            m.lines.addAll(linesFrom(iso, root, node, pos.at(), List.of(), v.move, pos.correct(), lineDepth(pos), clean,
-                    best == MoveClassifier.Level.KO ? pos.lines() : List.of(), m.decisions, m.cut, refuted));
-            for (SolutionPathGenerator.Refuted r : refuted) {
-                for (String move : r.moves()) m.left.add(String.join(" ", r.at()) + " " + move);
-            }
-            // the lines go through the solver's other moves that work along the way, and one of
-            // those with a line that fails a check is cut, the found move staying
-            Set<List<String>> others = otherMoves(pos, m.decisions);
-            not = onlyThroughRefuted(refuted);
-            if (not == null) not = insertedExchange(iso, node, m.lines.isEmpty() ? List.of() : m.lines.get(0), working);
-            if (not == null) not = check(where, m.lines, others, l -> leaksOut(root, List.of(l)));
-            if (not == null) not = check(where, m.lines, others, l -> lineFallsShort(j, pos, v, l, m.cut));
-            if (not == null && clean) not = check(where, m.lines, others, l -> takesKoOnLine(node, l));
-            if (not != null) {
-                System.out.println("  " + where + ": " + pt(v.move) + " " + not + ", so it is not suggested");
-                continue;
-            }
-            m.cut.removeIf(stop -> !m.lines.contains(stop.line));
-            for (Cut stop : m.cut) {
-                System.out.println("  " + where + ": " + pt(v.move) + "'s line " + String.join(" ", stop.line) + " stops short (" + stop.why + ")");
-            }
-            m.confidence = confidence(j, root, node, pos, rec, best, verdicts, v, m.lines, true,
-                    best == MoveClassifier.Level.CLEAN ? m.rawAuthor : null);
-            f.moves.add(m);
         }
         for (MoveClassifier.Verdict v : wrong) {
             WrongMove w = new WrongMove();
@@ -806,7 +960,7 @@ public class MissingVariationFinder {
             f.wrong.add(w);
         }
         if (f.moves.isEmpty() && f.wrong.isEmpty()) {
-            nothingMissing(where, best, pos);
+            if (!timeUpHere) nothingMissing(where, best, pos);
             return null;
         }
         if (!allPositions) {
@@ -1176,7 +1330,6 @@ public class MissingVariationFinder {
         // numbers go with the move
         String worse(FoundMove m) throws Exception {
             if (!looked) {
-                looked = true;
                 for (String a : pos.correct()) {
                     Raw r = rawLook(brain, own, board, plus(pos.at(), a), iso, rawVisits);
                     if (r == null) continue;
@@ -1186,6 +1339,8 @@ public class MissingVariationFinder {
                     }
                     if (bestScore == null || r.score() > bestScore) bestScore = r.score();
                 }
+                // only now: a look the problem's time cut short is taken again (findAt)
+                looked = true;
             }
             Raw mine = rawLook(brain, own, board, plus(pos.at(), m.move), iso, rawVisits);
             m.raw = mine == null ? null : mine.owned();
@@ -1293,6 +1448,8 @@ public class MissingVariationFinder {
     // it stays, its note saying what its end came to
     private static String lineFallsShort(Judging j, Position pos, MoveClassifier.Verdict v, List<String> line, List<Cut> cut)
             throws Exception {
+        // a line the problem's time stopped is not walked out either: the time is up
+        for (Cut stop : cut) if (stop.line.equals(line) && stop.why.startsWith(OUT_OF_TIME)) return null;
         List<String> full = new ArrayList<>(pos.at());
         full.addAll(line);
         MoveClassifier.Level reached = j.quick().levelAfter(full);
@@ -1595,6 +1752,9 @@ public class MissingVariationFinder {
         start.addAll(moves);
         generator.setOwnAnswers(ownAnswers(root, start));
         generator.setAuthorSpots(authorSpots(iso, root));
+        // the problem's time (check): once it is up the tree goes no deeper, and its lines end
+        // where they are
+        if (timeEnd > 0) generator.setDeadline(timeEnd, OUT_OF_TIME + ": the problem's " + minutes(maxMinutes) + " min were up");
         SolutionPathGenerator.GenResult gen = generator.generate();
         refuted.addAll(gen.refuted);
         for (DecisionRecord d : gen.decisions) {
@@ -1975,6 +2135,7 @@ public class MissingVariationFinder {
         row.put("problem", o.problem);
         row.put("status", o.status);
         if (o.reason != null) row.put("reason", o.reason);
+        if (o.unfinished != null) row.put("unfinished", o.unfinished);
         row.put("positions", o.positions);
         if (o.koSkipped > 0) row.put("koSkipped", o.koSkipped);
         if (o.result != null) row.put("result", o.result);

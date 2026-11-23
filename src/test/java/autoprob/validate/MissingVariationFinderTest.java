@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.awt.Point;
 import java.util.Collection;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -24,6 +25,30 @@ class MissingVariationFinderTest {
     private static final String SGF = "(;SZ[19]AB[dd]AW[ee]"
             + "(;B[aa](;W[bb];B[cc]C[RIGHT])(;W[ba];B[ab]C[RIGHT]))"
             + "(;B[ca]C[WRONG]))";
+
+    @Test
+    void aProblemGetsAnHourUnlessToldOtherwise() {
+        assertEquals("a problem gets up to 60 min (missing.max_minutes)", new MissingVariationFinder(new Properties()).timeLimit());
+        Properties props = new Properties();
+        props.setProperty("missing.max_minutes", "0");
+        assertEquals("no time limit for a problem", new MissingVariationFinder(props).timeLimit());
+        props.setProperty("missing.max_minutes", "2.5");
+        assertEquals("a problem gets up to 2.5 min (missing.max_minutes)", new MissingVariationFinder(props).timeLimit());
+    }
+
+    @Test
+    void whatTheTimeLimitLeftUndoneIsSaidInCounts() {
+        assertEquals("the time limit of 60 min stopped it: 12 of 37 positions judged",
+                MissingVariationFinder.unfinished(60, 12, 37, 0, 0));
+        assertEquals("the time limit of 60 min stopped it: 1 of 1 position judged, 1 line ended where it was",
+                MissingVariationFinder.unfinished(60, 1, 1, 1, 0));
+        assertEquals("the time limit of 0.5 min stopped it: 2 of 5 positions judged, 3 lines ended where they were, 2 moves found but not checked",
+                MissingVariationFinder.unfinished(0.5, 2, 5, 3, 2));
+        assertEquals("the time limit of 60 min stopped it: 0 of 4 positions judged, 1 move found but not checked",
+                MissingVariationFinder.unfinished(60, 0, 4, 0, 1));
+        assertEquals("the time limit of 60 min stopped it before any position was judged",
+                MissingVariationFinder.unfinished(60, 0, 0, 0, 0));
+    }
 
     @Test
     void solverPositionsOnTheCorrectLinesRootFirst() throws Exception {

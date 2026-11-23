@@ -2,6 +2,7 @@ package autoprob.validate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
@@ -61,6 +62,8 @@ class CrawlerTest {
         final List<String> judged = new ArrayList<>();
         final List<String> headings = new ArrayList<>();
         final List<String> finds = new ArrayList<>();
+        // what the finder's time left undone, for the problems it ran out on
+        final Map<String, String> unfinished = new HashMap<>();
 
         public MissingVariationFinder.Outcome analyze(String name, String sgf, String difficulty, String heading) {
             judged.add(name);
@@ -76,6 +79,8 @@ class CrawlerTest {
             } else {
                 o.status = "clean";
             }
+            o.unfinished = unfinished.get(name);
+            if (o.unfinished != null && o.status.equals("clean")) o.status = "unfinished";
             return o;
         }
     }
@@ -119,6 +124,45 @@ class CrawlerTest {
         assertTrue(Files.exists(tmp.resolve("findings/gp-4.json")));
         assertTrue(Files.readString(tmp.resolve("sgf/gp-4.sgf")).startsWith(SgfEditTest.GP62070));
         assertFalse(Files.exists(tmp.resolve("suggestions/gp-10.json")));
+    }
+
+    @Test
+    void aProblemTheFindersTimeRanOutOnKeepsWhatWasFoundAndIsUnfinishedWithNothing() throws Exception {
+        FakeSite site = new FakeSite();
+        site.add(10, "life and death", true, false, 0);
+        site.add(9, "life and death", true, false, 0);
+        site.add(8, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        finder.finds.add("gp-9");
+        String left = "the time limit of 60 min stopped it: 2 of 5 positions judged";
+        finder.unfinished.put("gp-10", left);
+        finder.unfinished.put("gp-9", left);
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-10", "gp-9", "gp-8"), finder.judged);
+        CrawlIndex index = CrawlIndex.load(tmp.resolve("problems.jsonl").toFile());
+        // nothing found in time: not clean, since the positions left may lack a move
+        assertEquals("unfinished", index.get(10).status);
+        assertEquals(left, index.get(10).reason);
+        assertEquals(MissingVariationFinder.JUDGING_VERSION, index.get(10).version);
+        // what was found in time stands
+        assertEquals("found", index.get(9).status);
+        assertTrue(index.get(9).reason.endsWith(" missing (1 position); " + left), index.get(9).reason);
+        assertEquals(left, index.get(9).unfinished);
+        // and its suggestion says so to the review
+        assertEquals(left, RunRecorder.GSON.fromJson(Files.readString(tmp.resolve("suggestions/gp-9.json")), SuggestionDraft.class).unfinished);
+        assertEquals("clean", index.get(8).status);
+        assertNull(index.get(8).unfinished);
+        assertEquals("crawled so far this run: 3 in 10 s (1 found, 1 unfinished, 1 clean)",
+                Crawler.progress(3, Map.of("unfinished", 1, "found", 1, "clean", 1), 10));
+        // a later run leaves an unfinished problem alone
+        finder.judged.clear();
+        crawler().crawl(site, finder);
+        assertEquals(List.of(), finder.judged);
+        // unless it is asked for, with more time: the version that judged it judges it again
+        finder.unfinished.clear();
+        crawler("crawl.recheck=unfinished").crawl(site, finder);
+        assertEquals(List.of("gp-10"), finder.judged);
+        assertEquals("clean", CrawlIndex.load(tmp.resolve("problems.jsonl").toFile()).get(10).status);
     }
 
     @Test

@@ -61,6 +61,16 @@ class CrawlIndexTest {
     }
 
     @Test
+    void anUnfinishedProblemIsDoneUntilItIsAskedForWhateverJudgedIt() throws Exception {
+        CrawlIndex index = CrawlIndex.load(tmp.resolve("problems.jsonl").toFile());
+        index.append(entry(1, "unfinished", 3, 0));
+        assertTrue(index.done(1, 2, Set.of(), 3));
+        assertTrue(index.done(1, 2, Set.of("found"), 4));
+        // it wants more time, not a newer judging: the version that judged it judges it again
+        assertFalse(index.done(1, 2, Set.of("unfinished"), 3));
+    }
+
+    @Test
     void aSkipAsNotStandardFromBeforeTheCrawlWaitedIsReadAsDeferred() throws Exception {
         // the crawl skipped gp-62866 for good on 2026-10-27, a month after it was made, and the
         // site marked it standard within the next four weeks

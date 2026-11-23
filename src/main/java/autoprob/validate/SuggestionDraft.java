@@ -50,6 +50,9 @@ public class SuggestionDraft {
     public List<Place> places = new ArrayList<>();
     public int version;   // the judging version the findings came from
     public String created;
+    // when the finder's time ran out on the problem (missing.max_minutes): what that left
+    // undone, for the review, since the suggestion may then be less than the whole
+    public String unfinished;
 
     // the suggestion the findings make on the problem's sgf as the site has it, or null when
     // they have no missing move the problem lacks yet
@@ -189,6 +192,7 @@ public class SuggestionDraft {
         d.suggestedSgf = sgf;
         d.version = version;
         d.created = created;
+        d.unfinished = unfinished;
         SgfEdit was = SgfEdit.parse(originalSgf);
         List<List<String>> lines = new ArrayList<>();
         List<Integer> firsts = new ArrayList<>();

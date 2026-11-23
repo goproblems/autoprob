@@ -48,10 +48,17 @@ import com.google.gson.JsonObject;
 // it is, with nothing written and only the count said. a problem still not standard
 // crawl.wait_days (180) after it was made is skipped for good.
 //
+// a problem gets an hour (missing.max_minutes) and no longer: the finder stops there, and what
+// it found by then stands. one with nothing found by then is unfinished, not clean, since the
+// positions the finder never came to may lack a move (unfinished).
+//
+// what a run prints is kept in logs/ as well, a file a run, each line with its time (RunLog;
+// crawl.log=false for none).
+//
 // the folder: problems.jsonl; sgf/gp-<id>.sgf, the problem as the site had it;
 // findings/gp-<id>.json, the finder's findings; suggestions/gp-<id>.json (SuggestionDraft);
-// state.json, counts for a look; lock, so two crawls do not share a folder (katago needs the
-// memory)
+// state.json, counts for a look; logs/<start>.log, what each run printed; lock, so two crawls
+// do not share a folder (katago needs the memory)
 public class Crawler {
     // the site and the finder as a run sees them, so the crawl can be tested without either
     interface Site {
@@ -83,6 +90,7 @@ public class Crawler {
     private final Set<String> recheck;
     private final List<Integer> only;
     private final boolean includeSandbox;
+    private final boolean logging;
     // the time, for how long a run has gone and crawl.hours: a test sets its own
     LongSupplier clock = System::currentTimeMillis;
 
@@ -102,6 +110,8 @@ public class Crawler {
         this.only = Arrays.stream(props.getProperty("crawl.only", "").split(","))
                 .map(String::trim).filter(s -> !s.isEmpty()).map(Integer::parseInt).toList();
         this.includeSandbox = Boolean.parseBoolean(props.getProperty("crawl.include_sandbox", "false"));
+        // what the run prints is kept in logs/ as well (RunLog)
+        this.logging = Boolean.parseBoolean(props.getProperty("crawl.log", "true"));
     }
 
     public void run() throws Exception {
@@ -114,12 +124,14 @@ public class Crawler {
             } catch (IOException e) {
                 System.out.println("cannot lock " + dir + " (" + e.getMessage() + "); make sure no other crawl uses it");
             }
+            RunLog log = openLog();
             Properties finderProps = new Properties();
             finderProps.putAll(props);
             finderProps.setProperty("missing.all_positions", "true");
             finderProps.setProperty("missing.dir", new File(dir, "findings").getPath());
             MissingVariationFinder finder = new MissingVariationFinder(finderProps);
             finder.start();
+            System.out.println("judging version " + MissingVariationFinder.JUDGING_VERSION + "; " + finder.timeLimit());
             // a stop with ctrl-c still stops katago
             Thread hook = new Thread(finder::stop);
             Runtime.getRuntime().addShutdownHook(hook);
@@ -143,6 +155,24 @@ public class Crawler {
                 }
                 if (lock != null) lock.release();
             }
+            // a run that ends in order closes its log. one that fails leaves it open, so that
+            // what it says last is in it
+            if (log != null) log.close();
+        }
+    }
+
+    // the run's log: what it prints, kept in logs/<start>.log with the time on each line. null
+    // with crawl.log=false, or when the file cannot be made, which does not stop the run
+    private RunLog openLog() {
+        if (!logging) return null;
+        File file = RunLog.file(dir, LocalDateTime.now());
+        try {
+            RunLog log = RunLog.open(file);
+            System.out.println("what this run prints is kept in " + file + ", each line with its time");
+            return log;
+        } catch (IOException e) {
+            System.out.println("cannot keep this run's log in " + file + " (" + e.getMessage() + "); the run goes on without it");
+            return null;
         }
     }
 
@@ -273,7 +303,7 @@ public class Crawler {
     // how long, and what they came to, the finds first
     static String progress(int crawled, Map<String, Integer> counts, long seconds) {
         List<String> parts = new ArrayList<>();
-        for (String s : List.of("found", "unsuggested", "clean", "deferred", "skipped", "error")) {
+        for (String s : List.of("found", "unsuggested", "unfinished", "clean", "deferred", "skipped", "error")) {
             if (counts.containsKey(s)) parts.add(counts.get(s) + " " + s);
         }
         return "crawled so far this run: " + crawled + " in " + duration(seconds)
@@ -316,10 +346,24 @@ public class Crawler {
         if ("error".equals(o.status)) return error(e, o.reason);
         e.version = MissingVariationFinder.JUDGING_VERSION;
         if ("skipped".equals(o.status)) return status(e, "skipped", o.reason);
+        e.unfinished = o.unfinished;
         List<MissingVariationFinder.Finding> findings = !o.findings.isEmpty() ? o.findings
                 : o.finding != null ? List.of(o.finding) : List.of();
         if (!findings.isEmpty()) Files.writeString(findingsFile.toPath(), RunRecorder.GSON.toJson(findings) + "\n");
-        return draftFrom(e, sgf, findings);
+        return unfinished(draftFrom(e, sgf, findings));
+    }
+
+    // a problem the finder's time ran out on (missing.max_minutes) says what that left undone
+    // (the entry's unfinished; null when it was judged to the end). what was found by then
+    // stands, as found or unsuggested, and its suggestion says the same to the review. with
+    // nothing found it is unfinished, not clean: the positions the finder never came to may
+    // lack a move. it is not judged again unless that is asked for, with more time
+    // (crawl.recheck=unfinished, or crawl.only)
+    static CrawlIndex.Entry unfinished(CrawlIndex.Entry e) {
+        if (e.unfinished == null) return e;
+        if (e.status.equals("clean")) e.status = "unfinished";
+        e.reason = e.reason == null ? e.unfinished : e.reason + "; " + e.unfinished;
+        return e;
     }
 
     // an entry for the problem as it is looked at now, with the errors counted before it
@@ -387,6 +431,7 @@ public class Crawler {
             for (MissingVariationFinder.Finding f : findings) for (MissingVariationFinder.WrongMove w : f.wrong) short_.add(w.move);
             return status(e, "clean", short_.isEmpty() ? null : "accepted moves that fall short, not suggested: " + String.join(", ", short_));
         }
+        draft.unfinished = e.unfinished;
         RunRecorder.writeAtomically(draftFile, RunRecorder.GSON.toJson(draft));
         List<String> moves = new ArrayList<>();
         int cut = 0;
@@ -426,9 +471,10 @@ public class Crawler {
             e.positions = before != null ? before.positions : null;
             e.seconds = before != null ? before.seconds : null;
             e.time = LocalDateTime.now().toString();
+            e.unfinished = before != null ? before.unfinished : null;
             File draftFile = new File(dir, "suggestions/gp-" + id + ".json");
             String old = draftFile.exists() ? Files.readString(draftFile.toPath()) : null;
-            e = draftFrom(e, sgf, findings);
+            e = unfinished(draftFrom(e, sgf, findings));
             String now = draftFile.exists() ? Files.readString(draftFile.toPath()) : null;
             if (old != null && (now == null || !sameSuggestion(old, now))) retire("gp-" + id);
             index.append(e);

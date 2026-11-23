@@ -24,6 +24,17 @@ public class KataBrain {
 	private static final DecimalFormat df = new DecimalFormat("0.00");
 	public String modelPath;
 	private Thread thread;
+	// a time (System.currentTimeMillis) after which no new query is taken, 0 for none. a caller
+	// that gives a piece of work a time limit sets it: doQuery then throws OutOfTime, and the
+	// work in hand unwinds to wherever the caller deals with it
+	private volatile long deadline;
+
+	// thrown by doQuery once the deadline is past (setDeadline)
+	public static class OutOfTime extends RuntimeException {
+		public OutOfTime() {
+			super("out of time");
+		}
+	}
 
 	public KataBrain(Properties props) throws Exception {
 		this(props, null);
@@ -181,7 +192,18 @@ public class KataBrain {
 		return !processEnded;
 	}
 
+	public void setDeadline(long deadline) {
+		this.deadline = deadline;
+	}
+
 	public void doQuery(KataQuery query) throws Exception {
+		long end = deadline;
+		if (end > 0 && System.currentTimeMillis() > end) throw new OutOfTime();
+		send(query);
+	}
+
+	// the query goes to katago whatever the deadline: the nudge has to get through
+	private void send(KataQuery query) {
 		Gson gson = new Gson();
 		String qjson = gson.toJson(query, KataQuery.class);
 		// System.out.println("KENG (" + "x" + ") moves: " + query.moves.size() + ", visits: " + query.maxVisits + ", query: " + qjson);
@@ -209,7 +231,7 @@ public class KataBrain {
 			kq.analyzeTurns.add(0);
 			kq.maxVisits = 1;
 			System.out.println("result overdue, nudging katago scheduler");
-			doQuery(kq);
+			send(kq);
 		} catch (Exception e) {
 			System.out.println("nudge failed: " + e.getMessage());
 		}

@@ -48,7 +48,8 @@ import autoprob.validate.ProblemIsolator.IsolatedProblem;
 // the tree hits redo.max_tree_decisions the cut falls on the deep ends of side branches,
 // never on an alternative first move. a limit only keeps a branch from going deeper: every
 // move that works at a turn already decided stays in the tree, and the lines a limit stops
-// are listed (GenResult.cut) so whoever reviews the tree can see where it was cut short.
+// are listed (GenResult.cut) so whoever reviews the tree can see where it was cut short. a
+// time the tree has to be done by (setDeadline) works the same way.
 public class SolutionPathGenerator {
     private static final DecimalFormat df = new DecimalFormat("0.00");
 
@@ -77,6 +78,10 @@ public class SolutionPathGenerator {
     // starts from, and the one of them the line follows (setAuthorLines). empty otherwise
     private List<List<String>> authorLines = List.of();
     private List<String> authorLine = List.of();
+    // optional: a time (System.currentTimeMillis) after which no turn is decided any more, and
+    // what the lines that stops say of it (setDeadline). 0 for none
+    private long deadline;
+    private String deadlineWhy;
 
     private GenResult result;
     private boolean scoreDriftNoted = false;
@@ -178,6 +183,27 @@ public class SolutionPathGenerator {
         authorLine = AuthorLine.follow(lines, first);
     }
 
+    // the time the tree has to be done by. once it is past no branch goes deeper, as at the
+    // tree limit: every move in the tree stays, a line still open ends on its last solver
+    // move, and those lines are listed with why (GenResult.cut). the turn being decided when
+    // the time runs out is still finished
+    public void setDeadline(long deadline, String why) {
+        this.deadline = deadline;
+        this.deadlineWhy = why;
+    }
+
+    private boolean outOfTime() {
+        return deadline > 0 && System.currentTimeMillis() > deadline;
+    }
+
+    // whether the tree's time is up at an opponent's turn (node, after the solver's move): the
+    // line then ends on that move
+    private boolean stopsForTime(Node node, List<String> at, boolean main) {
+        if (!outOfTime()) return false;
+        end(node, at, main, deadlineWhy);
+        return true;
+    }
+
     // builds the tree under iso.problem; every leaf is marked RIGHT
     public GenResult generate() throws Exception {
         result = new GenResult();
@@ -200,6 +226,10 @@ public class SolutionPathGenerator {
     // node: the solver is to move here
     private void solverTurn(Node node, List<String> at, boolean main) throws Exception {
         int moveNumber = at.size() + 1;
+        if (!at.isEmpty() && outOfTime()) {
+            cut(node, at, main, deadlineWhy);
+            return;
+        }
         if (!at.isEmpty() && result.decisions.size() >= maxDecisions && !answersOwn(at)) {
             cut(node, at, main, "reached the tree limit of " + maxDecisions + " decisions");
             return;
@@ -406,6 +436,7 @@ public class SolutionPathGenerator {
             if (m.startsWith(color + " ") && node.legalMove(Intersection.gtp2point(m.substring(2)))) own.add(m);
         }
         if (!own.isEmpty()) {
+            if (stopsForTime(node, at, main)) return;
             for (int i = 0; i < own.size(); i++) {
                 String move = own.get(i);
                 Point p = Intersection.gtp2point(move.substring(2));
@@ -431,6 +462,7 @@ public class SolutionPathGenerator {
                 node.result = Intersection.RIGHT;
                 return;
             }
+            if (stopsForTime(node, at, main)) return;
             for (int i = 0; i < answers.size(); i++) {
                 String move = answers.get(i);
                 Point p = Intersection.gtp2point(move.substring(2));
@@ -443,6 +475,7 @@ public class SolutionPathGenerator {
             }
             return;
         }
+        if (stopsForTime(node, at, main)) return;
         if (moveCount >= maxMoves) {
             end(node, at, main, "hit max moves (" + maxMoves + ")");
             return;

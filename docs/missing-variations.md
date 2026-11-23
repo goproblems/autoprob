@@ -363,6 +363,34 @@ coordinates; the console says how far the problem moved.
    them. A move is never left out for a limit, and a limit never stops the solver's answer
    to one of the problem's own moves.
 
+   The problem's time is the one limit that does both (`missing.max_minutes`, 60; 0 for
+   none). A problem gets that long from the moment it is taken up. Once it is up KataGo takes
+   no more queries for it, so whatever is being worked out stops at its next one, and what
+   stands is what was done by then:
+
+   - a position judged to the end keeps its finding, and the positions not judged yet are
+     left. One in the middle of being judged is dropped, since its moves have no verdict to
+     go by yet;
+   - the lines being generated for a found move end where they are, each on its last solver
+     move, listed under `cut` with "out of time" as why. The turn being decided is finished
+     first, and what the lines came to is still checked, since a move that is not checked is
+     not suggested: those get ten minutes more at most. A line the time stopped is not
+     walked out;
+   - a move found there whose lines are still to come gets the checks a found move gets
+     before its lines (the worse ko, the outside, the raw board) and goes in alone, its line
+     ending on it, listed under `cut` the same way: a move that works is not left out for a
+     limit. One there is no time to check either is not suggested.
+
+   The outcome says what was left: "the time limit of 60 min stopped it: 12 of 37 positions
+   judged, 3 lines ended where they were". With nothing found by then the problem is
+   unfinished rather than clean. Most problems take minutes, but of the 1765 the crawl had
+   judged by 23 November 2026, 63 took more than an hour, and those took 196 of its 426
+   hours: gp-62959 took 13 hours over the 37 positions of a ko and had nothing missing, and
+   gp-60030 took 46 for one uncertain move. 34 of the 63 had a find, of the 157 problems
+   with one, so an hour stops about one find in five short; at two hours it is 10 of 157.
+   The positions come shallowest first, so the start and the first moves of the author's
+   lines are the ones judged.
+
    The solver's moves on a line are the ones KataGo and the human policy offer, without the
    scan of every point near the stakes that the positions checked get. So a working move
    both rate low can still be missed. N10 there had a human policy of 0.043 to 0.055 from
@@ -832,6 +860,10 @@ gp-60421: review rejected "this is ko in correct solution"; now clean; 0 nodes s
 gp-59938: review approved (edited); now found; 1 of review's 1 nodes kept, 2 more (the crawl's draft had 74)
 ```
 
+A replayed problem gets the crawl's time (`missing.max_minutes`), and its line says in
+brackets what that left undone. Two engines side by side make every problem slower, so
+`missing.max_minutes=0` is the way to measure the judging alone.
+
 ```
 bash gotool.sh cmd=line-ends study.out=line_ends.jsonl study.edited=true
 ```
@@ -895,6 +927,10 @@ reported, so some missing variations go unnoticed.
 - The favored side presses on with a ko only where the ko is on the board when KataGo's line
   settles. A ko the favored side would first have to set up, with a move that offers the
   other side the first take, is still only found by the deviations, in the first six moves.
+- A problem that runs out of time (`missing.max_minutes`) is judged only in part. The
+  positions it never came to are not checked, a line the time stopped ends without showing
+  its result, and a move that went in alone has not been held to the checks a line gets
+  (falling short of its level, an exchange put in, a ko taken on the way).
 - A problem whose own answer the reading takes for worse than another move is passed over,
   so an author's real mistake of that kind is not reported as a missing move. It still
   shows in the crawl's `problems.jsonl`, as skipped with the moves and levels in the reason.

@@ -113,6 +113,7 @@ public class CrawlReviewServer {
                 e.put("moves", moves);
                 e.put("positions", d.places.size());
                 if (d.places.stream().anyMatch(p -> p.cut != null && !p.cut.isEmpty())) e.put("cut", true);
+                if (d.unfinished != null) e.put("unfinished", true);
                 if (d != made) e.put("edited", true);
                 if (s != null) e.put("sent", s);
                 entries.add(e);

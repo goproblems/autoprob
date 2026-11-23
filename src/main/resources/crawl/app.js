@@ -56,7 +56,7 @@ function renderList() {
   $('list').innerHTML = items.length ? items.map(e => `
     <a href="#${e.name}" class="row ${e.state} ${e.name === S.name ? 'on' : ''}">
       <b>${e.name}</b> <span>${esc(e.difficulty)}</span>
-      <small>${esc(e.moves.join(', '))}${e.positions > 1 ? ` · ${e.positions} positions` : ''} · ${conf(e.confidence)}${e.cut ? ' · cut short' : ''}${e.edited ? ' · edited' : ''}</small>
+      <small>${esc(e.moves.join(', '))}${e.positions > 1 ? ` · ${e.positions} positions` : ''} · ${conf(e.confidence)}${e.cut ? ' · cut short' : ''}${e.unfinished ? ' · out of time' : ''}${e.edited ? ' · edited' : ''}</small>
     </a>`).join('') : '<p class="empty">nothing here</p>';
 }
 
@@ -161,6 +161,8 @@ function renderItem(path) {
   const where = s ? `sent as suggestion #${s.suggestionId}${s.status ? ` (${s.status})` : ''}`
     : a ? `${a.decision} by ${esc(a.by)}` : 'waiting for review';
   let h = `<h2><a href="${it.url}" target="_blank" rel="noopener">${d.problem}</a>${result(it.result)} <small>${esc(d.difficulty)} · ${where}</small></h2>`;
+  // the finder's time ran out on the problem: the suggestion may be less than the whole
+  if (d.unfinished) h += `<p class="cut-note">Not judged to the end: ${esc(d.unfinished)}.</p>`;
   h += it.tree ? `<section class="place" id="tree-section">
       <h3>The tree ${it.edited ? `<small class="edited" title="${esc(it.edited.time)}">edited by ${esc(it.edited.by)}</small>` : ''}
         <label class="wrong-toggle" title="Show the problem's wrong lines too"><input type="checkbox" id="wrong-lines" ${S.wrong ? 'checked' : ''}> wrong lines</label></h3>

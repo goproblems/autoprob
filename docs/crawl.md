@@ -34,6 +34,7 @@ Each problem comes to one of:
 | `found` | correct moves missing: `suggestions/gp-<id>.json` holds the suggestion |
 | `unsuggested` | correct moves missing, but none could go into a suggestion (a line ending on the problem's own wrong line, with none through its refutation); the reason says why |
 | `clean` | nothing missing (accepted moves that fall short are noted, not suggested) |
+| `unfinished` | the problem's time ran out with nothing found (below): some positions were never judged, so it is not clean. Left alone by later runs unless asked for |
 | `skipped` | no such problem, another genre, not standard and no longer new, deleted, in the sandbox (`crawl.include_sandbox=true` takes those), a board the finder cannot play, nothing at stake in the isolation, or a start the isolation reads differently from the author (the problem's own first move falls short of another by its reading) |
 | `deferred` | the site is not ready with it: a new problem not marked standard yet, or one with a suggestion open. Read again at the start of every later run (below) |
 | `error` | the finder failed: tried again, `crawl.attempts` (2) times in all |
@@ -68,9 +69,45 @@ crawled so far this run: 37 in 2 h 14 min (1 found, 4 clean, 2 deferred, 30 skip
 The finder takes about five minutes a problem, so about 290 a day. About half the site's
 50,000 problems are life and death.
 
+A problem gets an hour (`missing.max_minutes=60`; 0 for no limit) and no longer. Most take
+minutes, but of the 1765 problems judged by 23 November, 63 took more than an hour, and those
+took 196 of the 426 hours of judging: gp-62959 took 13 hours over the 37 positions of a ko and
+had nothing missing. When a problem's time is up:
+
+- the positions not judged yet are left, and one half judged is dropped;
+- the lines being generated end where they are, each on its last solver move. They go into
+  the suggestion as they are and the review page lists them as cut short ("out of time"), like
+  a line any other limit stops. The turn being decided is finished first, and what the lines
+  came to is still checked, for ten minutes more at most;
+- a move found there with no line yet is still checked and goes in alone, listed as cut
+  short too. One there is no time to check either is not suggested.
+
+What was found by then stands, and the problem's line in `problems.jsonl` says what was left:
+"the time limit of 60 min stopped it: 12 of 37 positions judged, 3 lines ended where they
+were". With nothing found it is `unfinished`, not `clean`. 34 of those 63 problems had a find,
+of the 157 with one, so an hour stops about one find in five short of its end; two hours
+would stop one in sixteen. `crawl.recheck=unfinished missing.max_minutes=180` judges the
+unfinished ones again with more time, and `crawl.only` takes any problem again the same way.
+
+What a run prints is kept as well, in `logs/<start>.log`, each line with the time it was
+printed (`crawl.log=false` for none). From a run with `missing.max_minutes=10`:
+
+```
+11-23 12:21:55  crawled so far this run: 1 in 48 s (1 clean)
+11-23 12:21:55  === gp-62951 (29 kyu) ===
+11-23 12:24:39    at the start: nothing missing (best clean; the problem accepts J11)
+11-23 12:26:02    after B J11 W J10: nothing missing (best clean; the problem accepts J12)
+11-23 12:31:56    after B J11 W K10: out of time before it was judged to the end, so nothing of it is kept
+11-23 12:31:56  gp-62951: unfinished (the time limit of 10 min stopped it: 2 of 12 positions judged) in 600 s
+```
+
+The console alone is gone with its terminal: on 22 November a run of 26 hours was stopped five
+hours into gp-62951, and what it had made of that problem could be read nowhere.
+
 `MissingVariationFinder.JUDGING_VERSION` goes up with every change to how moves are judged.
 Each judged problem keeps the version that judged it, and `crawl.recheck=found` (or
-`found,clean`) judges again those an older version gave. `crawl.only=62299` (or a list,
+`found,clean`) judges again those an older version gave (`unfinished` ones are judged again
+whatever the version, since they want more time). `crawl.only=62299` (or a list,
 `62299,62311`) judges just those problems again, whatever they came to before, and ends the
 run; its earlier suggestion and any review of it are replaced, as with any judging again. A
 problem whose suggestion went to the site is still left alone.
@@ -116,10 +153,14 @@ and the page's title goes back there from any problem. For each one it shows:
   ("B M13, W M11, B M10");
 - each position on the problem's own board: the missing moves (blue squares) and the moves
   the problem accepts there (green), and a button to select it in the tree. A line the
-  finder's generator stopped at a limit (`redo.max_tree_decisions`, `redo.max_moves`) or a
+  finder's generator stopped at a limit (`redo.max_tree_decisions`, `redo.max_moves`, or the
+  problem's time, `missing.max_minutes`) or a
   failed analysis is listed above the boards as cut short, with why: it went in as it is,
   ending on its last solver move, and can be taken on by hand (the note goes once it is).
-  The list marks such a suggestion "cut short", and the crawl's status counts the lines;
+  The list marks such a suggestion "cut short", and the crawl's status counts the lines. A
+  problem the finder ran out of time on says under its headline what that left undone ("Not
+  judged to the end: the time limit of 60 min stopped it: 2 of 5 positions judged"), and the
+  list marks it "out of time";
 - each line it adds, to step through move by move with the arrows under it. Stepping a line
   selects it, and then the arrow keys step it too (until the tree is clicked);
 - the confidence and the reasons for and against it;
@@ -188,6 +229,7 @@ checks are the only ones.
 | `problems.jsonl` | what each problem came to, a line each, a later line replacing an earlier; for a judged one, what its correct lines come to (live, kill, ko or seki) |
 | `state.json` | counts and where the last run was, for a look |
 | `lock` | held by a running crawl: one crawl per folder, since KataGo needs the memory |
+| `logs/<start>.log` | what each run printed, each line with its time |
 | `sgf/gp-<id>.sgf` | the problem as the site had it |
 | `findings/gp-<id>.json` | the finder's findings at each position |
 | `suggestions/gp-<id>.json` | the suggestion: both sgfs, the comment, the positions and lines |

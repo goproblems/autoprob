@@ -43,8 +43,9 @@ public class CrawlReplay {
         String decision;   // review's: approved or rejected
         String note;       // review's note
         boolean edited;    // review cut or added lines by hand
-        String status;     // now: found, clean, skipped, unsuggested or error
+        String status;     // now: found, clean, skipped, unsuggested, unfinished or error
         String reason;
+        String unfinished; // what the finder's time left undone, when it ran out (missing.max_minutes)
         long seconds;
         int reviewed;      // nodes review's tree adds to the problem (approved only)
         int was;           // nodes the crawl's draft added
@@ -138,6 +139,7 @@ public class CrawlReplay {
         row.seconds = (System.currentTimeMillis() - t0) / 1000;
         row.status = o.status;
         row.reason = o.reason;
+        row.unfinished = o.unfinished;
         List<MissingVariationFinder.Finding> findings = !o.findings.isEmpty() ? o.findings
                 : o.finding != null ? List.of(o.finding) : List.of();
         SuggestionDraft now = null;
@@ -148,11 +150,12 @@ public class CrawlReplay {
             List<String> notes = new ArrayList<>();
             try {
                 now = SuggestionDraft.build(id, sgf, findings, MissingVariationFinder.JUDGING_VERSION, notes);
+                if (now != null) now.unfinished = o.unfinished;
             } catch (RuntimeException e) {
                 notes.add(String.valueOf(e.getMessage()));
             }
             boolean missing = findings.stream().anyMatch(f -> f.moves != null && !f.moves.isEmpty());
-            row.status = now != null ? "found" : missing ? "unsuggested" : "clean";
+            row.status = now != null ? "found" : missing ? "unsuggested" : o.unfinished != null ? "unfinished" : "clean";
             if (now == null && !notes.isEmpty()) row.reason = String.join("; ", notes);
             if (now != null) RunRecorder.writeAtomically(new File(out, "suggestions/" + name + ".json"), RunRecorder.GSON.toJson(now));
         }
@@ -235,7 +238,8 @@ public class CrawlReplay {
     private static String line(Row r) {
         StringBuilder sb = new StringBuilder("gp-" + r.id + ": review " + r.decision + (r.edited ? " (edited)" : "")
                 + (r.note == null || r.note.isBlank() ? "" : " \"" + r.note + "\"") + "; now " + r.status
-                + (r.reason != null && !"found".equals(r.status) ? " (" + r.reason + ")" : ""));
+                + (r.reason != null && !"found".equals(r.status) ? " (" + r.reason + ")" : "")
+                + (r.unfinished != null ? " [" + r.unfinished + "]" : ""));
         if (r.decision.equals("approved")) {
             sb.append("; ").append(r.kept).append(" of review's ").append(r.reviewed).append(" nodes kept, ").append(r.extra)
                     .append(" more (the crawl's draft had ").append(r.was).append(")");

@@ -20,9 +20,15 @@ import com.google.gson.JsonParseException;
 public class CrawlIndex {
     // found, unsuggested (correct moves missing that no suggestion could carry), clean and
     // skipped are done; error is tried again up to the attempts allowed; deferred, a problem
-    // with a suggestion open on the site, and stale, one changed on the site since its
-    // suggestion was made, are looked at again
+    // the site is not ready with (a new one not marked standard yet, or one with a suggestion
+    // open), and stale, one changed on the site since its suggestion was made, are looked at
+    // again
     public static final Set<String> DONE = Set.of("found", "unsuggested", "clean", "skipped");
+    // why a problem the site has not marked standard is not judged. a new one is deferred
+    // (YET): the site's editors mark problems standard days or weeks after they are made. the
+    // bare reason is what the crawl gave before it waited for them, with a skip
+    public static final String NOT_STANDARD = "not marked standard";
+    public static final String NOT_STANDARD_YET = "not marked standard yet";
 
     public static class Entry {
         public int id;
@@ -57,7 +63,15 @@ public class CrawlIndex {
             if (line.isBlank()) continue;
             try {
                 Entry e = GSON.fromJson(line, Entry.class);
-                if (e != null && e.status != null) index.entries.put(e.id, e);
+                if (e == null || e.status == null) continue;
+                // a line from before the crawl waited for new problems: skipped for good as
+                // not standard, whatever its age, so a problem marked standard later was never
+                // judged. it is read as deferred, and the crawl looks at it again
+                if (e.status.equals("skipped") && NOT_STANDARD.equals(e.reason)) {
+                    e.status = "deferred";
+                    e.reason = NOT_STANDARD_YET;
+                }
+                index.entries.put(e.id, e);
             } catch (JsonParseException e) {
                 // a line cut short when the crawl was stopped
             }

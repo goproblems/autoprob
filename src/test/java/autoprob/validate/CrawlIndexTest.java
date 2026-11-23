@@ -59,4 +59,22 @@ class CrawlIndexTest {
         assertTrue(index.done(2, 2, Set.of("found"), 2));
         assertTrue(index.done(3, 2, Set.of("found", "skipped"), 2));
     }
+
+    @Test
+    void aSkipAsNotStandardFromBeforeTheCrawlWaitedIsReadAsDeferred() throws Exception {
+        // the crawl skipped gp-62866 for good on 2026-10-27, a month after it was made, and the
+        // site marked it standard within the next four weeks
+        File f = tmp.resolve("problems.jsonl").toFile();
+        Files.writeString(f.toPath(), "{\"id\":7,\"status\":\"skipped\",\"reason\":\"not marked standard\",\"attempts\":0}\n"
+                + "{\"id\":6,\"status\":\"skipped\",\"reason\":\"genre tesuji\",\"attempts\":0}\n"
+                + "{\"id\":5,\"status\":\"skipped\",\"reason\":\"not marked standard in its first 180 days\",\"attempts\":0}\n");
+        CrawlIndex index = CrawlIndex.load(f);
+        assertEquals("deferred", index.get(7).status);
+        assertEquals("not marked standard yet", index.get(7).reason);
+        assertFalse(index.done(7, 2, Set.of(), 1));
+        // any other skip is for good, one no longer waited for too
+        assertTrue(index.done(6, 2, Set.of(), 1));
+        assertEquals("skipped", index.get(5).status);
+        assertTrue(index.done(5, 2, Set.of(), 1));
+    }
 }

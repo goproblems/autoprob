@@ -9,11 +9,15 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
@@ -29,12 +33,20 @@ import com.google.gson.JsonObject;
 // here: the suggestions are reviewed (cmd=crawl-review) and sent (cmd=crawl-submit) later.
 //
 // it runs in crawl.dir (crawl/) and can be stopped at any time. what it made of each problem is
-// in problems.jsonl (CrawlIndex), so the next run goes on where it was and never looks at a
+// in problems.jsonl (CrawlIndex), so the next run goes on where it was and never judges a
 // problem twice. each run starts from the newest problem on the site, so problems added since
 // come first, and goes down past what is done. crawl.max ends a run after that many problems
 // judged, crawl.hours after that long. a problem whose sgf changed on the site after its
-// suggestion was made (stale, from crawl-submit) is judged again first; one with a suggestion
-// open on the site is deferred and looked at again on later runs.
+// suggestion was made (stale, from crawl-submit) is judged again first.
+//
+// a problem the site is not ready with is deferred, not skipped: a new one not marked standard
+// yet, or one with a suggestion open. the site's editors mark a problem standard days or weeks
+// after it is made, so a skip there loses it (on 2026-10-27 the crawl skipped 34 problems
+// between gp-62866 and gp-62915 as not standard, and by 2026-11-22 the site had marked 21 of
+// them). each run reads the deferred problems from the site again before anything else, a read
+// each and no engine. one that is ready is judged like a new problem; one that is not stays as
+// it is, with nothing written and only the count said. a problem still not standard
+// crawl.wait_days (180) after it was made is skipped for good.
 //
 // the folder: problems.jsonl; sgf/gp-<id>.sgf, the problem as the site had it;
 // findings/gp-<id>.json, the finder's findings; suggestions/gp-<id>.json (SuggestionDraft);
@@ -67,6 +79,7 @@ public class Crawler {
     private final int max;
     private final double hours;
     private final int maxAttempts;
+    private final int waitDays;
     private final Set<String> recheck;
     private final List<Integer> only;
     private final boolean includeSandbox;
@@ -80,6 +93,8 @@ public class Crawler {
         this.hours = Double.parseDouble(props.getProperty("crawl.hours", "0"));
         // a problem the finder fails on is tried this many times in all
         this.maxAttempts = Integer.parseInt(props.getProperty("crawl.attempts", "2"));
+        // a problem not marked standard is waited for until this many days after it was made
+        this.waitDays = Integer.parseInt(props.getProperty("crawl.wait_days", "180"));
         // statuses to judge again when an older judging version gave them, e.g. found,clean
         this.recheck = Arrays.stream(props.getProperty("crawl.recheck", "").split(","))
                 .map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toSet());
@@ -145,16 +160,54 @@ public class Crawler {
         List<Integer> stale = new ArrayList<>();
         for (CrawlIndex.Entry e : index.entries()) if (e.status.equals("stale")) stale.add(e.id);
         Set<Integer> submitted = submittedIds();
+        // and before those, the problems the site was not ready with are read again, the newest
+        // first
+        List<Integer> deferred = new ArrayList<>();
+        if (only.isEmpty()) {
+            for (CrawlIndex.Entry e : index.entries()) if (e.status.equals("deferred") && !submitted.contains(e.id)) deferred.add(e.id);
+            deferred.sort(Comparator.reverseOrder());
+        }
         if (!only.isEmpty()) {
             System.out.println("judging " + only.stream().map(id -> "gp-" + id).collect(Collectors.joining(", ")) + " again, in " + dir);
         } else {
             System.out.println("crawling goproblems.com from problem " + newest + " down, in " + dir + ": " + index.entries().size()
-                    + " looked at before" + (stale.isEmpty() ? "" : ", " + stale.size() + " changed on the site to judge again first"));
+                    + " looked at before" + (stale.isEmpty() ? "" : ", " + stale.size() + " changed on the site to judge again first")
+                    + (deferred.isEmpty() ? "" : ", " + deferred.size()
+                    + " of them deferred (not marked standard yet, or a suggestion open) and read again first"));
         }
         int judged = 0, nextStale = 0, nextOnly = 0, cursor = newest;
         // what this run has looked at so far, shown above each problem judged
         int crawled = 0;
         Map<String, Integer> thisRun = new TreeMap<>();
+        // the deferred problems the site is still not ready with: the run passes them over
+        Set<Integer> waiting = new HashSet<>();
+        if (!deferred.isEmpty()) {
+            int ready = 0, other = 0, unread = 0;
+            for (int id : deferred) {
+                CrawlIndex.Entry before = index.get(id), now;
+                try {
+                    now = ruledOut(entry(id, before), site.problem(id));
+                } catch (Exception ex) {
+                    // not read this time: it waits on as it is
+                    waiting.add(id);
+                    unread++;
+                    continue;
+                }
+                // ready: judged like a new problem, when the run comes to it below
+                if (now == null) {
+                    ready++;
+                    continue;
+                }
+                waiting.add(id);
+                // as it was: nothing to write, and nothing to say but the count
+                if (now.status.equals(before.status) && Objects.equals(now.reason, before.reason)) continue;
+                // it came to something else: skipped for good, or deferred for another reason
+                record(index, state, thisRun, now);
+                crawled++;
+                other++;
+            }
+            System.out.println(deferredLine(deferred.size(), ready, other, unread));
+        }
         while (true) {
             if ((max > 0 && judged >= max) || clock.getAsLong() > end) {
                 System.out.println("stopping after " + judged + " problem" + (judged == 1 ? "" : "s") + " judged; the next run goes on from here");
@@ -173,7 +226,7 @@ public class Crawler {
             } else if (nextStale < stale.size()) {
                 id = stale.get(nextStale++);
             } else {
-                while (cursor >= 1 && (submitted.contains(cursor) || stale.contains(cursor)
+                while (cursor >= 1 && (submitted.contains(cursor) || stale.contains(cursor) || waiting.contains(cursor)
                         || index.done(cursor, maxAttempts, recheck, MissingVariationFinder.JUDGING_VERSION))) cursor--;
                 if (cursor < 1) {
                     System.out.println("every problem down to the first has been looked at");
@@ -188,23 +241,32 @@ public class Crawler {
             } catch (Exception ex) {
                 // one problem going wrong does not stop the crawl
                 ex.printStackTrace();
-                e = new CrawlIndex.Entry();
-                e.id = id;
-                e.time = LocalDateTime.now().toString();
-                CrawlIndex.Entry before = index.get(id);
-                e.attempts = before != null && "error".equals(before.status) ? before.attempts : 0;
-                e = error(e, String.valueOf(ex.getMessage()));
+                e = error(entry(id, index.get(id)), String.valueOf(ex.getMessage()));
             }
-            index.append(e);
+            record(index, state, thisRun, e);
             if (e.version != null) judged++;
             crawled++;
-            thisRun.merge(e.status, 1, Integer::sum);
-            state.counts.merge(e.status, 1, Integer::sum);
-            state.updated = LocalDateTime.now().toString();
-            RunRecorder.writeAtomically(new File(dir, "state.json"), RunRecorder.GSON.toJson(state));
-            System.out.println("gp-" + id + ": " + e.status + (e.reason != null ? " (" + e.reason + ")" : "")
-                    + (e.seconds != null ? " in " + e.seconds + " s" : ""));
         }
+    }
+
+    // what a problem came to goes into the index and the counts, with its line on the console
+    private void record(CrawlIndex index, State state, Map<String, Integer> thisRun, CrawlIndex.Entry e) throws IOException {
+        index.append(e);
+        thisRun.merge(e.status, 1, Integer::sum);
+        state.counts.merge(e.status, 1, Integer::sum);
+        state.updated = LocalDateTime.now().toString();
+        RunRecorder.writeAtomically(new File(dir, "state.json"), RunRecorder.GSON.toJson(state));
+        System.out.println("gp-" + e.id + ": " + e.status + (e.reason != null ? " (" + e.reason + ")" : "")
+                + (e.seconds != null ? " in " + e.seconds + " s" : ""));
+    }
+
+    // the line after the deferred problems were read again: how many of them the site is ready
+    // with now, how many came to something else (each with a line of its own above), and how
+    // many stay deferred, those the site could not be read for among them
+    static String deferredLine(int all, int ready, int other, int unread) {
+        return "deferred problems read again: " + ready + " can be judged now, "
+                + (other > 0 ? other + " came to something else, " : "") + (all - ready - other) + " still deferred"
+                + (unread > 0 ? " (" + unread + " of them could not be read)" : "");
     }
 
     // the line above each problem judged: how many problems this run has looked at so far, in
@@ -227,21 +289,14 @@ public class Crawler {
 
     // what one problem comes to. heading: the line for the console above it, if it is judged
     CrawlIndex.Entry look(int id, Site site, Analyzer analyzer, CrawlIndex.Entry before, String heading) throws Exception {
-        CrawlIndex.Entry e = new CrawlIndex.Entry();
-        e.id = id;
-        e.time = LocalDateTime.now().toString();
-        e.attempts = before != null && "error".equals(before.status) ? before.attempts : 0;
+        CrawlIndex.Entry e = entry(id, before);
         JsonObject p;
         try {
             p = site.problem(id);
         } catch (Exception ex) {
             return error(e, "reading it from the site: " + ex.getMessage());
         }
-        if (p == null) return status(e, "skipped", "no such problem");
-        String why = unsuitable(p, includeSandbox);
-        if (why != null) return status(e, "skipped", why);
-        int open = number(p, "suggestionsOpenCount");
-        if (open > 0) return status(e, "deferred", open + " suggestion" + (open == 1 ? "" : "s") + " open on the site");
+        if (ruledOut(e, p) != null) return e;
         String sgf = p.get("sgf").getAsString();
         String name = "gp-" + id;
         e.sgfHash = hash(sgf);
@@ -265,6 +320,47 @@ public class Crawler {
                 : o.finding != null ? List.of(o.finding) : List.of();
         if (!findings.isEmpty()) Files.writeString(findingsFile.toPath(), RunRecorder.GSON.toJson(findings) + "\n");
         return draftFrom(e, sgf, findings);
+    }
+
+    // an entry for the problem as it is looked at now, with the errors counted before it
+    private static CrawlIndex.Entry entry(int id, CrawlIndex.Entry before) {
+        CrawlIndex.Entry e = new CrawlIndex.Entry();
+        e.id = id;
+        e.time = LocalDateTime.now().toString();
+        e.attempts = before != null && "error".equals(before.status) ? before.attempts : 0;
+        return e;
+    }
+
+    // what a problem comes to that the site's own record keeps from being judged (p, null when
+    // the site has none at the id): skipped for good, or deferred while the site is not ready
+    // with it. null when it is to be judged
+    private CrawlIndex.Entry ruledOut(CrawlIndex.Entry e, JsonObject p) {
+        if (p == null) return status(e, "skipped", "no such problem");
+        String why = unsuitable(p, includeSandbox);
+        if (CrawlIndex.NOT_STANDARD.equals(why)) {
+            // a new problem is not standard until the site's editors mark it, so it is waited
+            // for. one still unmarked long after it was made is taken to stay so (gp-62456, in
+            // the site's Instruction Required collection, at eleven weeks). a problem the site
+            // gives no date for is waited for: a wait costs a read a run, a skip loses it
+            Long days = daysOld(p);
+            if (waitDays > 0 && (days == null || days < waitDays)) return status(e, "deferred", CrawlIndex.NOT_STANDARD_YET);
+            return status(e, "skipped", CrawlIndex.NOT_STANDARD + (waitDays > 0 ? " in its first " + waitDays + " days" : ", and none is waited for"));
+        }
+        if (why != null) return status(e, "skipped", why);
+        int open = number(p, "suggestionsOpenCount");
+        if (open > 0) return status(e, "deferred", open + " suggestion" + (open == 1 ? "" : "s") + " open on the site");
+        return null;
+    }
+
+    // how many days ago the problem was made, as the site has it ("2026-09-27T02:55:05+00:00");
+    // null when it does not say
+    private Long daysOld(JsonObject p) {
+        try {
+            String made = text(p, "createdAt");
+            return made == null ? null : (clock.getAsLong() - OffsetDateTime.parse(made).toInstant().toEpochMilli()) / 86_400_000L;
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     // the suggestion the findings make, written to suggestions/: found, or unsuggested when
@@ -372,7 +468,7 @@ public class Crawler {
     static String unsuitable(JsonObject p, boolean includeSandbox) {
         String genre = text(p, "genre") != null ? text(p, "genre") : text(p, "specificGenre");
         if (!"life and death".equalsIgnoreCase(genre)) return "genre " + genre;
-        if (!flag(p, "isStandard")) return "not marked standard";
+        if (!flag(p, "isStandard")) return CrawlIndex.NOT_STANDARD;
         if (p.has("alive") && !flag(p, "alive")) return "not alive on the site";
         if (!includeSandbox && flag(p, "sandbox")) return "in the sandbox";
         String sgf = text(p, "sgf");

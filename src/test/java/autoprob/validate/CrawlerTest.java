@@ -27,12 +27,15 @@ class CrawlerTest {
     // the site: problems by id, the newest the highest
     static class FakeSite implements Crawler.Site {
         final Map<Integer, JsonObject> problems = new HashMap<>();
+        // the problems read, in order
+        final List<Integer> reads = new ArrayList<>();
 
         public int newestId() {
             return problems.keySet().stream().max(Integer::compare).orElse(0);
         }
 
         public JsonObject problem(int id) {
+            reads.add(id);
             return problems.get(id);
         }
 
@@ -100,7 +103,8 @@ class CrawlerTest {
         CrawlIndex index = CrawlIndex.load(tmp.resolve("problems.jsonl").toFile());
         assertEquals("clean", index.get(10).status);
         assertEquals("genre tesuji", index.get(9).reason);
-        assertEquals("not marked standard", index.get(8).reason);
+        assertEquals("deferred", index.get(8).status);
+        assertEquals("not marked standard yet", index.get(8).reason);
         assertEquals("in the sandbox", index.get(7).reason);
         assertEquals("deferred", index.get(6).status);
         assertEquals("no such problem", index.get(5).reason);
@@ -166,6 +170,107 @@ class CrawlerTest {
         finder.judged.clear();
         crawler().crawl(site, finder);
         assertEquals(List.of(), finder.judged);
+    }
+
+    @Test
+    void aNewProblemNotMarkedStandardYetIsReadAgainAndJudgedOnceItIs() throws Exception {
+        FakeSite site = new FakeSite();
+        site.add(3, "life and death", true, false, 0);
+        site.add(2, "life and death", false, false, 0);
+        site.add(1, "life and death", true, false, 0);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-3", "gp-1"), finder.judged);
+        File file = tmp.resolve("problems.jsonl").toFile();
+        assertEquals("deferred", CrawlIndex.load(file).get(2).status);
+        assertEquals("not marked standard yet", CrawlIndex.load(file).get(2).reason);
+        // the next run reads it from the site again and nothing else. it is as it was: nothing
+        // is judged and nothing written
+        String lines = Files.readString(file.toPath());
+        site.reads.clear();
+        finder.judged.clear();
+        crawler().crawl(site, finder);
+        assertEquals(List.of(2), site.reads);
+        assertEquals(List.of(), finder.judged);
+        assertEquals(lines, Files.readString(file.toPath()));
+        // the site marks it standard: the run after that judges it, and it is done
+        site.problems.get(2).addProperty("isStandard", true);
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-2"), finder.judged);
+        assertEquals("clean", CrawlIndex.load(file).get(2).status);
+        site.reads.clear();
+        crawler().crawl(site, finder);
+        assertEquals(List.of(), site.reads);
+    }
+
+    @Test
+    void aProblemAnEarlierCrawlSkippedAsNotStandardIsJudgedOnceItIs() throws Exception {
+        // lines as the crawl wrote them before it waited: gp-2 has been marked standard since
+        FakeSite site = new FakeSite();
+        site.add(2, "life and death", true, false, 0);
+        site.add(1, "life and death", false, false, 0);
+        String lines = "{\"id\":2,\"status\":\"skipped\",\"reason\":\"not marked standard\",\"attempts\":0}\n"
+                + "{\"id\":1,\"status\":\"skipped\",\"reason\":\"not marked standard\",\"attempts\":0}\n";
+        File file = tmp.resolve("problems.jsonl").toFile();
+        Files.writeString(file.toPath(), lines);
+        FakeAnalyzer finder = new FakeAnalyzer();
+        crawler().crawl(site, finder);
+        assertEquals(List.of("gp-2"), finder.judged);
+        assertEquals("clean", CrawlIndex.load(file).get(2).status);
+        // gp-1 waits on, with no new line
+        assertEquals("deferred", CrawlIndex.load(file).get(1).status);
+        assertEquals(3, Files.readAllLines(file.toPath()).size());
+    }
+
+    @Test
+    void aProblemNotStandardIsWaitedForOnlyWhileItIsNew() throws Exception {
+        long day = 86_400_000L, now = java.time.Instant.parse("2026-11-22T08:00:00Z").toEpochMilli();
+        FakeSite site = new FakeSite();
+        // gp-2 was made ten days ago, gp-1 a year ago
+        site.add(2, "life and death", false, false, 0);
+        site.add(1, "life and death", false, false, 0);
+        site.problems.get(2).addProperty("createdAt", "2026-11-12T02:55:05+00:00");
+        site.problems.get(1).addProperty("createdAt", "2025-11-12T02:55:05+00:00");
+        FakeAnalyzer finder = new FakeAnalyzer();
+        Crawler c = crawler();
+        c.clock = () -> now;
+        c.crawl(site, finder);
+        File file = tmp.resolve("problems.jsonl").toFile();
+        assertEquals("deferred", CrawlIndex.load(file).get(2).status);
+        assertEquals("skipped", CrawlIndex.load(file).get(1).status);
+        assertEquals("not marked standard in its first 180 days", CrawlIndex.load(file).get(1).reason);
+        // the old one is done with: the next run reads only the new one
+        site.reads.clear();
+        c = crawler();
+        c.clock = () -> now + day;
+        c.crawl(site, finder);
+        assertEquals(List.of(2), site.reads);
+        // half a year on it is still not standard, and is not waited for any longer
+        c = crawler();
+        c.clock = () -> now + 200 * day;
+        c.crawl(site, finder);
+        assertEquals("skipped", CrawlIndex.load(file).get(2).status);
+        assertEquals("not marked standard in its first 180 days", CrawlIndex.load(file).get(2).reason);
+        site.reads.clear();
+        c = crawler();
+        c.clock = () -> now + 201 * day;
+        c.crawl(site, finder);
+        assertEquals(List.of(), site.reads);
+        assertEquals(List.of(), finder.judged);
+        // crawl.wait_days says how long: with five, a problem ten days old is not waited for
+        site.add(3, "life and death", false, false, 0);
+        site.problems.get(3).addProperty("createdAt", "2026-11-12T02:55:05+00:00");
+        c = crawler("crawl.wait_days=5");
+        c.clock = () -> now;
+        c.crawl(site, finder);
+        assertEquals("not marked standard in its first 5 days", CrawlIndex.load(file).get(3).reason);
+    }
+
+    @Test
+    void whatReadingTheDeferredProblemsAgainCameTo() {
+        assertEquals("deferred problems read again: 34 can be judged now, 22 still deferred", Crawler.deferredLine(56, 34, 0, 0));
+        assertEquals("deferred problems read again: 0 can be judged now, 1 came to something else, 4 still deferred (2 of them could not be read)",
+                Crawler.deferredLine(5, 0, 1, 2));
     }
 
     @Test

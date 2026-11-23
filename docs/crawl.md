@@ -22,7 +22,7 @@ crawl's state between runs.
 ## Crawling
 
 `cmd=crawl` can be stopped at any time and started again. What it made of each problem is in
-`problems.jsonl`, one line per problem, so it never looks at a problem twice. Each run starts
+`problems.jsonl`, one line per problem, so it never judges a problem twice. Each run starts
 from the newest problem on the site and goes down past what is done, so problems added since
 the last run come first. A run ends with `crawl.max` (problems judged) or `crawl.hours`, or with
 ctrl-c. A problem it was judging when stopped is judged again next time.
@@ -34,10 +34,28 @@ Each problem comes to one of:
 | `found` | correct moves missing: `suggestions/gp-<id>.json` holds the suggestion |
 | `unsuggested` | correct moves missing, but none could go into a suggestion (a line ending on the problem's own wrong line, with none through its refutation); the reason says why |
 | `clean` | nothing missing (accepted moves that fall short are noted, not suggested) |
-| `skipped` | no such problem, another genre, not standard, deleted, in the sandbox (`crawl.include_sandbox=true` takes those), a board the finder cannot play, nothing at stake in the isolation, or a start the isolation reads differently from the author (the problem's own first move falls short of another by its reading) |
-| `deferred` | a suggestion is open on it on the site: looked at again on later runs |
+| `skipped` | no such problem, another genre, not standard and no longer new, deleted, in the sandbox (`crawl.include_sandbox=true` takes those), a board the finder cannot play, nothing at stake in the isolation, or a start the isolation reads differently from the author (the problem's own first move falls short of another by its reading) |
+| `deferred` | the site is not ready with it: a new problem not marked standard yet, or one with a suggestion open. Read again at the start of every later run (below) |
 | `error` | the finder failed: tried again, `crawl.attempts` (2) times in all |
 | `stale` | its sgf changed on the site after its suggestion was made: judged again first |
+
+A new problem is not standard until the site's editors mark it, which can take weeks, so a
+skip there loses it. On 27 October the crawl skipped 34 problems between gp-62866 and
+gp-62915 for good as not standard; four weeks later the site had marked 21 of them, and they
+had never been judged. Such a problem is deferred instead, and every run starts by reading
+the deferred problems from the site again, newest first, a read each and no engine:
+
+```
+crawling goproblems.com from problem 62969 down, in crawl: 3328 looked at before, 111 of them deferred (not marked standard yet, or a suggestion open) and read again first
+deferred problems read again: 55 can be judged now, 56 still deferred
+```
+
+One that can be judged now is judged like a new problem when the run comes to it. One still
+deferred stays as it is: nothing is written for it, and it gets no line of its own. A problem
+still not standard `crawl.wait_days` (180) days after it was made is taken to stay so and is
+skipped for good ("not marked standard in its first 180 days"); `crawl.only` still judges
+one. A line from before the crawl waited (`skipped`, "not marked standard") is read as
+deferred.
 
 Above each problem it judges, the console says how many problems the run has looked at so
 far, in how long, and what they came to, the finds first:

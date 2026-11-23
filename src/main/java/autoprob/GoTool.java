@@ -8,7 +8,7 @@ import autoprob.go.parse.Parser;
 import autoprob.katastruct.KataAnalysisResult;
 import autoprob.katastruct.KataQuery;
 import autoprob.katastruct.MoveInfo;
-import autoprob.joseki.JosekiNodeRecalculator;
+import autoprob.joseki.JosekiNodeCompleter;
 import autoprob.problem.DifficultyEstimator;
 import autoprob.problem.SiteProblem;
 import autoprob.scenario.ScenarioNodeRecalculator;
@@ -66,12 +66,16 @@ public class GoTool {
             runTestScenarioCommand(props);
         } else if (command.equals("testscenariocase")) {
             runTestScenarioCaseCommand(props);
+        } else if (List.of("analysishandler", "reviewhandler").contains(command)) {
+            new autoprob.analysis.AnalysisHandler(props).run();
         } else if (command.equals("scenariohandler")) {
             runScenarioHandlerCommand(props);
         } else if (command.equals("recalculatenodes")) {
             runRecalculateNodesCommand(props);
-        } else if (command.equals("josekinoderecalculate")) {
-            runJosekiNodeRecalculateCommand(props);
+        } else if (command.equals("josekinodecomplete")) {
+            runJosekiNodeCompleteCommand(props);
+        } else if (command.equals("josekiprecalculate")) {
+            new autoprob.analysis.JosekiPrecalculateCommand(props).run();
         } else if (command.equals("redo")) {
             runRedoCommand(props);
         } else if (command.equals("cases")) {
@@ -145,10 +149,9 @@ public class GoTool {
         recalculator.run();
     }
 
-    private void runJosekiNodeRecalculateCommand(Properties props) throws Exception {
-        System.out.println("Running joseki node recalculation...");
-        JosekiNodeRecalculator recalculator = new JosekiNodeRecalculator(props);
-        recalculator.run();
+    private void runJosekiNodeCompleteCommand(Properties props) throws Exception {
+        System.out.println("Finding missing high-policy joseki nodes...");
+        new JosekiNodeCompleter(props).run();
     }
 
     // regenerate the solution path of an existing problem and score it against the original

@@ -106,6 +106,10 @@ public class AnalysisConfig {
      * Create a copy with metadata reference and config overrides applied.
      */
     public AnalysisConfig withMetadata(ScenarioMetadata metadata) {
+        return withMetadata(metadata, true);
+    }
+
+    public AnalysisConfig withMetadata(ScenarioMetadata metadata, boolean applyOverrides) {
         AnalysisConfig c = this.copy();
         if (metadata == null) {
             return c;
@@ -114,7 +118,7 @@ public class AnalysisConfig {
         c.metadata = metadata;
 
         // Apply config overrides
-        if (metadata.configOverrides != null && !metadata.configOverrides.isEmpty()) {
+        if (applyOverrides && metadata.configOverrides != null && !metadata.configOverrides.isEmpty()) {
             applyOverrides(c, metadata.configOverrides);
         }
 

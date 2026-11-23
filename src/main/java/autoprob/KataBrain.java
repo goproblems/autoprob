@@ -21,6 +21,7 @@ public class KataBrain {
 	private Map<String, KataAnalysisResult> results = new Hashtable<>();
 	private Map<String, String> errors = new Hashtable<>();
 	private volatile boolean processEnded = false;
+	private volatile String lastProcessOutput;
 	private static final DecimalFormat df = new DecimalFormat("0.00");
 	public String modelPath;
 	private Thread thread;
@@ -35,6 +36,12 @@ public class KataBrain {
 			super("out of time");
 		}
 	}
+
+    /** Allows a separate engine transport to reuse the existing analyzer API. */
+    protected KataBrain() {
+        this.props = new Properties();
+        this.process = null;
+    }
 
 	public KataBrain(Properties props) throws Exception {
 		this(props, null);
@@ -132,6 +139,10 @@ public class KataBrain {
 		int total = 0;
 		boolean started = false;
 		while ((line = reader.readLine()) != null) {
+			if (!line.isBlank()) {
+				lastProcessOutput = line.length() > 500
+					? line.substring(line.length() - 500) : line;
+			}
 			if (line.contains("{\"error")) {
 				String errorId = extractJsonStringValue(line, "id");
 				if (errorId != null) {
@@ -185,6 +196,11 @@ public class KataBrain {
 				}
 			}
 		}
+	}
+
+	// the last thing the process printed, for the error a query gets when the process is gone
+	private String lastOutput() {
+		return lastProcessOutput == null ? "" : ": " + lastProcessOutput;
 	}
 
 	// false once the katago process has exited; pending queries will error out
@@ -268,7 +284,9 @@ public class KataBrain {
 				KataAnalysisResult errorResult = new KataAnalysisResult();
 				errorResult.id = id;
 				errorResult.turnNumber = targetTurn;
-				errorResult.error = "katago process ended unexpectedly";
+				errorResult.error = process != null && !process.isAlive()
+					? "KataGo process exited with code " + process.exitValue() + lastOutput()
+					: "katago process ended unexpectedly" + lastOutput();
 				return errorResult;
 			}
 			if (nudgeMs > 0 && System.currentTimeMillis() - lastNudge > nudgeMs) {

@@ -8,6 +8,9 @@
 # Compiled class file
 *.class
 
+# Maven build output
+target/
+
 # Log file
 *.log
 
@@ -47,3 +50,7 @@ cases_results/
 missing_variations/
 # the crawl's working folder: its index, drafts, reviews and what went to the site
 /crawl/
+
+# Local worker connection settings
+/analysis-worker-tf3.properties
+/analysis-worker-all.properties

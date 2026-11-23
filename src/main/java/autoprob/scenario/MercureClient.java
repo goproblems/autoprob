@@ -226,18 +226,18 @@ public class MercureClient {
         String encodedTopic = URLEncoder.encode(topic, StandardCharsets.UTF_8);
 
         StringBuilder subscribeUrl = new StringBuilder(hubUrl);
-        subscribeUrl.append("?topic=").append(encodedTopic);
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            subscribeUrl.append("&authorization=").append(jwtToken);
-        }
+        subscribeUrl.append("?match=").append(encodedTopic);
 
-        System.out.println("Connecting to Mercure hub: " + hubUrl + "?topic=" + encodedTopic + "&authorization=" + maskToken(jwtToken));
+        System.out.println("Connecting to Mercure hub: " + subscribeUrl);
 
         URL url = URI.create(subscribeUrl.toString()).toURL();
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod("GET");
         connection.setRequestProperty("Accept", "text/event-stream");
         connection.setRequestProperty("Cache-Control", "no-cache");
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            connection.setRequestProperty("Authorization", "Bearer " + jwtToken);
+        }
 
         connection.setDoInput(true);
         connection.setConnectTimeout(30000);

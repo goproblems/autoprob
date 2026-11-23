@@ -9,6 +9,7 @@ import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
 public class KataQuery {
+    public Integer priority;
 
 	@SerializedName("id")
 	@Expose
@@ -37,6 +38,8 @@ public class KataQuery {
 	public Boolean includeMovesOwnership;
 	public Boolean includePolicy;
 
+    public Double reportDuringSearchEvery;
+
 	@SerializedName("maxVisits")
 	@Expose
 	public Integer maxVisits;
@@ -63,6 +66,10 @@ public class KataQuery {
 	@Expose
 	public List<AllowMove> avoidMoves = null;
 
+	@SerializedName("focusMoves")
+	@Expose
+	public List<String> focusMoves = null;
+
 	// overrideSettings (object): Optional. Specify any number of "paramName":value entries in this object to override those params from command line CONFIG_FILE for this query. Most search parameters can be overriden: cpuctExploration, winLossUtilityFactor, etc.
 	// just support: humanSLProfile (string). Set the human-like play that KataGo should imitate.
 	@SerializedName("overrideSettings")
@@ -70,6 +77,7 @@ public class KataQuery {
 	public OverrideSettings overrideSettings;
 
 	public static class OverrideSettings {
+        public Double maxTime;
 		@SerializedName("humanSLProfile")
 		@Expose
 		public String humanSLProfile;

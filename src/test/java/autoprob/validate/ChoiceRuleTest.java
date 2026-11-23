@@ -176,6 +176,35 @@ class ChoiceRuleTest {
     }
 
     @Test
+    void atAKoTheOpponentPlaysItsStrongestMove() {
+        // gp-60804 after B A3, W A2, B B2 (the site's review: "W A4 was not the strongest. White
+        // should play B1 instead to get a ko"): B1 is katago's first choice and the author's
+        // answer to B2, and its answer A1 is one everyone finds; A4 is the try that tests more
+        CandidateFeatures b1 = cand("W B1", "katago", 0.26, 277, 0.30, 0.95, 12, 0);
+        CandidateFeatures c3 = cand("W C3", "katago", 0.26, 78, 0.20, 0.86, 12, 0);
+        CandidateFeatures a4 = cand("W A4", "katago", 0.03, 32, 0.62, 0.55, 11, 0);
+        DecisionRecord rec = opponent(b1, c3, a4);
+        ChoiceRule.Choice choice = ChoiceRule.chooseKoOpponent(rec, params(), STAKES, "W B1");
+        assertEquals("W B1", choice.move);
+        assertTrue(choice.reason.contains("the author's answer"), choice.reason);
+        // with no answer of the author's to go by, katago's first choice
+        choice = ChoiceRule.chooseKoOpponent(rec, params(), STAKES, null);
+        assertEquals("W B1", choice.move);
+        assertTrue(choice.reason.contains("katago's first choice"), choice.reason);
+        // the author's answer is played while katago rates it near its first choice
+        assertEquals("W C3", ChoiceRule.chooseKoOpponent(opponent(b1, cand("W C3", "katago", 0.26, 140, 0.20, 0.86, 12, 0), a4),
+                params(), STAKES, "W C3").move);
+        // and not where the opponent has something clearly better than the author showed, or
+        // the author's answer is no move katago looks at
+        assertEquals("W B1", ChoiceRule.chooseKoOpponent(rec, params(), STAKES, "W C3").move);
+        assertEquals("W B1", ChoiceRule.chooseKoOpponent(rec, params(), STAKES, "W T19").move);
+        // a strongest move that threatens nothing ends the line
+        choice = ChoiceRule.chooseKoOpponent(opponent(cand("W B1", "katago", 0.26, 277, 0.30, 0.95, 0, 0), a4), params(), STAKES, null);
+        assertTrue(choice.isEnd(), choice.reason);
+        assertTrue(ChoiceRule.chooseKoOpponent(opponent(), params(), STAKES, null).isEnd());
+    }
+
+    @Test
     void aRoutineTryIsNotShownForAnAnswerThatWorkedBefore() {
         // gp-60992 after B B4, W D1, B B2, W A4, B C2 (adam's review: "trivial ataris at the
         // end" of the lines): black's C3 and B3 lived as well as C2, and white's ataris at B3

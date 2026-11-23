@@ -50,3 +50,10 @@ gp-60421 | start | B S19 KO, B R18 FAIL
 # for six stones more, which are not what the problem is about
 gp-61269 | start | B R16 CLEAN
 gp-61269 | B R16,W R15,B S16,W S15 | B T15 CLEAN, B Q16 CLEAN
+# gp-61250 (13x13, lower left): after E2, W F2, A2, W B2 the author's E3 ends in a double ko, which black cannot lose, and
+# E1 and C3 make a regular ko of it (the site's review: "the two new moves all make a double ko become a regular ko"). E3
+# came out a ko like them: after W B4, B C3, W E1, B A4 white takes back at A3, and katago's black played D5 before taking
+# the other ko at F1, so white ended the first at A1. A2 a move earlier still reads as a seki, through W E1
+gp-61250 | B E2,W F2,B A2,W B2 | B E3 CLEAN, B E1 KO, B C3 KO
+gp-61250 | B E2,W F2 | B A2 ?
+gp-61250 | start | B E2 CLEAN

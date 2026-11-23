@@ -28,6 +28,10 @@ import autoprob.validate.ProblemIsolator.IsolatedProblem;
 // branch ends. where a line runs on a problem's own tree (setOwnAnswers), the opponent
 // plays the problem's own answers instead, each of them and nothing else.
 //
+// a line at a ko (setAuthorLines) follows the author's own: the opponent plays its strongest
+// move, the solver the author's next move where it works, and the line ends on the move that
+// takes the ko or once the author's line is played out.
+//
 // with redo.many_work_ends a line also ends where the result is plain: at a solver turn
 // where more moves work than a real try leaves (redo.max_answers). after a try the
 // generator chose itself, the try comes out and the opponent's turn is decided again
@@ -69,6 +73,10 @@ public class SolutionPathGenerator {
     private Map<String, ? extends Collection<String>> authorSpots = Map.of();
     // optional: the moves the problem's author accepts at the position the line starts from
     private Collection<String> authorMoves = List.of();
+    // optional, for a line at a ko: the author's own correct lines from the position the line
+    // starts from, and the one of them the line follows (setAuthorLines). empty otherwise
+    private List<List<String>> authorLines = List.of();
+    private List<String> authorLine = List.of();
 
     private GenResult result;
     private boolean scoreDriftNoted = false;
@@ -152,6 +160,24 @@ public class SolutionPathGenerator {
         authorMoves = moves;
     }
 
+    // a line at a ko follows the author's own (lines: the author's correct lines from the
+    // position, first: the found move the line starts with). what a move comes to at a ko
+    // depends on the ko, and the finder cannot rank kos, so the line has to show the author's
+    // ko or the move is not the same answer. the site's reviewer rewrote the lines of six of
+    // the ten ko suggestions it approved, each time to the author's own line with the found
+    // move's exchange put in before it, run to the author's end: gp-61398 (B F5, W E5, then
+    // the author's D2, W D3, B E3, which takes the ko, where the line had stopped on D2),
+    // gp-60333 and gp-60685 (B T14, W T15, then the author's T18), gp-61669 (W N5, B M3, then
+    // the author's K1), gp-62045 (W H2 and the author's own answer G2, then the author's N3,
+    // K5, N1), and gp-60804 (see ChoiceRule.chooseKoOpponent). so on such a line the opponent
+    // plays its strongest move, the solver plays the author's next move where it works, and
+    // the line ends on the move that takes the ko, as the author's ko lines do, or once the
+    // author's line is played out
+    public void setAuthorLines(List<List<String>> lines, String first) {
+        authorLines = lines;
+        authorLine = AuthorLine.follow(lines, first);
+    }
+
     // builds the tree under iso.problem; every leaf is marked RIGHT
     public GenResult generate() throws Exception {
         result = new GenResult();
@@ -206,6 +232,7 @@ public class SolutionPathGenerator {
             choice = withoutRefuted(node, at, choice);
             if (choice == null) return;
         }
+        if (!authorLine.isEmpty() && !at.isEmpty() && !choice.isEnd()) choice = authorFirst(at, choice);
         record(solver, choice);
         if (choice.isEnd()) {
             // the opponent's last move needs no answer: the line ends before it
@@ -246,10 +273,48 @@ public class SolutionPathGenerator {
                 child.result = Intersection.RIGHT;
                 continue;
             }
+            String ends = authorLine.isEmpty() ? null : koLineEnds(child, next);
+            if (ends != null) {
+                System.out.println("  " + ends + ": path ends after move " + moveNumber);
+                child.result = Intersection.RIGHT;
+                continue;
+            }
             List<String> others = new ArrayList<>(working);
             others.remove(move);
             enqueue(child, next, childMain, false, others);
         }
+    }
+
+    // on a line at a ko the author's next move goes first where it works: the line follows
+    // the author's own. the other moves that work stay, each with its line
+    private ChoiceRule.Choice authorFirst(List<String> at, ChoiceRule.Choice choice) {
+        String next = AuthorLine.next(authorLine, at);
+        if (next == null || next.equals(choice.move) || !choice.also.contains(next)) return choice;
+        List<String> rest = new ArrayList<>(choice.moves());
+        rest.remove(next);
+        return new ChoiceRule.Choice(next, rest, choice.reason + ", the author's " + next.substring(2) + " first");
+    }
+
+    // why a line at a ko ends on the solver's move just played (child, the last of at), or
+    // null: the move takes the ko, where the author's own ko lines end and the fight over it
+    // starts, or the author's line is played out
+    private String koLineEnds(Node child, List<String> at) {
+        if (child.getKo() != null) return "the solver takes the ko with " + at.get(at.size() - 1).substring(2);
+        if (AuthorLine.done(authorLine, at)) return "the author's line is played out";
+        return null;
+    }
+
+    // the opponent's move on a line at a ko: its strongest (ChoiceRule.chooseKoOpponent), the
+    // author's answer where katago rates it as high. the line ends before a move that takes
+    // the ko itself: the solver's last move is then the one the ko is fought from
+    private ChoiceRule.Choice koResponse(Node node, List<String> at, DecisionRecord opponent) throws Exception {
+        String answer = AuthorLine.answer(authorLines, at);
+        if (answer != null && !node.legalMove(Intersection.gtp2point(answer.substring(2)))) answer = null;
+        ChoiceRule.Choice response = ChoiceRule.chooseKoOpponent(opponent, params, iso.stakes, answer);
+        if (!response.isEnd() && MissingVariationFinder.takesKo(node, Intersection.gtp2point(response.move.substring(2)))) {
+            return new ChoiceRule.Choice(DecisionRecord.END, response.reason + ", which takes the ko: the line ends before it");
+        }
+        return response;
     }
 
     // the try before this solver's turn (node) comes out of the tree, and the opponent's turn it
@@ -404,7 +469,8 @@ public class SolutionPathGenerator {
         }
         opponent.others = others;
         opponent.authors = at.size() == 1 && !authorMoves.isEmpty() ? new ArrayList<>(authorMoves) : null;
-        ChoiceRule.Choice response = ChoiceRule.chooseOpponent(opponent, params, iso.stakes);
+        ChoiceRule.Choice response = authorLine.isEmpty() ? ChoiceRule.chooseOpponent(opponent, params, iso.stakes)
+                : koResponse(node, at, opponent);
         if (response.isEnd() && answersOwn(at)) {
             // the solver's last move is one the problem has itself: the line cannot end on it
             ChoiceRule.Choice on = ChoiceRule.goingOn(opponent, params, iso.stakes);
@@ -414,7 +480,9 @@ public class SolutionPathGenerator {
             }
         }
         record(opponent, response);
-        tried.put(node, new Tried(opponent, at, main));
+        // a try of the generator's own can be taken back for another; the strongest move at a ko
+        // is no such try
+        if (authorLine.isEmpty()) tried.put(node, new Tried(opponent, at, main));
         if (response.isEnd()) {
             System.out.println("  " + response.reason + ": path ends after move " + moveCount);
             node.result = Intersection.RIGHT;

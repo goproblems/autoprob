@@ -173,7 +173,9 @@ site as it is now:
 It is a dry run unless `crawl.post=true`; `crawl.only=gp-1,gp-2` limits it to those. What was
 sent goes in `submitted/gp-<id>.json`, and the crawl never judges that problem again.
 `cmd=crawl-sync` reads back each one's status (open, approved, rejected) and the reviewer's
-comment.
+comment. Run it after the site has been through a round: an approval here is not one there,
+and the site's verdicts are what a change to the judging is measured against (see
+[missing-variations.md](missing-variations.md#measuring-against-review)).
 
 The site checks nothing a suggestion carries (see
 [missing-variations.md](missing-variations.md#suggesting-a-finding-to-the-site)), so these

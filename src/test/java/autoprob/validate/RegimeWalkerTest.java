@@ -209,6 +209,43 @@ class RegimeWalkerTest {
         assertEquals(Set.of(), walker.deadKos(node, Intersection.WHITE));
     }
 
+    @Test
+    void withOneKoTakenBackTheOtherSideHasAnotherToTake() throws Exception {
+        // gp-61250 after B E2 W F2 B A2 W B2 B E3 W B4 B C3 W E1 B A4: black has taken the ko at
+        // A3, white the one at F1
+        ProblemIsolator.IsolatedProblem iso = new ProblemIsolator.IsolatedProblem();
+        iso.problem = new Node(null);
+        for (String b : new String[]{"C4", "B3", "C3", "D3", "E3", "A2", "C2", "E2", "D1", "A4"}) put(iso, b, Intersection.BLACK);
+        for (String w : new String[]{"A5", "B5", "C5", "B4", "D4", "E4", "G4", "F3", "F2", "G2", "B2", "B1", "G1", "E1"}) {
+            put(iso, w, Intersection.WHITE);
+        }
+        iso.solverColor = Intersection.BLACK;
+        iso.problem.defaultToMoveColor = Intersection.WHITE;
+        RegimeWalker walker = new RegimeWalker(iso, null, null);
+        // nobody has just taken a ko
+        assertEquals(null, walker.anotherTake(iso.problem, Intersection.WHITE));
+        assertEquals(null, walker.anotherTake(iso.problem, Intersection.BLACK));
+        // white takes back at A3: black, who may not take at A4, has the ko at F1 to take
+        Node back = Positions.play(iso, moves("W A3"));
+        assertFalse(back.legalMove(Intersection.gtp2point("A4")));
+        assertEquals("F1", walker.anotherTake(back, Intersection.WHITE));
+        // with black winning every ko it is black's own turn: nothing for the other side to take
+        assertEquals(null, walker.anotherTake(back, Intersection.BLACK));
+        // once black has taken at F1 and white has taken that back, A4 is black's to take again
+        Node again = Positions.play(iso, moves("W A3,B F1,W K10,B K11,W E1"));
+        assertEquals("A4", walker.anotherTake(again, Intersection.WHITE));
+        // a single ko: with F1 black's from the start, white's take at A3 leaves black no other
+        ProblemIsolator.IsolatedProblem one = new ProblemIsolator.IsolatedProblem();
+        one.problem = new Node(null);
+        for (String b : new String[]{"C4", "B3", "C3", "D3", "E3", "A2", "C2", "E2", "D1", "A4", "E1", "F1"}) put(one, b, Intersection.BLACK);
+        for (String w : new String[]{"A5", "B5", "C5", "B4", "D4", "E4", "G4", "F3", "F2", "G2", "B2", "B1", "G1"}) {
+            put(one, w, Intersection.WHITE);
+        }
+        one.solverColor = Intersection.BLACK;
+        one.problem.defaultToMoveColor = Intersection.WHITE;
+        assertEquals(null, new RegimeWalker(one, null, null).anotherTake(Positions.play(one, moves("W A3")), Intersection.WHITE));
+    }
+
     private static String exchange(Point mine, Point theirs) {
         return "W " + Intersection.toGTPloc(mine.x, mine.y, 19) + ",B " + Intersection.toGTPloc(theirs.x, theirs.y, 19);
     }

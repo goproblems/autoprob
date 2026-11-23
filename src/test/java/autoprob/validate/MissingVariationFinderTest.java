@@ -316,13 +316,55 @@ class MissingVariationFinderTest {
         assertNull(MissingVariationFinder.leavesKo(iso.problem, pos, verdicts, take));
         assertNull(MissingVariationFinder.leavesKo(iso.problem, new MissingVariationFinder.Position(List.of(), Set.of("B L10"), List.of()),
                 verdicts, verdict("B M10", MoveClassifier.Level.KO)));
-        // gp-62278: the author takes the ko or plays elsewhere, so a found move elsewhere may
-        // be another order of play before that answer
+        // gp-62278: the author takes the ko or plays elsewhere first. one answer that takes it
+        // is enough: the site rejected the found H1 there, which did not ("cannot guarantee
+        // Black a clean kill when white tenukis")
         MissingVariationFinder.Position either = new MissingVariationFinder.Position(List.of(), Set.of("B C18", "B L10"), List.of());
-        assertNull(MissingVariationFinder.leavesKo(iso.problem, either, verdicts, verdict("B M10", MoveClassifier.Level.KO)));
-        // an accepted move that falls short of the ko does not count as such an answer
-        java.util.Map<String, MoveClassifier.Verdict> shortOf = java.util.Map.of("B C18", take, "B L10", verdict("B L10", MoveClassifier.Level.FAIL));
-        assertTrue(MissingVariationFinder.leavesKo(iso.problem, either, shortOf, verdict("B M10", MoveClassifier.Level.KO)) != null);
+        assertTrue(MissingVariationFinder.leavesKo(iso.problem, either, verdicts, verdict("B M10", MoveClassifier.Level.KO)) != null);
+        // an accepted move that takes the ko but falls short of it is no such answer
+        java.util.Map<String, MoveClassifier.Verdict> shortOf = java.util.Map.of("B C18", verdict("B C18", MoveClassifier.Level.FAIL), "B L10", other);
+        assertNull(MissingVariationFinder.leavesKo(iso.problem, either, shortOf, verdict("B M10", MoveClassifier.Level.KO)));
+    }
+
+    @Test
+    void aKoThatCostsPointsOnTheRawBoardIsAWorseKo() {
+        // gp-62668's N19 came to 5.0 points less than the author's M19 there, and the site
+        // rejected it: "White can tenuki, and Black can only kill this W group by ko"
+        String why = MissingVariationFinder.worseByPoints(38.6, 43.6, 4);
+        assertTrue(why != null && why.contains("5.0 points less") && why.contains("worse ko"), why);
+        // gp-60804's A3, which the site kept, came to 3.7 less
+        assertNull(MissingVariationFinder.worseByPoints(1.4, 5.1, 4));
+        // a move that comes to more than the author's, and a position where the points are
+        // not asked about (the best is clean), or where katago had none for the author's moves
+        assertNull(MissingVariationFinder.worseByPoints(8.0, 5.0, 4));
+        assertNull(MissingVariationFinder.worseByPoints(-20.0, 5.0, 0));
+        assertNull(MissingVariationFinder.worseByPoints(-20.0, null, 4));
+    }
+
+    @Test
+    void aPositionIsHeldToWhatItsLineCameTo() {
+        // gp-61250: B E2 read as a seki at the start, the line through it as a ko further down
+        java.util.Map<String, MoveClassifier.Level> reached = new java.util.HashMap<>();
+        MissingVariationFinder.Position start = new MissingVariationFinder.Position(List.of(), Set.of("B E2"), List.of());
+        assertNull(MissingVariationFinder.lineLevel(reached, start.at()));
+        MissingVariationFinder.carry(reached, start, null, java.util.Map.of("B E2", verdict("B E2", MoveClassifier.Level.SEKI)));
+        List<String> two = List.of("B E2", "W F2");
+        assertEquals(MoveClassifier.Level.SEKI, MissingVariationFinder.lineLevel(reached, two));
+        // a line the problem does not have is held to nothing
+        assertNull(MissingVariationFinder.lineLevel(reached, List.of("B A2", "W B2")));
+        // a position read below its line passes on what the line was due, not what it read
+        MissingVariationFinder.Position second = new MissingVariationFinder.Position(two, Set.of("B A2"), List.of());
+        MissingVariationFinder.carry(reached, second, MoveClassifier.Level.SEKI, null);
+        List<String> four = List.of("B E2", "W F2", "B A2", "W B2");
+        assertEquals(MoveClassifier.Level.SEKI, MissingVariationFinder.lineLevel(reached, four));
+        // one read as well as its line passes on what its own moves came to there
+        MissingVariationFinder.carry(reached, second, MoveClassifier.Level.SEKI,
+                java.util.Map.of("B A2", verdict("B A2", MoveClassifier.Level.CLEAN)));
+        assertEquals(MoveClassifier.Level.CLEAN, MissingVariationFinder.lineLevel(reached, four));
+        // with nothing due and nothing read, nothing is passed on
+        java.util.Map<String, MoveClassifier.Level> none = new java.util.HashMap<>();
+        MissingVariationFinder.carry(none, start, null, null);
+        assertTrue(none.isEmpty());
     }
 
     @Test

@@ -59,7 +59,7 @@ public class MissingVariationFinder {
     private static final DecimalFormat df = new DecimalFormat("+0.00;-0.00");
     // what judged a problem, for the crawl to tell an older judging from the current one
     // (crawl.recheck): goes up with every change to how moves are judged
-    static final int JUDGING_VERSION = 13;
+    static final int JUDGING_VERSION = 14;
     // how many lines past the problem's stones and the author's moves a suggested line may play
     static final int OUTSIDE = 1;
     // the least number of moves a found move's lines may run to (lineDepth)
@@ -76,6 +76,7 @@ public class MissingVariationFinder {
     private final int rawVisits;     // katago's search on the raw board (RawBoard)
     private final double rawGap;     // how much less of the stakes a found move may leave there
     private final double rawGapKo;   // the same where the best is a ko or seki, the stakes half and half
+    private final double rawScoreGapKo; // at a ko, how many points less than the author's a found move may come to there
     private final double outsideOwner; // a living group's move whose point the opponent keeps past this is played outside
     private final boolean skipKo;
     private final boolean allPositions;
@@ -154,6 +155,10 @@ public class MissingVariationFinder {
         Double raw;
         String rawAuthorMove;
         Double rawAuthor;
+        // and what each comes to there in points for the solver, by katago's score: the move's,
+        // and the most any of the author's moves comes to
+        Double rawScore;
+        Double rawAuthorScore;
         // for the review tool: the generator's decisions behind the lines, at from the root
         transient List<DecisionRecord> decisions = new ArrayList<>();
     }
@@ -200,6 +205,7 @@ public class MissingVariationFinder {
         this.rawVisits = Integer.parseInt(props.getProperty("missing.raw_visits", "1000"));
         this.rawGap = Double.parseDouble(props.getProperty("missing.raw_gap", "0.3"));
         this.rawGapKo = Double.parseDouble(props.getProperty("missing.raw_gap_ko", "0.6"));
+        this.rawScoreGapKo = Double.parseDouble(props.getProperty("missing.raw_score_gap_ko", "4"));
         this.outsideOwner = Double.parseDouble(props.getProperty("missing.outside_owner", "0.7"));
         // with skip_ko, positions whose own line goes through a ko are passed over
         this.skipKo = Boolean.parseBoolean(props.getProperty("missing.skip_ko", "false"));
@@ -450,6 +456,9 @@ public class MissingVariationFinder {
             o.reason = "nothing at stake in the isolation";
             return null;
         }
+        // what each of the problem's own moves came to where it was judged, for the positions
+        // further down its line (lineLevel)
+        Map<String, MoveClassifier.Level> reached = new HashMap<>();
         for (Position pos : authorPositions(refs, IsolationRecord.colorLetter(iso.solverColor))) {
             o.positions++;
             if (skipKo) {
@@ -466,7 +475,7 @@ public class MissingVariationFinder {
                     continue;
                 }
             }
-            Finding f = findAt(name, sgf, root, own, embedded, judging, pos, o);
+            Finding f = findAt(name, sgf, root, own, embedded, judging, pos, reached, o);
             if ("skipped".equals(o.status)) return null; // the start is read differently from the author
             if (f != null) {
                 f.difficulty = difficulty;
@@ -511,7 +520,7 @@ public class MissingVariationFinder {
     }
 
     private Finding findAt(String name, String sgf, Node root, Node own, SmallBoard.Embedded board, Judging j, Position pos,
-                           Outcome o) throws Exception {
+                           Map<String, MoveClassifier.Level> reached, Outcome o) throws Exception {
         ProblemIsolator.IsolatedProblem iso = j.iso();
         String where = pos.at().isEmpty() ? "at the start" : "after " + String.join(" ", pos.at());
         Node node;
@@ -619,9 +628,29 @@ public class MissingVariationFinder {
             System.out.println("  " + where + ": nothing holds " + level(cur) + ", so the best is " + level(best) + ": "
                     + summary(j.quick(), verdicts));
         }
+        MoveClassifier.Level due = lineLevel(reached, pos.at());
         if (best == MoveClassifier.Level.FAIL) {
+            carry(reached, pos, due, null);
             System.out.println("  " + where + ": skipped, no move reaches anything even winning every ko, so the isolation"
                     + " misreads the position");
+            return null;
+        }
+        // the move the line came through was judged at the position before, by the worst of the
+        // answers to it, and this position comes after one of those answers: its best move has
+        // to come to as much. where it reads lower, one of the two readings is wrong, and a move
+        // that does as well as the lower one need not do as well as the problem's own. in
+        // gp-61250 the author's line ends in a double ko, which the solver cannot lose: read
+        // from the start its B E2 came to a seki, but two and four moves in the same line read
+        // as a ko (before the walk took the second ko of a double ko at once, RegimeWalker),
+        // and E1 and C3, which make a plain ko of it, came out as good as the author's E3 (the
+        // site: "the two new moves all make a double ko become a regular ko"). so nothing is
+        // suggested at such a position, and the positions below it are held to what the line
+        // was due
+        boolean below = due != null && j.quick().rank(best) < j.quick().rank(due);
+        carry(reached, pos, due, below ? null : verdicts);
+        if (below) {
+            System.out.println("  " + where + ": the best here is " + level(best) + ", but the line to here came to " + level(due)
+                    + " where it was judged earlier: the two readings disagree, so nothing is suggested here");
             return null;
         }
         // positions come shallowest first, so this is the start unless it was passed over
@@ -706,10 +735,11 @@ public class MissingVariationFinder {
         // before one of them is no answer of its own
         Set<String> working = new HashSet<>();
         for (MoveClassifier.Verdict v : verdicts.values()) if (v.level == top) working.add(v.move);
-        RawBoard raw = new RawBoard(own, board, pos, iso, best == MoveClassifier.Level.CLEAN ? rawGap : rawGapKo);
+        RawBoard raw = new RawBoard(own, board, pos, iso, best == MoveClassifier.Level.CLEAN ? rawGap : rawGapKo,
+                best == MoveClassifier.Level.KO ? rawScoreGapKo : 0);
         for (MoveClassifier.Verdict v : missing) {
             String worse = best == MoveClassifier.Level.KO ? worseKo(j, node, pos, verdicts, v) : null;
-            if (worse == null && best == MoveClassifier.Level.KO && !inFile.contains(v.move)) worse = leavesKo(node, pos, verdicts, v);
+            if (worse == null && best == MoveClassifier.Level.KO) worse = leavesKo(node, pos, verdicts, v);
             if (worse != null) {
                 System.out.println("  " + where + ": " + pt(v.move) + " " + worse + ", so it is not suggested");
                 continue;
@@ -741,8 +771,8 @@ public class MissingVariationFinder {
             // through each of the problem's own answers to it, wherever the line runs on its tree
             boolean clean = best == MoveClassifier.Level.CLEAN;
             List<SolutionPathGenerator.Refuted> refuted = new ArrayList<>();
-            m.lines.addAll(linesFrom(iso, root, node, pos.at(), List.of(), v.move, pos.correct(), lineDepth(pos), clean, m.decisions,
-                    m.cut, refuted));
+            m.lines.addAll(linesFrom(iso, root, node, pos.at(), List.of(), v.move, pos.correct(), lineDepth(pos), clean,
+                    best == MoveClassifier.Level.KO ? pos.lines() : List.of(), m.decisions, m.cut, refuted));
             for (SolutionPathGenerator.Refuted r : refuted) {
                 for (String move : r.moves()) m.left.add(String.join(" ", r.at()) + " " + move);
             }
@@ -895,35 +925,35 @@ public class MissingVariationFinder {
                 + plain(mine) + " and " + pt(whose) + " " + plain(theirs);
     }
 
-    // why a found move only spends a ko threat, or null: the best there is a ko, every answer
-    // of the problem's that reaches it takes the ko, and the found move does not. with the ko
-    // to take, a move elsewhere first is a threat used up before the fight has started,
-    // whatever it comes to once the ko is won anyway (adam's review of gp-61191: after the
-    // author's line to B M10, White's N11 and N10 before the author's K12, which takes the ko,
-    // "wastes ko threats"). with the solver winning every ko nearly any move that loses
-    // nothing there reaches the ko too: gp-60002 had six of them at one position.
+    // why a found move only spends a ko threat, or null: the best there is a ko, one of the
+    // problem's own answers that reaches it takes the ko at once, and the found move does not.
+    // with the ko to take, a move elsewhere first is a threat used up before the fight has
+    // started, or a worse ko, whatever it comes to once the ko is won anyway (adam's review of
+    // gp-61191: after the author's line to B M10, White's N11 and N10 before the author's K12,
+    // which takes the ko, "wastes ko threats"). with the solver winning every ko nearly any
+    // move that loses nothing there reaches the ko too: gp-60002 had six of them at one
+    // position.
     //
-    // two kinds of move are not that, and review approved one of each. where the problem also
-    // accepts an answer that takes no ko, the found move may be another order of play before
-    // that one (gp-62278: after B D1, W E1 the author takes the ko at E2 or plays G1, and the
-    // found H1 goes on W C1, B G1). and a move the problem itself has, as wrong, is not asked
-    // about here (see findAt): the problem says it fails, and the line through the problem's
-    // own answer shows whether the ko is still there to take (gp-62098: after B D13 and the
-    // problem's W H12, the author's F13 takes the ko as before). review approved a third
-    // kind, which this still leaves out: gp-62668's Q18 and Q17, placements inside the eye
-    // space before the author's O18 takes the ko
+    // the site's own review holds to this without exception. of the found moves that went to
+    // the site the rule fires on four, and the site rejected each: gp-62098's D13 before the
+    // author's F13, a move the problem itself has as wrong ("a local ko threat and should not
+    // be played early"); gp-62278's H1 after B D1, W E1, where the author takes the ko at E2
+    // or plays G1 first ("cannot guarantee Black a clean kill when white tenukis"); and
+    // gp-62668's Q18 and Q17 before the author's O18. it fires on none of the twelve ko moves
+    // the site kept. version 12 let D13 and H1 through, as moves local review had approved,
+    // with one exception for a move the problem has as wrong and one for a position where the
+    // author also accepts an answer that takes no ko. the site had rejected both by then
     static String leavesKo(Node node, Position pos, Map<String, MoveClassifier.Verdict> verdicts, MoveClassifier.Verdict v)
             throws Exception {
         if (takesKo(node, Intersection.gtp2point(v.move.substring(2)))) return null;
-        String taker = null;
         for (String a : pos.correct()) {
             MoveClassifier.Verdict av = verdicts.get(a);
             if (av == null || av.level != MoveClassifier.Level.KO) continue;
-            if (!takesKo(node, Intersection.gtp2point(a.substring(2)))) return null;
-            if (taker == null) taker = a;
+            if (takesKo(node, Intersection.gtp2point(a.substring(2)))) {
+                return "reaches ko too, but the problem's " + pt(a) + " takes the ko there: a move elsewhere first only spends a ko threat";
+            }
         }
-        if (taker == null) return null;
-        return "reaches ko too, but the problem's " + pt(taker) + " takes the ko there: a move elsewhere first only spends a ko threat";
+        return null;
     }
 
     private static String plain(StatusJudge.Status s) {
@@ -1109,23 +1139,37 @@ public class MissingVariationFinder {
     // missing.raw_gap (0.3) where the best is clean, missing.raw_gap_ko (0.6) where it is a ko
     // or seki, the stakes about half and half after any move. on the crawl's 70 found moves,
     // the most an approved one gave away was 0.17 where the best is clean (gp-62554's C1) and
-    // 0.37 at a ko (gp-62668's Q18); gp-62416's Q19 gave away 0.39, its Q16 0.53
+    // 0.37 at a ko (gp-62668's Q18); gp-62416's Q19 gave away 0.39, its Q16 0.53.
+    //
+    // at a ko the points count as well (missing.raw_score_gap_ko, 4): katago's score there
+    // after the found move, against the most any of the author's moves comes to. the stakes
+    // are half and half after any ko, but a worse ko costs points: the opponent gets a move
+    // elsewhere, or a threat, or the ko is one the solver has to win twice. of the ko moves
+    // that went to the site, the ones it threw out came to 15.2 points less (gp-62098's D13),
+    // 5.7 (gp-61250's E1, which made a double ko a regular one), 5.0 (gp-62668's N19: "White
+    // can tenuki, and Black can only kill by ko"), 4.6 (gp-62311's M9, "an extra local ko
+    // threat"), 3.5, 2.5, 1.3 and 0.5; of the twelve it kept, one came to more than 4 less
+    // (gp-62261's D1, 7.2) and the next to 3.7 (gp-60804's A3). where the best is clean the
+    // points say nothing: three of the moves the site kept there came to 8.5 to 11.6 less
     private final class RawBoard {
         private final Node own;
         private final SmallBoard.Embedded board;
         private final Position pos;
         private final ProblemIsolator.IsolatedProblem iso;
         private final double gap;
+        private final double scoreGap; // 0 where the points are not held against a move
         private boolean looked;
         private String best;      // the author's move there that leaves the solver the most
         private Double bestOwned;
+        private Double bestScore; // the most points any of the author's moves comes to there
 
-        RawBoard(Node own, SmallBoard.Embedded board, Position pos, ProblemIsolator.IsolatedProblem iso, double gap) {
+        RawBoard(Node own, SmallBoard.Embedded board, Position pos, ProblemIsolator.IsolatedProblem iso, double gap, double scoreGap) {
             this.own = own;
             this.board = board;
             this.pos = pos;
             this.iso = iso;
             this.gap = gap;
+            this.scoreGap = scoreGap;
         }
 
         // why the move is clearly worse on the raw board than the author's best, or null; the
@@ -1134,30 +1178,52 @@ public class MissingVariationFinder {
             if (!looked) {
                 looked = true;
                 for (String a : pos.correct()) {
-                    Double o = rawOwnership(brain, own, board, plus(pos.at(), a), iso, rawVisits);
-                    if (o != null && (bestOwned == null || o > bestOwned)) {
+                    Raw r = rawLook(brain, own, board, plus(pos.at(), a), iso, rawVisits);
+                    if (r == null) continue;
+                    if (bestOwned == null || r.owned() > bestOwned) {
                         best = a;
-                        bestOwned = o;
+                        bestOwned = r.owned();
                     }
+                    if (bestScore == null || r.score() > bestScore) bestScore = r.score();
                 }
             }
-            m.raw = rawOwnership(brain, own, board, plus(pos.at(), m.move), iso, rawVisits);
+            Raw mine = rawLook(brain, own, board, plus(pos.at(), m.move), iso, rawVisits);
+            m.raw = mine == null ? null : mine.owned();
+            m.rawScore = mine == null ? null : mine.score();
             m.rawAuthorMove = best;
             m.rawAuthor = bestOwned;
-            if (m.raw == null || bestOwned == null || bestOwned - m.raw <= gap) return null;
-            return String.format("leaves the solver %.2f of the stakes on the raw board, without the fill, against %.2f after %s",
-                    m.raw, bestOwned, pt(best));
+            m.rawAuthorScore = bestScore;
+            if (mine == null || bestOwned == null) return null;
+            if (bestOwned - mine.owned() > gap) {
+                return String.format("leaves the solver %.2f of the stakes on the raw board, without the fill, against %.2f after %s",
+                        mine.owned(), bestOwned, pt(best));
+            }
+            return worseByPoints(mine.score(), bestScore, scoreGap);
         }
     }
 
+    // why a found move's ko is a worse one by the points it comes to on the raw board, or null:
+    // more than the gap fewer than the most any of the author's moves comes to there. no gap,
+    // no check
+    static String worseByPoints(double score, Double authors, double gap) {
+        if (gap <= 0 || authors == null || authors - score <= gap) return null;
+        return String.format("comes to %.1f points less on the raw board, without the fill, than the best of the problem's own moves there: a worse ko",
+                authors - score);
+    }
+
+    // what katago makes of the raw board after some moves: the solver's share of the stakes,
+    // and its lead in points
+    record Raw(double owned, double score) {}
+
     // how much of the stakes the solver ends with on the raw board after the moves from the
     // problem's start (on the 19x19 board the finder plays it on), by katago's ownership: on
-    // average, 1 when all go its way and -1 when none do; null when katago cannot say. the raw
-    // board is the problem's own (own, its root there), the size the site has: a 13x13 problem
-    // in a corner of 19x19 has open lines past its far edges that change the fight (gp-62468:
-    // on 19x19 the author's L13 looked the better move, on 13x13 the H11 review approved)
-    static Double rawOwnership(KataBrain brain, Node own, SmallBoard.Embedded board, List<String> moves,
-                               ProblemIsolator.IsolatedProblem iso, int visits) throws Exception {
+    // average, 1 when all go its way and -1 when none do; and its lead in points there. null
+    // when katago cannot say. the raw board is the problem's own (own, its root there), the
+    // size the site has: a 13x13 problem in a corner of 19x19 has open lines past its far
+    // edges that change the fight (gp-62468: on 19x19 the author's L13 looked the better move,
+    // on 13x13 the H11 review approved)
+    static Raw rawLook(KataBrain brain, Node own, SmallBoard.Embedded board, List<String> moves,
+                       ProblemIsolator.IsolatedProblem iso, int visits) throws Exception {
         if (iso.stakes.isEmpty() || moves.isEmpty()) return null;
         Node node = own, first = null;
         try {
@@ -1177,9 +1243,10 @@ public class MissingVariationFinder {
             KataAnalysisResult kar = brain.getResult(query.id, query.analyzeTurns.get(0));
             if (kar == null || kar.isError() || kar.ownership == null) return null;
             int sign = iso.solverColor == Intersection.BLACK ? 1 : -1;
-            return iso.stakes.stream()
+            double owned = iso.stakes.stream()
                     .mapToDouble(s -> sign * kar.ownership.get((s.x - board.dx()) + (s.y - board.dy()) * board.size()))
                     .average().orElse(0);
+            return new Raw(owned, sign * kar.blackScore());
         } finally {
             if (first != null) own.removeChildNode(first);
         }
@@ -1342,6 +1409,25 @@ public class MissingVariationFinder {
         return j.quick().classify(pos.at(), move, floor);
     }
 
+    // what the line to a position came to where its last move was judged, at the position
+    // before: what the position has to come to itself. null at the start, or when that move
+    // was not judged
+    static MoveClassifier.Level lineLevel(Map<String, MoveClassifier.Level> reached, List<String> at) {
+        return at.isEmpty() ? null : reached.get(DecisionRecord.key(at.subList(0, at.size() - 1)));
+    }
+
+    // notes what each of the problem's own moves at a position came to, for the positions
+    // after it: its level by the verdicts there, or, with no verdicts to go by (null: the
+    // position was read below its own line, or not at all), what the line to here was due
+    static void carry(Map<String, MoveClassifier.Level> reached, Position pos, MoveClassifier.Level due,
+                      Map<String, MoveClassifier.Verdict> verdicts) {
+        for (String m : pos.correct()) {
+            MoveClassifier.Verdict v = verdicts == null ? null : verdicts.get(m);
+            MoveClassifier.Level level = v != null ? v.level : due;
+            if (level != null) reached.put(DecisionRecord.key(plus(pos.at(), m)), level);
+        }
+    }
+
     private static MoveClassifier.Level bestLevel(MoveClassifier c, Map<String, MoveClassifier.Verdict> verdicts) {
         MoveClassifier.Level best = MoveClassifier.Level.FAIL;
         for (MoveClassifier.Verdict v : verdicts.values()) {
@@ -1474,13 +1560,15 @@ public class MissingVariationFinder {
     // forced or not. the lines start with the given moves. where they run on the problem's
     // tree (root), the opponent plays the problem's own answers. accepted: the author's moves
     // at the position, which a forced first move that only prepared one of them is followed
-    // to. the generator's decisions go to decisions, at from the root (at is the position's),
-    // the lines a limit stopped short to cut, and the solver's moves left as the problem has
-    // them to refuted
+    // to. koLines: where the best there is a ko, the author's own correct lines from the
+    // position, which the line then follows (SolutionPathGenerator.setAuthorLines); empty
+    // otherwise. the generator's decisions go to decisions, at from the root (at is the
+    // position's), the lines a limit stopped short to cut, and the solver's moves left as the
+    // problem has them to refuted
     private List<List<String>> linesFrom(ProblemIsolator.IsolatedProblem iso, Node root, Node node, List<String> at,
                                          List<String> moves, String forced, Collection<String> accepted, int depth,
-                                         boolean clean, List<DecisionRecord> decisions, List<Cut> cut,
-                                         List<SolutionPathGenerator.Refuted> refuted) throws Exception {
+                                         boolean clean, List<List<String>> koLines, List<DecisionRecord> decisions,
+                                         List<Cut> cut, List<SolutionPathGenerator.Refuted> refuted) throws Exception {
         ProblemIsolator.IsolatedProblem from = lineIsolation(iso, node, moves);
         if (from == null) return List.of();
         // the line only illustrates the move, whose level already holds against every answer,
@@ -1502,6 +1590,7 @@ public class MissingVariationFinder {
         SolutionPathGenerator generator = new SolutionPathGenerator(lineProps, brain, from);
         if (forced != null) generator.setForcedFirstMove(Intersection.gtp2point(forced.substring(2)));
         if (forced != null && moves.isEmpty()) generator.setAuthorMoves(accepted);
+        if (forced != null && moves.isEmpty() && !koLines.isEmpty()) generator.setAuthorLines(koLines, forced);
         List<String> start = new ArrayList<>(at);
         start.addAll(moves);
         generator.setOwnAnswers(ownAnswers(root, start));

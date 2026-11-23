@@ -48,6 +48,19 @@ import autoprob.katastruct.MoveInfo;
 // puts B19 and C19 in atari, and white takes it at A18; then black takes at D19 again, and
 // when white takes back, takes A18 at A19.
 //
+// katago does not always take the second ko of a double ko at once. on its own board it
+// expects to win the ko it has, so it may play a threat of its own first, and the favored side
+// uses that move to end the first ko. in gp-61250, after B E2 W F2 B A2 W B2 B E3 W B4 B C3
+// W E1 B A4, white takes back at A3 and black has the ko at F1 to take: taken at once, white
+// can only take that back in turn, and black takes at A4 again. katago's black played D5
+// first; white captured at A1, the ko at A3 was gone, and the one left at F1 was white's to
+// win with its threats: the author's double ko came out a plain ko. so wherever the favored
+// side has just taken a ko and the other side has another to take that katago's line does
+// not take at once, the walk is played out from that take as well (anotherTake), and the
+// other side gets the better of the two results. the take is not given back: taking it back
+// would only have the first ko taken again, so the favored side has to do without, as it
+// does where the walk comes on a double ko itself.
+//
 // katago can also give up a ko the favored side has taken back: sure of losing it for want of
 // threats, it plays the favored side elsewhere, and its view of the position counts the ko
 // lost. so when the favored side's first move on katago's line, after the other side's, is
@@ -72,6 +85,8 @@ public class RegimeWalker {
     private static final int PRESS_STEPS = 3;
     // how deep in katago's search a dead ko may not be taken: all of it
     private static final int WHOLE_SEARCH = 1000;
+    // how many takes of another ko (anotherTake) one walk plays out, the walks from them included
+    private static final int OTHER_KOS = 2;
 
     // the end of a walk: the status there, the moves played to reach it (exchanges included),
     // katago's line on from there, the last analysis, how many exchanges the favored side was
@@ -109,7 +124,15 @@ public class RegimeWalker {
     // plays out the position after the moves (from the isolated root) with favoredColor
     // winning every ko, and says what it comes to
     public Walk walk(List<String> moves, int favoredColor, int visits) throws Exception {
+        return walk(moves, favoredColor, visits, true, new int[]{OTHER_KOS});
+    }
+
+    // giveBack: whether a ko the last of the moves takes is given back to the favored side,
+    // which it is not when that move is the other side's take of another ko (anotherTake).
+    // others: how many more such takes may be played out, shared by the walks within a walk
+    private Walk walk(List<String> moves, int favoredColor, int visits, boolean giveBack, int[] others) throws Exception {
         String favored = IsolationRecord.colorLetter(favoredColor);
+        String other = favored.equals("B") ? "W" : "B";
         List<String> line = new ArrayList<>(moves);
         Map<String, Set<String>> forbidden = new HashMap<>(); // position -> ko captures not allowed there
         Set<String> taken = new HashSet<>();                  // kos the other side took, and from where
@@ -118,7 +141,7 @@ public class RegimeWalker {
         // free exchange: it stands only in katago's line
         boolean unanswered = false;
         // the last move may itself take a ko the favored side can take back
-        if (!line.isEmpty() && !line.get(line.size() - 1).startsWith(favored) && takesKo(line)) {
+        if (giveBack && !line.isEmpty() && !line.get(line.size() - 1).startsWith(favored) && takesKo(line)) {
             List<String> ex = exchange(line, favoredColor);
             if (ex != null) {
                 String back = koPoint(line);
@@ -138,6 +161,11 @@ public class RegimeWalker {
         Walk unpressed = null;  // where katago first settled, before the favored side pressed on
         boolean unansweredBefore = false;
         boolean settled = false; // the walk ended where a line settles, not at the limit of its steps
+        // the other side's takes of another ko that katago's line passed over, played out once
+        // this walk is done: the moves up to and with each take, and how many exchanges the
+        // favored side had been given by then
+        List<List<String>> otherTakes = new ArrayList<>();
+        List<Integer> otherExchanges = new ArrayList<>();
         for (int step = 0; step < MAX_STEPS + PRESS_STEPS * pressed || settle; step++) {
             Node first = null;
             try {
@@ -157,6 +185,14 @@ public class RegimeWalker {
                 if (settle) {
                     settled = true;
                     break;
+                }
+                // the favored side has just taken a ko, and the other side has another to take
+                String second = otherTakes.size() < others[0] ? anotherTake(node, favoredColor) : null;
+                if (second != null && (pv.isEmpty() || !pv.get(0).equals(other + " " + second))) {
+                    List<String> to = new ArrayList<>(line);
+                    to.add(other + " " + second);
+                    otherTakes.add(to);
+                    otherExchanges.add(exchanges);
                 }
 
                 // the first ko the other side takes on katago's line, or the first place on it
@@ -188,6 +224,15 @@ public class RegimeWalker {
                             k = i;
                             from = before;
                             break;
+                        }
+                        // the same further on katago's line
+                        String take = m.startsWith(favored) && otherTakes.size() < others[0] ? anotherTake(cur, favoredColor) : null;
+                        if (take != null && (i + 1 >= pv.size() || !pv.get(i + 1).equals(other + " " + take))) {
+                            List<String> to = new ArrayList<>(line);
+                            to.addAll(pv.subList(0, i + 1));
+                            to.add(other + " " + take);
+                            otherTakes.add(to);
+                            otherExchanges.add(exchanges);
                         }
                         if (!dead.containsAll(deadKos(cur, favoredColor))) {
                             d = i;
@@ -280,7 +325,32 @@ public class RegimeWalker {
             status = StatusJudge.Status.FAIL;
             margin = 0;
         }
-        return new Walk(status, line, pv, kar, exchanges, margin);
+        Walk result = new Walk(status, line, pv, kar, exchanges, margin);
+        // the other side's takes of another ko, where the line that shows the result passed
+        // them over (a take on a line the favored side has since left is no choice of the other
+        // side's): each is played out, and the other side gets the best of them
+        List<String> shown = new ArrayList<>(line);
+        shown.addAll(pv);
+        for (int i = 0; i < otherTakes.size() && others[0] > 0; i++) {
+            List<String> to = otherTakes.get(i);
+            int before = to.size() - 1;
+            if (shown.size() < before || !shown.subList(0, before).equals(to.subList(0, before))) continue;
+            others[0]--;
+            Walk w = walk(to, favoredColor, visits, false, others);
+            boolean better = favoredColor == iso.solverColor ? w.status().compareTo(result.status()) < 0
+                    : w.status().compareTo(result.status()) > 0;
+            if (better) result = new Walk(w.status(), w.line(), w.pv(), w.kar(), otherExchanges.get(i) + w.exchanges(), w.margin());
+        }
+        return result;
+    }
+
+    // another ko the side to play at the node could take at once, when the favored side has
+    // just taken one from it, or null: the second ko of a double ko. a dead ko is none
+    String anotherTake(Node node, int favoredColor) throws Exception {
+        if (node.getToMove() == favoredColor || node.getKo() == null) return null;
+        Set<String> takes = koTakes(node);
+        takes.removeAll(deadKos(node, favoredColor));
+        return takes.isEmpty() ? null : new TreeSet<>(takes).first();
     }
 
     // whether the status is all the favored side could ask for

@@ -291,6 +291,40 @@ public class ChoiceRule {
                 + (also.isEmpty() ? "" : ", also " + String.join(", ", also.stream().map(m -> m.substring(2)).toList())));
     }
 
+    // of katago's visits for its first choice, the share the author's answer needs to be
+    // played in its place on a line at a ko
+    static final double KO_ANSWER_VISITS = 0.5;
+
+    // the opponent's move on a line at a ko: its strongest, where the other lines show the try
+    // that tests the solver most. such a line has to show the ko the found move comes to, and
+    // after a try that loses outright it shows a kill where the result is a ko. the site's
+    // review of gp-60804: after B A3, W A2, B B2 the line took W A4, a try katago gave 32
+    // visits, where its first choice B1 had 277: "W A4 was not the strongest. White should
+    // play B1 instead to get a ko", and it put W B1, B A1 in its place, the author's own ko.
+    // the author's answer to the solver's last move (answer, null when the author has none)
+    // is played where katago rates it near its first choice (KO_ANSWER_VISITS), so the line
+    // stays on the author's own; otherwise the opponent has something better than the author
+    // showed, and the line shows that. END when the move threatens nothing
+    public static Choice chooseKoOpponent(DecisionRecord rec, ChoiceParams p, List<Point> stakes, String answer) {
+        List<CandidateFeatures> candidates = gather(rec, p);
+        if (candidates.isEmpty()) {
+            return new Choice(DecisionRecord.END, "no plausible opponent move");
+        }
+        CandidateFeatures top = candidates.get(0), c = top;
+        String whose = "katago's first choice";
+        CandidateFeatures authors = answer == null ? null : rec.candidate(answer);
+        if (authors != null && (authors == top || (authors.visits != null && top.visits != null
+                && authors.visits >= KO_ANSWER_VISITS * top.visits))) {
+            c = authors;
+            whose = "the author's answer";
+        }
+        int threat = countThreat(c, p, stakes);
+        if (threat < p.threatStones) {
+            return new Choice(DecisionRecord.END, "strongest response " + c.point() + " only threatens " + threat + " stones");
+        }
+        return new Choice(c.move, "strongest response " + c.point() + " (" + whose + "), threat " + threat);
+    }
+
     // the end of a line when the real tries left are routine: authors stop once the result is
     // clear rather than play out replies everyone finds, though they still show a single last
     // resistance. null when the line goes on

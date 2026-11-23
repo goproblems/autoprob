@@ -93,6 +93,27 @@ coordinates; the console says how far the problem moved.
    two it approved were moves that work beside an answer the reading had undervalued
    (gp-61100's K11, gp-60688's T17); those are no longer found.
 
+   A position also has to come to what its own line came to. The move a line comes through
+   was judged at the position before, by the worst of the answers to it, so the position
+   after one of those answers cannot come to less. Where its best move reads lower, one of
+   the two readings is wrong, and a move that does as well as the lower one need not do as
+   well as the author's. Nothing is suggested there, and the positions below are held to
+   the same level until one reads that well again. In gp-61250 the author's line ends in a
+   double ko, which Black cannot lose. Read from the start, B E2 came to a seki, but two
+   and four moves in, the same line read as a ko, and E1 and C3, which make a plain ko of
+   it, came out as good as the author's E3. The site rejected them ("the two new moves all
+   make a double ko become a regular ko"). The double ko is read right there now (see
+   [Kos](#kos)), and this stays for the misreadings still to come. Three more of the
+   crawl's suggestions had a found move at such a position (gp-61283, gp-61403, gp-61573),
+   and review rejected all three. Judged again, none of them is suggested, though other
+   rules get there first: in gp-61283 and gp-61573 the reading has the author's first move
+   short of another, and the line of gp-61403's one found move ends on a move the problem
+   has as wrong. A line can recover. In gp-62617, after B G1, W H4 the best reads as a
+   seki where G1 came to a clean result, and two moves on it reads clean again, so the F1
+   found there, which the site approved, is still suggested with its line. gp-61285 is
+   stopped at one position the same way (a seki after B D2, W E2, B D3, W E4, on a line
+   that came to a ko), and the B1 found further down the line stays as the site has it.
+
    A position the solver could leave and still reach the best level is settled: every
    move that does not throw the result away reaches it there, so no move is missing.
    Playing elsewhere is a move in the solver's own fill. In gp-62860, after B E2, W E3,
@@ -133,7 +154,9 @@ coordinates; the console says how far the problem moved.
    (gp-61650's A4, an atari from outside on White's stones, was approved). The other two
    rejections were pushes from the group outward, whose stone lives: gp-62219's C5 came
    out at +0.60 to +0.82, Black's own point, and gp-62141's F11 at -0.10 to -0.33. This
-   does not catch those.
+   does not catch those. And it leaves out one move the site kept: in gp-62045, after W M2,
+   B L5, White's H2 is the author's own move two moves later, and the site kept it played
+   sooner, with the author's answer G2 (Black's ownership of the point 0.99).
 
    Where the best is a ko, a found move whose ko is worse than the author's is not missing.
    The site splits ko results by who takes the ko first (see [Levels](#levels)), and on
@@ -142,23 +165,21 @@ coordinates; the console says how far the problem moved.
    R18 takes the ko first; after R19, W S18, Black can only take back the ko White takes at
    T19, or settle for the seki of B T19.
 
-   Where the best is a ko and every answer of the problem's that reaches it takes the ko, a
-   found move that plays elsewhere first is not missing either: it only spends a ko threat.
-   In gp-61191, after the author's line to B M10, White's N11 and N10 came before the
-   author's K12, which takes the ko ("wastes ko threats"). With the solver winning every ko,
-   nearly any move that loses nothing there reaches the ko too: gp-60002 had six at one
-   position. Two kinds of move are not that, and review approved one of each:
+   Where the best is a ko and one of the problem's answers that reach it takes the ko at
+   once, a found move that plays elsewhere first is not missing either: it only spends a ko
+   threat. In gp-61191, after the author's line to B M10, White's N11 and N10 came before
+   the author's K12, which takes the ko ("wastes ko threats"). With the solver winning every
+   ko, nearly any move that loses nothing there reaches the ko too: gp-60002 had six at one
+   position.
 
-   - where the problem also accepts an answer that takes no ko, the found move may be
-     another order of play before that one. In gp-62278, after B D1, W E1, the author takes
-     the ko at E2 or plays G1, and the found H1 goes on W C1, B G1;
-   - a move the problem itself has, as wrong, is judged by its line: the problem says it
-     fails, and the line through the problem's own answer shows whether the ko is still
-     there to take. In gp-62098, after B D13 and the problem's W H12, the author's F13 takes
-     the ko as before.
-
-   Review approved a third kind that the rule still leaves out: gp-62668's Q18 and Q17,
-   placements inside the eye space before the author's O18 takes the ko.
+   The rule has no exceptions. It had two for a while, for a position where the problem also
+   accepts an answer that takes no ko, and for a move the problem itself has as wrong, since
+   review here had approved gp-62278's H1 and gp-62098's D13. The site rejected both ("the
+   new line cannot guarantee Black a clean kill when white tenukis", "Black d13 is a local
+   ko threat and should not be played early"), and with N19 it rejected gp-62668's Q18 and
+   Q17, placements before the author's O18 takes the ko, which the rule had been thought
+   too strict for. Of the 20 found moves at a ko that went to the site, the rule drops those
+   four and none of the twelve the site kept.
 
    The author's moves are judged first. Once some move reaches a level, a move the
    problem does not accept only matters if it reaches that level too, so one that falls
@@ -258,6 +279,31 @@ coordinates; the console says how far the problem moved.
    review approved: in gp-60579, after B O18, W O19, the problem has Black's N19, which
    takes a ko, and review kept W L19, B P19 after it. Of the three reviewed suggestions
    whose lines ran on past such a move of the problem's, it approved that one.
+
+   Where the best is a ko, the line follows the author's own (`AuthorLine`). A move found
+   there is right only if it comes to the author's ko, so the line has to show that ko. Of
+   the 12 found moves the site kept at a ko, its reviewer rewrote the lines of 8: each
+   became the author's line with the found move's exchange put in, run to the author's ko
+   capture (gp-60333, gp-60685, gp-60804, gp-61398, gp-61669, gp-62045). Three things
+   change for such a line:
+
+   - the opponent plays its strongest answer, never the try a human gets wrong. That is the
+     author's answer to the solver's last move where KataGo gives it at least half the
+     visits of its own first choice, and KataGo's first choice otherwise. In gp-60804 the
+     found A3 was answered at A4, the testing try, with 32 visits against B1's 277, and the
+     line ended in a clean kill ("W A4 was not the strongest. White should play B1 instead
+     to get a ko"); the site's line is W B1, B A1;
+   - the solver plays the author's next move wherever it is among the moves that work, the
+     others going in beside it as ever;
+   - the line ends on the solver's move that takes the ko, or once the author's line is
+     played out, whatever tries are left. An answer that itself takes the ko ends the line
+     before it: the ko is then the opponent's to take first, which is not the author's ko.
+
+   A line at a ko still ends before an answer that is no real threat (`redo.threat_stones`),
+   as any line does. Judged again, gp-60804's A3 and gp-61398's F5 and E5 come out with the
+   lines the site has. gp-60333's and gp-60685's T14 end on the found move, where the
+   reviewer added White's answer T15 and the author's T18; the same ending gives the
+   one-move lines the site kept as sent, gp-61285's B1 and gp-62573's Q16 and Q15.
 
    `cmd=line-ends` measures the ending rule against review (see
    [Measuring against review](#measuring-against-review)). On the 40 positions measured so
@@ -363,6 +409,18 @@ coordinates; the console says how far the problem moved.
    `missing.raw_gap_ko` (0.6) applies, since the stakes come out about half and half after any
    move. gp-62416's Q19 and Q16 left White's stones 0.40 and 0.27 Black's, against 0.79 after
    the author's O17.
+
+   Where the best is a ko, the score is compared too: a found move that comes to more than
+   `missing.raw_score_gap_ko` (4) points less than the best of the author's moves there is a
+   worse ko, and is not suggested. Half the stakes either way says little about a ko, and
+   what the site's reviewer threw out at a ko was mostly a ko that costs something: "White
+   can tenuki, and Black can only kill this W group by ko" (gp-62668's N19, 5.0 points
+   behind), "gives black an extra local ko threat" (gp-62311's M9, 4.6). Measured over the
+   20 found moves at a ko the site ruled on, a gap over 4 marks four of the eight it threw
+   out (gp-62098's D13 at 15.2 and gp-61250's E1 at 5.7 are the other two) and one of the
+   twelve it kept, gp-62261's D1 at 7.2. At a clean result the score separates nothing: 13
+   of the 115 moves the site kept lose over 5 points, three of them 8.5 to 11.6, and a move
+   that keeps the result is right whatever it costs. So there it is not looked at.
 
    On the crawl's 70 found moves, the check drops gp-62395's and gp-62448's E1 and most of
    what review rejected, and nothing review approved. The most an approved move gave away was
@@ -506,6 +564,20 @@ Right after White's retake at E19, D19 is banned to Black for that one move. So 
 test counts a point banned only by the ko just taken as one the taker could fill. Otherwise
 A19 would look like a dead ko there, since White can never fill it, and barring it would
 take Black's second ko away.
+
+KataGo does not always take the second ko at once. On its own board it expects to win the
+ko it has, so it may play a threat of its own first, and the winning side uses that move to
+end the first ko. In gp-61250, after B E2, W F2, B A2, W B2, B E3, W B4, B C3, W E1, B A4,
+White takes back at A3 and Black has the ko at F1 to take. Taken at once, White can only
+take that back in turn, and Black takes at A4 again. KataGo's Black played D5 first. White
+captured at A1, which ended the ko at A3, and the one left at F1 was White's to win with its
+threats: the author's E3 came out a plain ko, the same as E1 and C3, which really are one.
+So wherever the winning side has just taken a ko and the other side has another to take
+that KataGo's line does not take at once, the walk is played out from that take as well,
+and the other side gets the better of the two results. The take is not given back, since
+taking it back would only have the first ko taken again: the winning side has to do
+without, as it does where the walk comes on the double ko itself. A walk plays out two such
+takes at most.
 
 Leaving dead kos to the taker, with no exchange for the other side, was tried and dropped.
 It hands the taker kos it needs to win, as in gp-32711's S16: White can never fill T19, but
@@ -764,6 +836,27 @@ gp-59938: review approved (edited); now found; 1 of review's 1 nodes kept, 2 mor
 bash gotool.sh cmd=line-ends study.out=line_ends.jsonl study.edited=true
 ```
 
+The site's own review is the last word, and `cmd=crawl-sync` ([crawl.md](crawl.md)) brings
+it back: each suggestion's status there and the reviewer's comment, in `submitted/`. An
+approval here is not one there. Of the first 88 suggestions sent, the site approved 82 and
+rejected 6, and in the ones it approved it rewrote or took out lines: of 122 found moves
+sent at a clean result it kept 105 as sent, changed the lines of 10 and threw out 7; of 20
+at a ko it kept 4 as sent, rewrote the lines of 8 and threw out 8. What the problem looks
+like on the site now (`GET api/v2/problems/<id>`, its `sgf`) shows what became of each move.
+A change to how a ko is judged is held against those, not against the reviews here alone:
+the ko-threat rule was loosened once on two approvals here that the site had already
+rejected.
+
+Judged again under version 14 (`cmd=crawl-replay` on the fourteen problems that had a found
+move at a ko), 17 of those 20 moves come out as the site ruled. None of the 8 it threw out
+is suggested: four go by the ko-threat rule, gp-62668's N19 by the score (4.7 points behind
+in that run, not far over the limit), gp-61250's E1 and C3 fall short of the author's E3,
+which reads clean now, and gp-62311's M9 reads as a failure. Of the 12 it kept, 9 are
+suggested again. The other three: gp-62261's D1 goes by the score limit, gp-62045's H2 by
+the outside rule, and gp-61669 is passed over whole, since the reading has the author's own
+first move J2 failing to Black's K1 even with White winning every ko. The build without the
+double-ko reading reads J2 the same, so that one is not new.
+
 `cmd=line-ends` measures where lines end. For every suggestion review approved, each
 position after a solver's move on its lines gets the opponent's decision as the generator
 measures it, with a label from the tree that went to the site: `END` where the line ends
@@ -795,6 +888,10 @@ reported, so some missing variations go unnoticed.
   kill against it.
 - Ko levels are not split by steps. Who takes first only counts against a found move whose
   ko is worse than the author's.
+- The score limit at a ko is a rough stand-in for what makes a ko worse. It drops gp-62261's
+  D1, 7.2 points behind the author's move, which the site kept as sent.
+- The second ko of a double ko is only looked for right after the winning side takes a ko.
+  One the other side could set up with a move of its own first is still left to KataGo.
 - The favored side presses on with a ko only where the ko is on the board when KataGo's line
   settles. A ko the favored side would first have to set up, with a move that offers the
   other side the first take, is still only found by the deviations, in the first six moves.

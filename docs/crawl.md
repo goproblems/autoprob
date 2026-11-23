@@ -170,6 +170,14 @@ and the page's title goes back there from any problem. For each one it shows:
 Approving or rejecting one (`a`, `r`; `j` and `k` move on) writes `approvals/gp-<id>.json`, with
 the comment as it stands and a note kept only here. A rejected suggestion is never sent.
 
+While the page waits for the server it says so. A bar runs along its top, the list and the
+suggestion say that they are loading, a suggestion picked is marked in the list at once while
+the one shown fades, and a pressed button's line says what is being done ("Rejecting…") with
+the buttons out until it is. A decision shows in the list at once and the next suggestion
+comes up without waiting for the list, which takes the server a few seconds to read (a few
+files for every suggestion) and is read again behind it. The server answers requests side by
+side, so nothing waits behind the list.
+
 ### Editing the tree
 
 A suggestion waiting for review can be edited by hand under the tree:

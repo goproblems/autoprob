@@ -9,6 +9,7 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.TreeMap;
+import java.util.concurrent.Executors;
 
 import com.google.gson.reflect.TypeToken;
 import com.sun.net.httpserver.HttpExchange;
@@ -84,6 +86,10 @@ public class CrawlReviewServer {
         server.createContext("/api/decide", ex -> handle(ex, () -> decide(query(ex).get("name"), body(ex))));
         server.createContext("/api/edit", ex -> handle(ex, () -> edit(query(ex).get("name"), body(ex))));
         server.createContext("/", this::serveStatic);
+        // requests are answered side by side. the list takes seconds to read, a few files for
+        // every suggestion, and a decision or the next suggestion waited behind it: the server
+        // answered one request at a time
+        server.setExecutor(Executors.newFixedThreadPool(4));
         server.start();
         System.out.println("reviewing the suggestions in " + dir + ": open http://localhost:" + port + "/  (ctrl-c to stop)");
     }
@@ -374,14 +380,22 @@ public class CrawlReviewServer {
         return RunRecorder.GSON.fromJson(Files.readString(new File(dir, "suggestions/" + name + ".json").toPath()), SuggestionDraft.class);
     }
 
+    // null when there is none. read without asking first whether it is there: with requests
+    // answered side by side, a decision taken back can take the file away between the two
     private CrawlSubmitter.Approval approval(String name) throws IOException {
-        File f = new File(dir, "approvals/" + name + ".json");
-        return f.exists() ? RunRecorder.GSON.fromJson(Files.readString(f.toPath()), CrawlSubmitter.Approval.class) : null;
+        try {
+            return RunRecorder.GSON.fromJson(Files.readString(new File(dir, "approvals/" + name + ".json").toPath()), CrawlSubmitter.Approval.class);
+        } catch (NoSuchFileException e) {
+            return null;
+        }
     }
 
     private CrawlSubmitter.Submitted submitted(String name) throws IOException {
-        File f = new File(dir, "submitted/" + name + ".json");
-        return f.exists() ? RunRecorder.GSON.fromJson(Files.readString(f.toPath()), CrawlSubmitter.Submitted.class) : null;
+        try {
+            return RunRecorder.GSON.fromJson(Files.readString(new File(dir, "submitted/" + name + ".json").toPath()), CrawlSubmitter.Submitted.class);
+        } catch (NoSuchFileException e) {
+            return null;
+        }
     }
 
     private interface Handler {

@@ -112,6 +112,18 @@ h3 .to-tree { border: 1px solid var(--line); background: transparent; border-rad
 .buttons .reject { background: var(--bad); border-color: var(--bad); color: #fff; }
 .buttons button:disabled { opacity: .45; cursor: default; }
 .status, .error { color: var(--bad); }
+/* what a pressed button is doing, said under it while the server has it */
+.status.working { color: var(--muted); }
+/* a request is out: a bar runs along the top of the page and the cursor says so. it shows
+   after a moment only, so that a quick one does not flicker */
+#busy { position: fixed; top: 0; left: 0; right: 0; height: 3px; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .1s; z-index: 10; }
+#busy::after { content: ""; position: absolute; top: 0; bottom: 0; width: 30%; background: var(--accent); animation: busy 1.1s linear infinite; }
+body.busy #busy { opacity: 1; transition-delay: .15s; }
+body.busy, body.busy button, body.busy .row { cursor: progress; }
+@keyframes busy { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { #busy::after { animation: none; left: 0; width: 100%; opacity: .6; } }
+/* the suggestion shown while the one picked is on its way */
+#item.loading { opacity: .45; pointer-events: none; transition: opacity .1s .15s; }
 .empty { color: var(--muted); padding: 12px; }
 @media (max-width: 700px) {
   main { grid-template-columns: 1fr; }

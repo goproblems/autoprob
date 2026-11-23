@@ -10,11 +10,21 @@ try {
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 
+// how many requests are out. while any is the page says so, with a bar along its top and the
+// cursor, so that a press or a load that takes its time does not look like nothing happened:
+// reading the list alone takes the server about five seconds
+let asking = 0;
+
 async function api(path, opts) {
-  const r = await fetch(path, opts);
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || r.status);
-  return j;
+  document.body.classList.toggle('busy', ++asking > 0);
+  try {
+    const r = await fetch(path, opts);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    return j;
+  } finally {
+    document.body.classList.toggle('busy', --asking > 0);
+  }
 }
 
 function conf(c) {
@@ -29,10 +39,18 @@ function result(r) {
   return ` <span class="result${r.old ? ' old' : ''}" title="${esc(tip)}">correct path: ${esc(r.text)}</span>`;
 }
 
+// the list from the server. only the last one asked for counts: a decision shows in the list
+// at once (decided) and the list is read again behind it, and an answer asked for before a
+// later decision would put that one back
+let listAsked = 0;
+
 async function loadList() {
+  const asked = ++listAsked;
   const d = await api('/api/list');
+  if (asked !== listAsked) return;
   S.entries = d.entries;
   S.counts = d.counts;
+  S.loaded = true;
   renderTabs();
   renderList();
 }
@@ -52,6 +70,8 @@ function renderTabs() {
 }
 
 function renderList() {
+  // until the list is here the page says that it is loading
+  if (!S.loaded) return;
   const items = visible();
   $('list').innerHTML = items.length ? items.map(e => `
     <a href="#${e.name}" class="row ${e.state} ${e.name === S.name ? 'on' : ''}">
@@ -142,14 +162,32 @@ async function select(name, path) {
     return;
   }
   S.name = name;
+  // its row is marked at once, and what is shown fades until the suggestion is here
+  renderList();
+  const box = $('item');
+  if (S.item) box.classList.add('loading');
+  else box.innerHTML = `<p class="empty">Loading ${esc(name)}…</p>`;
+  let item;
   try {
-    S.item = await api('/api/item?name=' + encodeURIComponent(name));
+    item = await api('/api/item?name=' + encodeURIComponent(name));
   } catch (e) {
-    $('item').innerHTML = `<p class="error">${esc(e.message)}</p>`;
+    // unless another was picked meanwhile, which shows its own
+    if (S.name === name) {
+      S.item = null;
+      S.tree = null;
+      box.classList.remove('loading');
+      box.innerHTML = `<p class="error">${esc(e.message)}</p>`;
+      refreshList();
+    }
     return;
   }
+  // another was picked while this one was on its way
+  if (S.name !== name) return;
+  S.item = item;
+  box.classList.remove('loading');
   renderItem(path);
   renderList();
+  refreshList();
   // another suggestion starts at its top, with the tree
   if (other) $('item').scrollTop = 0;
 }
@@ -652,7 +690,7 @@ async function saveEdits() {
   // every node the suggestion is to add, parents first, as the tree's order has them
   const added = S.tree.filter(n => !n.gone && !n.ghost && (n.added || n.fresh) && n.x != null)
     .map(n => ({at: sgfPath(n.parent), move: sgfOf(n), right: rightNow(n)}));
-  await sendEdits({base: S.item.base, added});
+  await sendEdits({base: S.item.base, added}, 'Saving the edits…');
 }
 
 function discardEdits() {
@@ -664,49 +702,100 @@ function discardEdits() {
 
 async function revertEdits() {
   if (!confirm(`Undo all the edits to ${S.name}'s tree, back to the lines the checker made?`)) return;
-  await sendEdits({base: S.item.base, revert: true});
+  await sendEdits({base: S.item.base, revert: true}, 'Undoing the edits…');
 }
 
 // the edits to the server, then the suggestion read again as it now stands, keeping the place
-// in the tree and what was typed in the comment and note
-async function sendEdits(body) {
+// in the tree and what was typed in the comment and note. doing: what the line under the
+// tree's buttons says meanwhile, the buttons out
+async function sendEdits(body, doing) {
+  for (const b of $('tree-edit').querySelectorAll('button')) b.disabled = true;
+  say(doing);
+  let item;
   try {
     await api('/api/edit?name=' + encodeURIComponent(S.name), {method: 'POST', body: JSON.stringify(body)});
+    item = await api('/api/item?name=' + encodeURIComponent(S.name));
   } catch (e) {
+    renderEditBar();
     return say(e.message);
   }
   const path = pathOf(S.sel), comment = $('comment').value, note = $('note').value, top = $('item').scrollTop;
   const typed = comment !== (S.item.approval?.comment || S.item.draft.comment);
-  S.item = await api('/api/item?name=' + encodeURIComponent(S.name));
+  S.item = item;
   renderItem(path);
   if (typed) $('comment').value = comment;
   $('note').value = note;
   $('item').scrollTop = top;
-  loadList();
+  loadList().catch(() => {});
 }
 
+// what the line under a decision's buttons says while the server has it
+const DECIDING = {approved: 'Approving…', rejected: 'Rejecting…', pending: 'Taking it back to pending…'};
+
 async function decide(decision) {
+  // a press while the last one is on its way, or while the suggestion shown is not the one
+  // picked yet
+  if (S.deciding || $('item').classList.contains('loading')) return;
   if (unsaved()) {
+    $('status').className = 'status';
     $('status').textContent = 'Save or discard the edits to the tree first.';
     return;
   }
   const body = {decision, comment: $('comment').value, note: $('note').value};
+  // the buttons go out and the line under them says what is being done, until it is
+  const buttons = [...$('item').querySelectorAll('.buttons button')], was = buttons.map(b => b.disabled);
+  for (const b of buttons) b.disabled = true;
+  $('status').className = 'status working';
+  $('status').textContent = DECIDING[decision];
+  S.deciding = true;
   try {
     await api('/api/decide?name=' + encodeURIComponent(S.name), {method: 'POST', body: JSON.stringify(body)});
   } catch (e) {
+    buttons.forEach((b, i) => { b.disabled = was[i]; });
+    $('status').className = 'status';
     $('status').textContent = e.message;
     return;
+  } finally {
+    S.deciding = false;
   }
+  // the list shows the decision at once, and is read again only once the next suggestion is
+  // here (refreshList): reading it takes the server seconds, and every decision waited for that
   const done = S.name;
-  await loadList();
+  decided(done, decision);
+  S.listStale = true;
   if (decision === 'pending') return select(done);
   move(1, done);
+}
+
+// the list read again from the server after a decision, behind whatever was asked for next
+function refreshList() {
+  if (!S.listStale) return;
+  S.listStale = false;
+  loadList().catch(() => {});
+}
+
+// the list as it will be once it is read again: the suggestion under its new decision
+function decided(name, decision) {
+  const e = S.entries.find(x => x.name === name);
+  if (!e || e.state === decision) return;
+  S.counts[e.state] = Math.max(0, (S.counts[e.state] || 0) - 1);
+  S.counts[decision] = (S.counts[decision] || 0) + 1;
+  e.state = decision;
+  renderTabs();
+  renderList();
 }
 
 // the next (or previous) suggestion in the list as it is shown
 function move(dir, from = S.name) {
   const items = visible();
-  if (!items.length) { $('item').innerHTML = '<p class="empty">nothing left here</p>'; return; }
+  if (!items.length) {
+    S.item = null;
+    S.tree = null;
+    $('item').classList.remove('loading');
+    $('item').innerHTML = '<p class="empty">nothing left here</p>';
+    refreshList();
+    return;
+  }
   let i = items.findIndex(e => e.name === from);
   i = i < 0 ? 0 : Math.max(0, Math.min(items.length - 1, i + dir));
   if (location.hash.slice(1) === items[i].name) select(items[i].name);
@@ -745,4 +834,8 @@ loadList().then(() => {
   if (location.hash) select(location.hash.slice(1));
   // the first one, with no problem in the address until one is picked
   else if (visible().length) select(visible()[0].name);
+  else $('item').innerHTML = `<p class="empty">${S.entries.length ? 'Nothing is waiting for review. The tabs above have the rest.' : 'No suggestions yet.'}</p>`;
+}, e => {
+  $('list').innerHTML = `<p class="error">The suggestions could not be read: ${esc(e.message)}</p>`;
+  $('item').innerHTML = '';
 });

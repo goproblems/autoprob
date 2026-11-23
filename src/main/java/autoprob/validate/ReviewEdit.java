@@ -3,6 +3,7 @@ package autoprob.validate;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 
 // a suggestion's tree as edited by hand in the crawl's review (edits/gp-<id>.json): the
 // suggested sgf as edited, and the draft's own it was made from. it holds for that draft only:
@@ -18,10 +19,14 @@ public class ReviewEdit {
         return new File(dir, "edits/" + name + ".json");
     }
 
-    // the edits for the problem's suggestion, or null
+    // the edits for the problem's suggestion, or null. read without asking first whether the
+    // file is there: the review page can take it away between the two (CrawlReviewServer)
     static ReviewEdit read(File dir, String name) throws IOException {
-        File f = file(dir, name);
-        return f.exists() ? RunRecorder.GSON.fromJson(Files.readString(f.toPath()), ReviewEdit.class) : null;
+        try {
+            return RunRecorder.GSON.fromJson(Files.readString(file(dir, name).toPath()), ReviewEdit.class);
+        } catch (NoSuchFileException e) {
+            return null;
+        }
     }
 
     // whether the edits were made on the draft as it is

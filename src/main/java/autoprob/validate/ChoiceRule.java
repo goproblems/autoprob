@@ -261,10 +261,11 @@ public class ChoiceRule {
                     : "no opponent threat remains");
         }
         // the solver's last move may only have prepared the move that answers the opponent's
-        // first try: then the line shows that answer, however obvious it is
-        Choice prepared = preparedLine(rec, threatening, p);
-        if (prepared != null) return prepared;
+        // first try: then the line shows that answer. where every try left is routine the line
+        // ends, unless that answer is the author's own move
         Choice routine = routineEnd(threatening, p);
+        Choice prepared = preparedLine(rec, threatening, p, routine != null);
+        if (prepared != null) return prepared;
         if (routine != null) return routine;
         double severeFloor = maxThreat * p.severeThreatRatio;
         List<CandidateFeatures> severe = new ArrayList<>();
@@ -305,27 +306,40 @@ public class ChoiceRule {
     // the line through the opponent's first try, when the solver's answer to it is another
     // move that worked where the solver's last move was chosen (rec.others): that last move
     // only prepared the answer, an exchange put in before the move that settles the position,
-    // and a line that ended on it would mark it right before the solver had shown the answer.
-    // review kept such lines to the answer and no further: in gp-60321, after B G2, W G1, B F1,
-    // W E1, the found H3 is answered at J2 and then black plays D1, the author's move there,
-    // though every white try after H3 has D1 for an obvious answer; and in gp-59989 B G12,
-    // W H10, B H11 ends where the author's H11, H10, G12 does. null when the line may end
-    private static Choice preparedLine(DecisionRecord rec, List<CandidateFeatures> threatening, ChoiceParams p) {
-        if (!p.preparedGoesOn || rec.others == null || rec.others.isEmpty()) return null;
-        if (!prepared(rec, threatening.get(0))) return null;
+    // and the try so answered is the one to show.
+    //
+    // where every try left is routine (plain) the line would end there, and it goes on only
+    // to a move of the author's own (rec.authors, kept for the turn after a line's first
+    // move): the found move was an exchange before the author's answer, or the author's moves
+    // in another order, and a line that ended on it would mark it right before the solver had
+    // played the move the problem is about. review kept such lines to the answer and no
+    // further: in gp-60321, after B G2, W G1, B F1, W E1, the found H3 is answered at J2 and
+    // then black plays D1, the author's move there, though every white try after H3 has D1
+    // for an obvious answer; and in gp-59989 B G12, W H10, B H11 ends where the author's H11,
+    // H10, G12 does. any other move that worked a move earlier is only the answer everyone
+    // finds to a try that tests nothing (adam's review of gp-60992: "trivial ataris at the
+    // end" of the lines "extend them beyond where they should be". after B B4, W D1, B B2,
+    // W A4 black's C2, C3 and B3 all live, and after C2 the line went on W B3, B C3, an atari
+    // and the capture; six of its nine lines ended that way). null when the line may end, or
+    // the try is left to the criterion
+    private static Choice preparedLine(DecisionRecord rec, List<CandidateFeatures> threatening, ChoiceParams p, boolean plain) {
+        if (!p.preparedGoesOn) return null;
+        List<String> moves = plain ? rec.authors : rec.others;
+        if (moves == null || moves.isEmpty()) return null;
+        if (!prepared(rec, threatening.get(0), moves)) return null;
         // of the tries so answered, the one a human would play
         CandidateFeatures shown = threatening.get(0);
         for (CandidateFeatures c : threatening) {
-            if (prepared(rec, c) && humanPolicy(c) > humanPolicy(shown)) shown = c;
+            if (prepared(rec, c, moves) && humanPolicy(c) > humanPolicy(shown)) shown = c;
         }
         return new Choice(shown.move, "response " + shown.point() + ": its answer " + shown.answer
-                + " worked a move earlier too, so the line goes on to show it");
+                + (plain ? " is the author's move a move earlier" : " worked a move earlier too")
+                + ", so the line goes on to show it");
     }
 
-    // whether the solver's answer to the try is another move that worked where its last move
-    // was chosen
-    private static boolean prepared(DecisionRecord rec, CandidateFeatures c) {
-        return c.answer != null && rec.others.contains((rec.toMove.equals("B") ? "W" : "B") + " " + c.answer);
+    // whether the solver's answer to the try is one of the moves
+    private static boolean prepared(DecisionRecord rec, CandidateFeatures c, List<String> moves) {
+        return c.answer != null && moves.contains((rec.toMove.equals("B") ? "W" : "B") + " " + c.answer);
     }
 
     // whether anyone plays the try: katago's search lists it, or the human policy gives it at

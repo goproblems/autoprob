@@ -324,10 +324,12 @@ lines added to a finished problem, not to an author's whole tree, and
 over every answer that holds, as the human's is: two answers that both hold split the
 prior, and the best answer's alone made a try either answers look hard. `redo.min_human_try`
 sets how natural a try has to be when only the human policy offers it.
-`redo.prepared_goes_on` keeps a line going where the solver's answer to the opponent's
-first try is another move that worked when its last move was chosen: the last move only
-prepared it. Each decision records those other moves (`others`), so the choice can still be
-made offline. `redo.many_work_ends` ends the lines through a solver's turn where more than
+`redo.prepared_goes_on` shows the opponent's try whose answer is another move that worked
+when the solver's last move was chosen: the last move only prepared it. Where every try
+left is routine the line ends all the same, unless that answer is a move of the author's
+own at the position the line started from, which only `missing-variations` has to give.
+Each decision records those moves (`others`, `authors`), so the choice can still be made
+offline. `redo.many_work_ends` ends the lines through a solver's turn where more than
 `redo.max_answers` moves work, since the result is plain there. A try of the generator's
 own that so many moves answer was no real try (the count it was chosen on, from one
 search's visits, missed the rest): it comes out, and the opponent's turn is decided again
@@ -444,7 +446,7 @@ All `redo.*` settings live in `config.properties` with comments. Summary:
 | `redo.routine_min_tries` | 2 | ...and at least this many real tries are left (a single last resistance is still shown; `missing-variations` uses 1 for its lines) |
 | `redo.routine_summed` | false | Take KataGo's prior over every answer that holds, as the human's is, not the best answer's alone (`missing-variations` turns it on for its lines) |
 | `redo.min_human_try` | `redo.min_human_policy` | A try only the human policy offers counts as a resistance from this human policy up (`missing-variations` uses 0.1 for its lines) |
-| `redo.prepared_goes_on` | false | Go on where the answer to the opponent's first try is another move that worked when the solver's last move was chosen (`missing-variations` turns it on for its lines) |
+| `redo.prepared_goes_on` | false | Show the opponent's try whose answer is another move that worked when the solver's last move was chosen, and go on past routine tries to the author's own move after a line's first move (`missing-variations` turns it on for its lines) |
 | `redo.solver_avoids_ko` | false | Leave out a solver move that itself takes a ko while one that takes none works (`missing-variations` turns it on for the lines of a move that reaches a clean result) |
 | `redo.many_work_ends` | false | End the lines through a solver's turn where more than `redo.max_answers` moves work: a try so answered is taken back and the opponent's turn decided again, and after an answer the line was given each move ends its line (`missing-variations` turns it on for its lines) |
 | `redo.through_refuted` | true | Where a line runs on a problem's own tree, go on through a solver's move the problem answers itself (only `missing-variations` gives its lines such a tree, and turns this off for them) |

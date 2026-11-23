@@ -192,12 +192,20 @@ coordinates; the console says how far the problem moved.
    - a try that only the human policy offers has to be one people play
      (`missing.min_human_try`, 0.1). After gp-60235's B S16, W T15, B T18, White's S15, at
      0.06 and with no katago prior, kept the line going;
-   - the line still goes on where the solver's answer to the opponent's first try is another
-     move that worked when its last move was chosen (`missing.prepared_goes_on`). That last
-     move only prepared the answer, and a line ending on it would mark it right before the
-     solver had shown the answer. In gp-60321, after B G2, W G1, B F1, W E1, every white try
-     after the found H3 has D1 for an obvious answer, and D1 is the author's move there:
-     review kept B H3, W J2, B D1.
+   - the line still goes on where the found move only prepared the author's own move
+     (`missing.prepared_goes_on`): the solver's answer to the opponent's first try after it
+     is a move the author accepts at that position. The found move was an exchange before
+     the author's answer, or the author's moves in another order, and a line ending on it
+     would mark it right before the solver had played the move the problem is about. In
+     gp-60321, after B G2, W G1, B F1, W E1, every white try after the found H3 has D1 for
+     an obvious answer, and D1 is the author's move there: review kept B H3, W J2, B D1.
+
+     Any other move that worked a move earlier is only the answer everyone finds to a try
+     that tests nothing, and the line ends before it. In gp-60992, after B B4, W D1, B B2,
+     W A4, Black's C2, C3 and B3 all live. After C2 the line went on W B3, B C3, an atari
+     and the capture, and six of the suggestion's nine lines ended on such an exchange
+     (review: "trivial ataris at the end"). While a real try is left the line goes on in
+     any case, and the try so answered is the one shown.
 
    Where a line reaches a position of the author's correct lines by another order of moves,
    it follows the author from there: it ends where the author's line ends and goes on with

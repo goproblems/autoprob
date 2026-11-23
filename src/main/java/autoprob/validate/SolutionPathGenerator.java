@@ -67,6 +67,8 @@ public class SolutionPathGenerator {
     // of the problem (Positions.key), each with the author's answers there on those lines, none
     // where the author's line ends
     private Map<String, ? extends Collection<String>> authorSpots = Map.of();
+    // optional: the moves the problem's author accepts at the position the line starts from
+    private Collection<String> authorMoves = List.of();
 
     private GenResult result;
     private boolean scoreDriftNoted = false;
@@ -141,6 +143,13 @@ public class SolutionPathGenerator {
     // G12 ends on, where the generator went on W J12, B J11, W H12, B H13)
     public void setAuthorSpots(Map<String, ? extends Collection<String>> spots) {
         authorSpots = spots;
+    }
+
+    // the author's own moves where the line's first move is played. a first move that only
+    // prepared one of them is followed to it, however routine the try before it: the line
+    // shows the way back to the author's answer (ChoiceRule.preparedLine)
+    public void setAuthorMoves(Collection<String> moves) {
+        authorMoves = moves;
     }
 
     // builds the tree under iso.problem; every leaf is marked RIGHT
@@ -394,6 +403,7 @@ public class SolutionPathGenerator {
             return;
         }
         opponent.others = others;
+        opponent.authors = at.size() == 1 && !authorMoves.isEmpty() ? new ArrayList<>(authorMoves) : null;
         ChoiceRule.Choice response = ChoiceRule.chooseOpponent(opponent, params, iso.stakes);
         if (response.isEnd() && answersOwn(at)) {
             // the solver's last move is one the problem has itself: the line cannot end on it

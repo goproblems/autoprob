@@ -25,6 +25,11 @@ public class DecisionRecord {
     // this position was chosen. when the answer to the opponent's try is one of them, the
     // solver's last move only prepared it (redo.prepared_goes_on). null where not recorded
     public List<String> others;
+    // an opponent's decision right after the first move of a line only: the moves the
+    // problem's author accepts where that move was played. where every try left is routine,
+    // the line still goes on to one of them as the answer. null where there is no author to
+    // go by
+    public List<String> authors;
 
     public static String key(List<String> at) {
         return at.isEmpty() ? "root" : String.join(" ", at);
@@ -51,6 +56,7 @@ public class DecisionRecord {
         rec.candidates = new ArrayList<>(candidates);
         rec.error = error;
         rec.others = others;
+        rec.authors = authors;
         return rec;
     }
 

@@ -140,7 +140,7 @@ class ChoiceRuleTest {
     }
 
     @Test
-    void aLineGoesOnToTheAnswerItsLastMoveOnlyPrepared() {
+    void aLineGoesOnToTheAuthorsMoveItsFirstMoveOnlyPrepared() {
         // gp-60321 after B G2, W G1, B F1, W E1 and the found H3: every white try has D1 for an
         // obvious answer, and D1 is the author's move at that position. review kept the line
         // to B H3, W J2, B D1
@@ -157,19 +157,51 @@ class ChoiceRuleTest {
         ChoiceParams line = params("routine_min_tries", "1", "routine_summed", "true", "prepared_goes_on", "true");
         // taken by itself the position has only routine tries left
         assertTrue(ChoiceRule.chooseOpponent(rec, line, STAKES).isEnd());
-        // but D1 worked a move earlier too, where H3 was chosen: the natural try is shown
+        // nor does it matter that D1 worked a move earlier too, where H3 was chosen
         rec.others = List.of("B D1", "B H1");
+        assertTrue(ChoiceRule.chooseOpponent(rec, line, STAKES).isEnd());
+        // but D1 is the author's move there: the natural try is shown
+        rec.authors = List.of("B D1", "B H1");
         ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(rec, line, STAKES);
         assertEquals("W J2", choice.move);
-        assertTrue(choice.reason.contains("worked a move earlier"), choice.reason);
+        assertTrue(choice.reason.contains("is the author's move"), choice.reason);
         assertTrue(ChoiceRule.chooseOpponent(rec, params("routine_min_tries", "1", "routine_summed", "true"), STAKES).isEnd());
-        // an answer that did not work there is no reason to go on
-        rec.others = List.of("B F3");
+        // an answer the author does not play there is no reason to go on
+        rec.authors = List.of("B F3");
         assertTrue(ChoiceRule.chooseOpponent(rec, line, STAKES).isEnd());
         // nor is it when only a lesser try is answered that way
-        rec.others = List.of("B D1");
+        rec.authors = List.of("B D1");
         h1.answer = "F1";
         assertTrue(ChoiceRule.chooseOpponent(rec, line, STAKES).isEnd());
+    }
+
+    @Test
+    void aRoutineTryIsNotShownForAnAnswerThatWorkedBefore() {
+        // gp-60992 after B B4, W D1, B B2, W A4, B C2 (adam's review: "trivial ataris at the
+        // end" of the lines): black's C3 and B3 lived as well as C2, and white's ataris at B3
+        // and C3 each have the other for an answer everyone finds
+        CandidateFeatures b3 = cand("W B3", "katago", 0.01, 149, 0.30, 0.96, 10, 0);
+        CandidateFeatures c3 = cand("W C3", "katago", 0.01, 115, 0.25, 0.95, 10, 0);
+        b3.answer = "C3";
+        c3.answer = "B3";
+        for (CandidateFeatures c : List.of(b3, c3)) {
+            c.answers = 1;
+            c.answerPrior = 1.0;
+        }
+        DecisionRecord rec = opponent(b3, c3);
+        rec.others = List.of("B C3", "B B3");
+        ChoiceParams line = params("routine_min_tries", "1", "routine_summed", "true", "prepared_goes_on", "true");
+        ChoiceRule.Choice choice = ChoiceRule.chooseOpponent(rec, line, STAKES);
+        assertTrue(choice.isEnd(), choice.reason);
+        assertTrue(choice.reason.startsWith("only routine tries remain"), choice.reason);
+        // what the author plays elsewhere changes nothing
+        rec.authors = List.of("B C2");
+        assertTrue(ChoiceRule.chooseOpponent(rec, line, STAKES).isEnd());
+        // while a real try is left the line goes on anyway, and the try so answered is shown
+        c3.humanAnswer = 0.4;
+        choice = ChoiceRule.chooseOpponent(rec, line, STAKES);
+        assertEquals("W B3", choice.move);
+        assertTrue(choice.reason.contains("worked a move earlier"), choice.reason);
     }
 
     @Test

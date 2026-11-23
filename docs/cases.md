@@ -139,8 +139,11 @@ The review page offers a starting set, and any other tag can be typed in:
 
 ## Workflow
 
-The commands below use `gotool.sh`, which compiles and runs `GoTool` with
-`redo_local.properties` from WSL. Elsewhere, run
+The commands below use `gotool.sh`, which runs `GoTool` with `redo_local.properties` from
+WSL. It compiles the tool first when a source, a resource or the pom has changed since the
+last time, and says so: Maven takes up to a minute over it, and 20 seconds just to find
+that nothing has changed, so otherwise it is left out (`GOTOOL_BUILD=1 bash gotool.sh …`
+compiles regardless). Elsewhere, run
 `java -cp … autoprob.GoTool config.properties cmd=…` with the same arguments.
 
 ### 1. Run redo

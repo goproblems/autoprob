@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** One dispatcher and lease lifecycle for all analysis work. Priority belongs to goproblems. */
 public class AnalysisHandler {
-    public static final int CLIENT_VERSION = 18;
+    public static final int CLIENT_VERSION = 19;
     private static final int INTERACTIVE_PRIORITY = 100;
     private final Properties props = new Properties();
     private final Properties localProps = new Properties();

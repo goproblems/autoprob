@@ -44,6 +44,10 @@ public class KataQuery {
 	@Expose
 	public Integer maxVisits;
 
+	@SerializedName("rootPolicyTemperature")
+	@Expose
+	public Double rootPolicyTemperature;
+
 	@SerializedName("boardXSize")
 	@Expose
 	public Integer boardXSize = 19;

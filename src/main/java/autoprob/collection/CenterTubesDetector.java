@@ -12,6 +12,11 @@ public final class CenterTubesDetector implements CollectionDetector {
     }
 
     @Override
+    public int siteCollection() {
+        return 246;
+    }
+
+    @Override
     public MatchResult detect(Node startingPosition) {
         Board board = startingPosition.board;
 

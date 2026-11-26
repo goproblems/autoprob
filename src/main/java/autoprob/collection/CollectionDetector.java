@@ -6,6 +6,11 @@ import autoprob.go.Node;
 public interface CollectionDetector {
     String name();
 
+    /** The GoProblems collection the matches belong in, or 0 when there is none to suggest them for. */
+    default int siteCollection() {
+        return 0;
+    }
+
     MatchResult detect(Node startingPosition);
 
     record MatchResult(boolean matches, String reason) {

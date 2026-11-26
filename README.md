@@ -35,7 +35,22 @@ The general approach is to take configuration parameters from the properties fil
 
 # Detecting problem collections
 
-`GoTool` can scan live GoProblems SGFs for positions matching a named collection detector. The first detector is `center-tubes`: all starting stones of at least one color must fit an interior 3-by-X bounding rectangle whose long axis is at least 5 intersections, with at least 3 rows or columns of board space between each long side and its parallel board edge, and opposing stones extending beyond it on the left, right, top, and bottom. It does not require KataGo.
+`GoTool` can scan live GoProblems SGFs for positions matching a named collection detector. None of the detectors requires KataGo.
+
+The first detector is `center-tubes`: all starting stones of at least one color must fit an interior 3-by-X bounding rectangle whose long axis is at least 5 intersections, with at least 3 rows or columns of board space between each long side and its parallel board edge, and opposing stones extending beyond it on the left, right, top, and bottom.
+
+The other two detectors are `stone-for-liberty` and `another-stone-for-liberty`: capturing races that are won by first adding a stone to be given up, as in problem 43924. There the solver's group is one liberty short, and the right move is a stone on the outside of the stones that would fill its liberty: they are then too short of liberties themselves to do it, and capturing the stone first costs the opponent the move the race turns on. These detectors read the problem's solution tree as well as the starting position. Every first move the tree marks right has to be a stone that
+
+- captures nothing and gives no atari;
+- cannot be taken at once: the opponent has to approach it first, which is what tells it from a throw-in;
+- makes the opponent need at least two moves more than before to capture one of the solver's chains of two stones or more and three liberties or fewer, counting the moves that have to come before a liberty can be filled, so the stone gains one move more than it cost. The opponent's moves are counted as if the solver never answered, except that none is counted which leaves a chain of the opponent's shorter of liberties when the solution goes on to attack that chain beside the solver's: going round the stone by lengthening the chain being raced gains nothing in the race (problem 47577, where that way round looked a move quicker than taking the stone);
+- stands away from that chain and its liberties, on the far side of the stones that have to approach it;
+- has to be captured, on its own and before that chain, for the quickest capture of the chain;
+- is given up in the solution, or cannot get away, and is not played again where it stood, while the chain it gained time for is still on the board at the end.
+
+A throw-in that the opponent takes at once and then has to connect gains a liberty the same way, but it is a wider group than this collection and is left out (problem 59677 is one). So are a stone that makes an eye or a ko beside the group, a hane that connects back, a capture, a move that puts the group out of reach altogether, and a move that gains time only for a single stone (in problem 47748 that was the vital point of an eye space, and no race was won), as well as a problem that can also be solved without the sacrifice, or one where it comes later than the first move.
+
+The two differ in what is given up. `stone-for-liberty` (GoProblems collection 485, Stone for Liberty) takes the problems where the stone stands alone. `another-stone-for-liberty` (collection 486, Another Stone for Liberty) takes those where it is added to stones of its own colour that are cut off already, so that all of them are given up together, as in problem 4500. Each says of the other's problems which collection they belong to.
 
 Test one problem:
 
@@ -45,7 +60,15 @@ Check a consecutive range of problem IDs:
 
 `java -cp "autoprob.jar;gson.jar" autoprob.GoTool config.properties cmd=detectcollection collection=center-tubes startid=59000 count=200`
 
-Omit `id`, `startid`, and `count` to paginate the complete live-problem list and check every problem. Matching IDs, links, and ASCII starting positions are printed to standard output. API requests are spaced 500 ms apart by default; override this with `detectcollection.delay.ms` when appropriate.
+Check only the problems of an existing GoProblems collection, by its ID on the site (18 is Semeai / Capturing Race):
+
+`java -cp "autoprob.jar;gson.jar" autoprob.GoTool config.properties cmd=detectcollection collection=stone-for-liberty incollection=18`
+
+Omit `id`, `startid`, `count`, and `incollection` to paginate the complete live-problem list and check every problem. Matching IDs, links, and ASCII starting positions are printed to standard output. API requests are spaced 500 ms apart by default; override this with `detectcollection.delay.ms` when appropriate. Pass `detectcollection.cache=<folder>` to keep each fetched problem in that folder and read it from there the next time, so that running a detector again, or another detector, does not ask the site for the same problems; delete the folder to fetch them fresh.
+
+Add `suggest=true` to offer the matches to GoProblems as suggestions for the detector's collection there: 246 for `center-tubes`, 485 for `stone-for-liberty`, 486 for `another-stone-for-liberty`, or the one `suggest.collection=<id>` names. That alone is a dry run, which prints what would be suggested. `suggest.post=true` sends the suggestions, as the user whose `apikey` the properties file gives, for the problem's author or an editor of the site to approve or reject. A problem the collection holds already is left alone, and so is one that was suggested for it before, whatever was decided then. `suggest.limit=<n>` stops after n suggestions:
+
+`java -cp "autoprob.jar;gson.jar" autoprob.GoTool redo_local.properties cmd=detectcollection collection=stone-for-liberty incollection=18 suggest=true suggest.post=true suggest.limit=1`
 
 # Developer IDE
 

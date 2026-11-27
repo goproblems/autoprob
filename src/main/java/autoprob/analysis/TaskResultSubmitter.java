@@ -32,9 +32,18 @@ final class TaskResultSubmitter {
             .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("Analysis application HTTP " + response.statusCode());
+            throw new ApiException(response.statusCode());
         }
         return response.body().isBlank() ? new JsonObject()
             : com.google.gson.JsonParser.parseString(response.body()).getAsJsonObject();
+    }
+
+    static final class ApiException extends IOException {
+        final int status;
+
+        ApiException(int status) {
+            super("Analysis application HTTP " + status);
+            this.status = status;
+        }
     }
 }

@@ -449,7 +449,7 @@ public class AnalysisHandler {
                 partial -> {
                     JsonObject fields = new JsonObject();
                     fields.add("result", partial);
-                    updateWithRetry(task, "progress", fields);
+                    queue.update(task, "progress", fields);
                 }, () -> shouldYield(task, checkedVersion, lastPriorityCheck));
             case "scenario" -> analyzeScenario(task, brain, taskProps);
             case "josekinode" -> gson.toJsonTree(new JosekiTaskAdapter(taskProps)

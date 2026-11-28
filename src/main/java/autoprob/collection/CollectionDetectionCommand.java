@@ -35,7 +35,8 @@ public final class CollectionDetectionCommand {
     private static final List<CollectionDetector> DETECTORS = List.of(
             new CenterTubesDetector(),
             SacrificeForLibertyDetector.loneStone(),
-            SacrificeForLibertyDetector.addedStone());
+            SacrificeForLibertyDetector.addedStone(),
+            new ClampCutDetector());
     /** A suggestion's comment is cut to this length. */
     private static final int MAX_COMMENT = 480;
 

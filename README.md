@@ -52,6 +52,16 @@ A throw-in that the opponent takes at once and then has to connect gains a liber
 
 The two differ in what is given up. `stone-for-liberty` (GoProblems collection 485, Stone for Liberty) takes the problems where the stone stands alone. `another-stone-for-liberty` (collection 486, Another Stone for Liberty) takes those where it is added to stones of its own colour that are cut off already, so that all of them are given up together, as in problem 4500. Each says of the other's problems which collection they belong to.
 
+The fourth detector is `clamp-cut` (GoProblems collection 445, Clamp Cut): cuts made with a clamp, as in problem 45743. A lone stone of the opponent's has one of the solver's stones on one side; the solver plays on the opposite side, and the stone is left with just the two points beside it. The opponent can take only one, and the solver takes the other. This detector reads the solution tree too. Every first move the tree marks right has to be a stone that
+
+- captures nothing and gives no atari;
+- touches a lone stone of the opponent's which has a stone of the solver's directly behind it, or one on each diagonal behind it, and both points beside it open;
+- is played alone, off the first line, and cannot be taken at once;
+- leaves at least one of the two points next to another stone of the opponent's, so that the clamped stone is a link between groups;
+- is followed in the solution by the opponent taking one of the two points and the solver the other. Before or after that the opponent may put the clamp stone in atari and the solver extend it, and a line that stops on such an extension counts as well.
+
+A line that turns to anything else once the two points are settled is left out: there the clamp only starts something longer, usually a kill. When one of the two points is on the first line the solver connects along the edge rather than cuts (problem 46352, which the collection holds); the reason printed says "the edge point" for those.
+
 Test one problem:
 
 `java -cp "autoprob.jar;gson.jar" autoprob.GoTool config.properties cmd=detectcollection collection=center-tubes id=59154`
@@ -66,7 +76,7 @@ Check only the problems of an existing GoProblems collection, by its ID on the s
 
 Omit `id`, `startid`, `count`, and `incollection` to paginate the complete live-problem list and check every problem. Matching IDs, links, and ASCII starting positions are printed to standard output. API requests are spaced 500 ms apart by default; override this with `detectcollection.delay.ms` when appropriate. Pass `detectcollection.cache=<folder>` to keep each fetched problem in that folder and read it from there the next time, so that running a detector again, or another detector, does not ask the site for the same problems; delete the folder to fetch them fresh.
 
-Add `suggest=true` to offer the matches to GoProblems as suggestions for the detector's collection there: 246 for `center-tubes`, 485 for `stone-for-liberty`, 486 for `another-stone-for-liberty`, or the one `suggest.collection=<id>` names. That alone is a dry run, which prints what would be suggested. `suggest.post=true` sends the suggestions, as the user whose `apikey` the properties file gives, for the problem's author or an editor of the site to approve or reject. A problem the collection holds already is left alone, and so is one that was suggested for it before, whatever was decided then. `suggest.limit=<n>` stops after n suggestions:
+Add `suggest=true` to offer the matches to GoProblems as suggestions for the detector's collection there: 246 for `center-tubes`, 485 for `stone-for-liberty`, 486 for `another-stone-for-liberty`, 445 for `clamp-cut`, or the one `suggest.collection=<id>` names. That alone is a dry run, which prints what would be suggested. `suggest.post=true` sends the suggestions, as the user whose `apikey` the properties file gives, for the problem's author or an editor of the site to approve or reject. A problem the collection holds already is left alone, and so is one that was suggested for it before, whatever was decided then. `suggest.limit=<n>` stops after n suggestions:
 
 `java -cp "autoprob.jar;gson.jar" autoprob.GoTool redo_local.properties cmd=detectcollection collection=stone-for-liberty incollection=18 suggest=true suggest.post=true suggest.limit=1`
 

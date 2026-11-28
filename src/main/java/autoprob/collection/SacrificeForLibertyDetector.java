@@ -4,7 +4,6 @@ import autoprob.go.Intersection;
 import autoprob.go.Node;
 import autoprob.go.action.MoveAction;
 
-import java.awt.Point;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -98,8 +97,8 @@ public final class SacrificeForLibertyDetector implements CollectionDetector {
 
     @Override
     public MatchResult detect(Node startingPosition) {
-        Node start = firstChoice(startingPosition);
-        List<Node> right = rightMoves(start);
+        Node start = SolutionTree.firstChoice(startingPosition);
+        List<Node> right = SolutionTree.rightMoves(start);
         if (right.isEmpty()) {
             return MatchResult.noMatch("the tree marks no first move right");
         }
@@ -352,29 +351,6 @@ public final class SacrificeForLibertyDetector implements CollectionDetector {
         MoveAction action = node.getMoveAction();
         if (action == null || !position.onBoard(action.loc.x, action.loc.y)) return position;
         return position.play(position.point(action.loc.x, action.loc.y), action.stone);
-    }
-
-    /** The node the solver first has moves to choose from. */
-    private Node firstChoice(Node root) {
-        Node node = root;
-        while (!node.babies.isEmpty()) {
-            for (Node child : node.babies) {
-                if (child.hasMove) return node;
-            }
-            node = node.babies.firstElement();
-        }
-        return node;
-    }
-
-    private List<Node> rightMoves(Node start) {
-        List<Node> right = new ArrayList<>();
-        for (Node child : start.babies) {
-            if (!child.hasMove || child.notThis) continue;
-            Point point = child.findMove();
-            if (point == null || !start.board.inBoard(point.x, point.y)) continue;
-            if (child.searchForTheTruth()) right.add(child);
-        }
-        return right;
     }
 
     private record Gain(Stones.Chain chain, int before, int after, String failure) { }
